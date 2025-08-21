@@ -3,7 +3,7 @@ import html
 import bleach
 from typing import Any, Optional, List
 from datetime import datetime, date, timedelta
-from pydantic import validator, EmailStr
+from pydantic import EmailStr
 from app.core.exceptions import ValidationException
 
 class ValidationUtils:

@@ -1,0 +1,361 @@
+---
+globs: *.py
+description: Data population, testing patterns, and development workflows
+---
+
+# Data Population and Testing Guide
+
+## Data Population Scripts
+
+### Main Data Loader
+```python
+# Located in populate_data/load_comprehensive_data.py
+# This script populates the database with realistic test data
+
+# Usage:
+# python populate_data/load_comprehensive_data.py --users 100 --properties 500 --agents 20
+
+# Data flow:
+# 1. Clear existing data (optional)
+# 2. Create users with different roles
+# 3. Create agent profiles
+# 4. Create properties with amenities
+# 5. Create bookings and visits
+# 6. Create swipe interactions
+```
+
+### Individual Data Populators
+```python
+# Located in populate_data/data_populators/
+
+# User Populator
+# - Creates users with realistic Indian names
+# - Generates phone numbers and emails
+# - Assigns roles (USER, AGENT, ADMIN)
+# - Uses Faker library for realistic data
+
+# Property Populator
+# - Creates properties with real Indian addresses
+# - Adds amenities based on property type
+# - Generates realistic pricing
+# - Includes property images
+
+# Agent Populator
+# - Creates agent profiles
+# - Assigns service areas
+# - Sets experience levels
+# - Links to existing users
+```
+
+### Data Clearing
+```python
+# Located in populate_data/clear_all_data.py
+# Safely removes all data while maintaining schema integrity
+# Useful for fresh test environments
+```
+
+## Testing Patterns
+
+### Test Structure
+```python
+# Located in tests/
+# Follow this pattern for new tests:
+
+import pytest
+from sqlalchemy.orm import Session
+from app.core.database import get_db
+from app.services import UserService
+from app.schemas.user import UserCreate
+
+class TestUserService:
+    def test_create_user(self, db: Session):
+        user_service = UserService(db)
+        user_data = UserCreate(
+            email="test@example.com",
+            phone="+919876543210",
+            password="testpassword123",
+            full_name="Test User"
+        )
+
+        user = user_service.create_user(user_data)
+
+        assert user.email == "test@example.com"
+        assert user.phone == "+919876543210"
+        assert user.full_name == "Test User"
+
+    def test_get_user_by_id(self, db: Session):
+        # Test user retrieval
+        pass
+
+    def test_update_user_profile(self, db: Session):
+        # Test user profile updates
+        pass
+```
+
+### Test Utilities
+```python
+# Common test utilities you can create:
+
+def create_test_user(db: Session) -> User:
+    """Create a test user for testing"""
+    user_service = UserService(db)
+    return user_service.create_user({
+        "email": "test@example.com",
+        "phone": "+919876543210",
+        "password": "testpassword123",
+        "full_name": "Test User"
+    })
+
+def create_test_property(db: Session, owner_id: UUID) -> Property:
+    """Create a test property for testing"""
+    property_service = PropertyService(db)
+    return property_service.create_property({
+        "title": "Test Property",
+        "description": "A test property",
+        "price": 5000000,
+        "property_type": "APARTMENT",
+        "address": "123 Test Street",
+        "city": "Mumbai",
+        "owner_id": owner_id
+    })
+```
+
+## Database Migration Testing
+
+### Supabase Migrations
+```sql
+-- Located in supabase/migrations/
+-- Migration files are named with timestamps:
+-- YYYYMMDDHHMMSS_description.sql
+
+-- Example migration structure:
+BEGIN;
+
+-- Create new table
+CREATE TABLE example_table (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add new column to existing table
+ALTER TABLE properties ADD COLUMN new_feature BOOLEAN DEFAULT FALSE;
+
+-- Create index for performance
+CREATE INDEX idx_properties_new_feature ON properties(new_feature);
+
+COMMIT;
+```
+
+### Migration Testing
+```bash
+# Test migrations locally before deploying
+supabase db reset  # Reset local database
+supabase db push   # Apply migrations
+
+# Check migration status
+supabase db diff   # See pending changes
+```
+
+## API Testing with Postman
+
+### Postman Collection Structure
+```json
+# Located in docs/postman/
+{
+  "collection": {
+    "name": "360Ghar API",
+    "variable": [
+      {"key": "baseUrl", "value": "http://localhost:8000"},
+      {"key": "token", "value": ""}
+    ]
+  },
+  "requests": [
+    {
+      "name": "Authentication",
+      "item": [
+        {"name": "Login", "method": "POST", "url": "{{baseUrl}}/api/v1/auth/login"},
+        {"name": "Register", "method": "POST", "url": "{{baseUrl}}/api/v1/auth/register"},
+        {"name": "Get Profile", "method": "GET", "url": "{{baseUrl}}/api/v1/auth/me"}
+      ]
+    }
+  ]
+}
+```
+
+### Common Test Scenarios
+
+#### User Registration Flow
+```javascript
+// Postman test script
+pm.test("Status code is 201", function () {
+    pm.response.to.have.status(201);
+});
+
+pm.test("Response has required fields", function () {
+    var jsonData = pm.response.json();
+    pm.expect(jsonData).to.have.property('id');
+    pm.expect(jsonData).to.have.property('email');
+    pm.expect(jsonData).to.have.property('created_at');
+});
+
+// Save token for subsequent requests
+var jsonData = pm.response.json();
+pm.collectionVariables.set("user_id", jsonData.id);
+```
+
+#### Property Search Flow
+```javascript
+pm.test("Returns properties array", function () {
+    var jsonData = pm.response.json();
+    pm.expect(jsonData).to.be.an('array');
+});
+
+pm.test("Properties have required fields", function () {
+    var jsonData = pm.response.json();
+    if (jsonData.length > 0) {
+        pm.expect(jsonData[0]).to.have.property('id');
+        pm.expect(jsonData[0]).to.have.property('title');
+        pm.expect(jsonData[0]).to.have.property('price');
+    }
+});
+```
+
+## Development Workflow
+
+### Local Development Setup
+```bash
+# 1. Set up virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Set up environment variables
+cp .env.example .env
+# Edit .env with your local configuration
+
+# 4. Run database migrations
+supabase db reset
+supabase db push
+
+# 5. Populate test data
+python populate_data/load_comprehensive_data.py --users 50 --properties 100
+
+# 6. Start development server
+python run.py
+# or
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Testing Workflow
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_user_service.py -v
+
+# Run tests with coverage
+pytest tests/ --cov=app --cov-report=html
+
+# Run tests for specific module
+pytest tests/ -k "user" -v
+
+# Run tests in parallel
+pytest tests/ -n auto
+```
+
+### API Documentation
+```bash
+# Generate/update API documentation
+# FastAPI automatically generates docs at:
+# http://localhost:8000/docs (Swagger UI)
+# http://localhost:8000/redoc (ReDoc)
+
+# Export Postman collection from FastAPI docs
+# Or use: python -m scripts.export_postman_collection
+```
+
+## Data Validation
+
+### Realistic Test Data
+```python
+# Use these patterns for realistic test data:
+
+# Indian phone numbers
+phone_patterns = [
+    "+919876543210",
+    "+918123456789",
+    "+917890123456"
+]
+
+# Indian cities
+cities = [
+    "Mumbai", "Delhi", "Bangalore", "Chennai", "Hyderabad",
+    "Pune", "Ahmedabad", "Kolkata", "Surat", "Jaipur"
+]
+
+# Property price ranges by city
+price_ranges = {
+    "Mumbai": (5000000, 50000000),    # 50L - 5Cr
+    "Delhi": (3000000, 30000000),     # 30L - 3Cr
+    "Bangalore": (4000000, 25000000)  # 40L - 2.5Cr
+}
+```
+
+## Performance Testing
+
+### Load Testing
+```python
+# Located in tests/load_test_properties.py
+# Use this pattern for load testing:
+
+import asyncio
+import aiohttp
+import time
+
+async def test_property_search_load():
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for i in range(100):  # 100 concurrent requests
+            tasks.append(make_search_request(session, i))
+
+        start_time = time.time()
+        results = await asyncio.gather(*tasks)
+        end_time = time.time()
+
+        print(f"Completed {len(results)} requests in {end_time - start_time:.2f} seconds")
+
+async def make_search_request(session, request_id):
+    # Simulate property search request
+    pass
+```
+
+### Database Performance
+```sql
+-- Useful queries for performance monitoring:
+
+-- Check slow queries
+SELECT * FROM pg_stat_statements ORDER BY total_time DESC LIMIT 10;
+
+-- Monitor table sizes
+SELECT
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+
+-- Check index usage
+SELECT
+    indexname,
+    tablename,
+    idx_scan,
+    idx_tup_read,
+    idx_tup_fetch
+FROM pg_stat_user_indexes
+ORDER BY idx_scan DESC;
+```

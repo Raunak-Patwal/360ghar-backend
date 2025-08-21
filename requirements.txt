@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]==0.24.0
+hypercorn
 pydantic>=2.5.2
 pydantic-settings>=2.1.0
 python-multipart==0.0.6
@@ -29,3 +30,4 @@ fastapi-debug-toolbar>=0.6.0
 psycopg[binary]
 aiohttp>=3.8.0
 numpy>=1.26.0,<2
+email-validator

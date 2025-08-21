@@ -53,8 +53,8 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown events"""
     # Startup
     try:
-        # Initialize cache manager
-        await cache_manager.connect()
+        # Initialize cache manager (commented out for now - Redis not required)
+        # await cache_manager.connect()
         
         # Test database connection (disabled for PgBouncer compatibility)
         # try:
@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    await cache_manager.disconnect()
+    # await cache_manager.disconnect()  # Commented out - Redis not required
     await engine.dispose()
     logger.info("API shutdown", extra={"event": "shutdown"})
 

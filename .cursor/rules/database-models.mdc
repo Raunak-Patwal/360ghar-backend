@@ -1,0 +1,218 @@
+---
+globs: *.py
+description: Database models, relationships, and data structure guide
+---
+
+# Database Models and Relationships
+
+## Core Models
+
+### User Model
+```python
+# Located in app/models/models.py
+class User:
+    id: UUID (Primary Key)
+    email: String (Unique)
+    phone: String (Unique)
+    full_name: String
+    password_hash: String
+    role: Enum (USER, AGENT, ADMIN)
+    is_active: Boolean
+    is_verified: Boolean
+    created_at: DateTime
+    updated_at: DateTime
+
+    # Relationships
+    properties: List[Property]  # Properties owned by user
+    bookings: List[Booking]     # User's bookings
+    visits: List[Visit]        # User's scheduled visits
+    swipes: List[Swipe]        # User's swipe actions
+    agent_profile: Agent       # Agent profile if role is AGENT
+```
+
+### Property Model
+```python
+class Property:
+    id: UUID (Primary Key)
+    title: String
+    description: Text
+    price: Float
+    property_type: Enum (APARTMENT, HOUSE, VILLA, PLOT)
+    transaction_type: Enum (SALE, RENT)
+    bedrooms: Integer
+    bathrooms: Integer
+    area_sqft: Float
+    location_address: String
+    city: String
+    state: String
+    pincode: String
+    latitude: Float
+    longitude: Float
+    owner_id: UUID (Foreign Key -> User.id)
+    agent_id: UUID (Foreign Key -> Agent.id)
+    is_active: Boolean
+    is_verified: Boolean
+    created_at: DateTime
+    updated_at: DateTime
+
+    # Relationships
+    owner: User                    # Property owner
+    agent: Agent                   # Assigned agent
+    amenities: List[Amenity]       # Property amenities
+    images: List[PropertyImage]    # Property images
+    bookings: List[Booking]        # Property bookings
+    visits: List[Visit]           # Property visits
+    swipes: List[Swipe]           # Property swipes
+```
+
+### Agent Model
+```python
+class Agent:
+    id: UUID (Primary Key)
+    user_id: UUID (Foreign Key -> User.id)
+    agency_name: String
+    license_number: String
+    experience_years: Integer
+    specializations: JSON
+    service_areas: JSON
+    rating: Float
+    total_reviews: Integer
+    is_verified: Boolean
+    created_at: DateTime
+    updated_at: DateTime
+
+    # Relationships
+    user: User                # Agent's user account
+    properties: List[Property] # Properties managed by agent
+    bookings: List[Booking]    # Bookings through this agent
+    visits: List[Visit]       # Visits scheduled by this agent
+```
+
+### Booking Model
+```python
+class Booking:
+    id: UUID (Primary Key)
+    user_id: UUID (Foreign Key -> User.id)
+    property_id: UUID (Foreign Key -> Property.id)
+    agent_id: UUID (Foreign Key -> Agent.id)
+    booking_date: DateTime
+    visit_date: DateTime
+    status: Enum (PENDING, CONFIRMED, CANCELLED, COMPLETED)
+    notes: Text
+    created_at: DateTime
+    updated_at: DateTime
+
+    # Relationships
+    user: User         # User who made booking
+    property: Property # Booked property
+    agent: Agent       # Assigned agent
+```
+
+### Visit Model
+```python
+class Visit:
+    id: UUID (Primary Key)
+    user_id: UUID (Foreign Key -> User.id)
+    property_id: UUID (Foreign Key -> Property.id)
+    agent_id: UUID (Foreign Key -> Agent.id)
+    visit_date: DateTime
+    visit_time: Time
+    status: Enum (SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED)
+    notes: Text
+    feedback: Text
+    rating: Integer
+    created_at: DateTime
+    updated_at: DateTime
+
+    # Relationships
+    user: User         # User who scheduled visit
+    property: Property # Property to visit
+    agent: Agent       # Assigned agent
+```
+
+### Swipe Model
+```python
+class Swipe:
+    id: UUID (Primary Key)
+    user_id: UUID (Foreign Key -> User.id)
+    property_id: UUID (Foreign Key -> Property.id)
+    swipe_type: Enum (LIKE, DISLIKE, SUPERLIKE)
+    created_at: DateTime
+
+    # Relationships
+    user: User         # User who swiped
+    property: Property # Swiped property
+```
+
+### Amenity Model
+```python
+class Amenity:
+    id: UUID (Primary Key)
+    name: String
+    category: Enum (BASIC, LUXURY, SECURITY, ENVIRONMENT)
+    icon_url: String
+    is_active: Boolean
+
+    # Relationships (Many-to-Many with Property)
+    properties: List[Property]
+```
+
+## Key Relationships
+
+### One-to-One
+- `User -> Agent` (when user.role == AGENT)
+
+### One-to-Many
+- `User -> Properties` (as owner)
+- `Agent -> Properties` (managed properties)
+- `User -> Bookings`
+- `User -> Visits`
+- `User -> Swipes`
+- `Property -> Bookings`
+- `Property -> Visits`
+- `Property -> Swipes`
+- `Agent -> Bookings`
+- `Agent -> Visits`
+
+### Many-to-Many
+- `Property <-> Amenity` (through property_amenities table)
+
+## Enums
+
+### UserRole
+- USER
+- AGENT
+- ADMIN
+
+### PropertyType
+- APARTMENT
+- HOUSE
+- VILLA
+- PLOT
+
+### TransactionType
+- SALE
+- RENT
+
+### BookingStatus
+- PENDING
+- CONFIRMED
+- CANCELLED
+- COMPLETED
+
+### VisitStatus
+- SCHEDULED
+- IN_PROGRESS
+- COMPLETED
+- CANCELLED
+
+### SwipeType
+- LIKE
+- DISLIKE
+- SUPERLIKE
+
+### AmenityCategory
+- BASIC
+- LUXURY
+- SECURITY
+- ENVIRONMENT

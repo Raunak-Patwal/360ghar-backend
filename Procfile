@@ -1,3 +1,4 @@
 # Procfile
 
-web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+# Bind to the platform-provided PORT using the robust run.py script
+web: python run.py

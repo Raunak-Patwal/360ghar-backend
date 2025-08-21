@@ -1,0 +1,325 @@
+---
+globs: *.py
+description: Python and FastAPI coding patterns and best practices
+---
+
+# Python and FastAPI Patterns
+
+## Project Structure Patterns
+
+### Service Layer Pattern
+```python
+# Located in app/services/
+class UserService:
+    def __init__(self, db: Session):
+        self.db = db
+
+    async def get_user_by_id(self, user_id: UUID) -> User:
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+
+    async def update_user_profile(self, user_id: UUID, update_data: dict) -> User:
+        user = await self.get_user_by_id(user_id)
+        for field, value in update_data.items():
+            if hasattr(user, field):
+                setattr(user, field, value)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+```
+
+### Repository Pattern (if used)
+```python
+class UserRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get_by_id(self, user_id: UUID) -> User:
+        return self.db.query(User).filter(User.id == user_id).first()
+
+    def get_by_email(self, email: str) -> User:
+        return self.db.query(User).filter(User.email == email).first()
+
+    def create(self, user_data: dict) -> User:
+        user = User(**user_data)
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+```
+
+## FastAPI Patterns
+
+### Dependency Injection
+```python
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from app.core.database import get_db
+
+# Database dependency
+def get_db_session() -> Generator:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Service dependency
+def get_user_service(db: Session = Depends(get_db_session)) -> UserService:
+    return UserService(db)
+
+# Usage in endpoint
+@router.get("/users/{user_id}")
+async def get_user(
+    user_id: UUID,
+    user_service: UserService = Depends(get_user_service)
+):
+    return await user_service.get_user_by_id(user_id)
+```
+
+### Path and Query Parameters
+```python
+@router.get("/properties/")
+async def get_properties(
+    # Query parameters
+    city: Optional[str] = Query(None, description="Filter by city"),
+    property_type: Optional[str] = Query(None, description="Filter by property type"),
+    min_price: Optional[float] = Query(None, ge=0, description="Minimum price"),
+    max_price: Optional[float] = Query(None, ge=0, description="Maximum price"),
+    limit: int = Query(20, ge=1, le=100, description="Number of results"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+
+    # Dependencies
+    db: Session = Depends(get_db)
+):
+    pass
+```
+
+### Request/Response Models
+```python
+# Located in app/schemas/
+from pydantic import BaseModel, UUID4
+from typing import Optional
+
+class PropertyCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    price: float
+    property_type: str
+    address: str
+    city: str
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[int] = None
+
+class PropertyResponse(BaseModel):
+    id: UUID4
+    title: str
+    description: Optional[str]
+    price: float
+    property_type: str
+    address: str
+    city: str
+    bedrooms: Optional[int]
+    bathrooms: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True  # Enable ORM mode
+```
+
+## Error Handling Patterns
+
+### Custom Exceptions
+```python
+# Located in app/core/exceptions.py
+class AppBaseException(Exception):
+    def __init__(self, message: str, status_code: int = 400):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(self.message)
+
+class UserNotFoundException(AppBaseException):
+    def __init__(self, user_id: UUID):
+        super().__init__(f"User with ID {user_id} not found", 404)
+
+class PropertyNotFoundException(AppBaseException):
+    def __init__(self, property_id: UUID):
+        super().__init__(f"Property with ID {property_id} not found", 404)
+```
+
+### Global Exception Handler
+```python
+# Located in app/main.py or app/core/exceptions.py
+from fastapi import Request, HTTPException
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(AppBaseException)
+async def app_exception_handler(request: Request, exc: AppBaseException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message}
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+```
+
+## Database Patterns
+
+### Transaction Management
+```python
+# Use database transactions for data consistency
+async def create_booking_with_visit(
+    db: Session,
+    booking_data: dict,
+    visit_data: dict
+):
+    try:
+        # Start transaction
+        db.begin()
+
+        # Create booking
+        booking = Booking(**booking_data)
+        db.add(booking)
+        db.flush()  # Get booking ID without committing
+
+        # Create visit linked to booking
+        visit_data["booking_id"] = booking.id
+        visit = Visit(**visit_data)
+        db.add(visit)
+
+        # Commit transaction
+        db.commit()
+        db.refresh(booking)
+        db.refresh(visit)
+
+        return booking, visit
+
+    except Exception as e:
+        db.rollback()
+        raise e
+```
+
+### Query Optimization
+```python
+# Use selectinload for eager loading relationships
+from sqlalchemy.orm import selectinload
+
+def get_properties_with_amenities(db: Session, city: str):
+    return (
+        db.query(Property)
+        .options(selectinload(Property.amenities))
+        .filter(Property.city == city)
+        .all()
+    )
+
+# Use join for filtering on relationships
+def get_properties_by_agent(db: Session, agent_id: UUID):
+    return (
+        db.query(Property)
+        .join(Property.agent)
+        .filter(Agent.id == agent_id)
+        .all()
+    )
+```
+
+## Configuration Patterns
+
+### Environment-based Configuration
+```python
+# Located in app/core/config.py
+from pydantic_settings import BaseSettings
+from typing import List
+
+class Settings(BaseSettings):
+    # Database
+    database_url: str
+    database_pool_size: int = 10
+
+    # Authentication
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 30
+
+    # File Upload
+    max_file_size: int = 5 * 1024 * 1024  # 5MB
+    allowed_file_types: List[str] = ["image/jpeg", "image/png"]
+
+    # Rate Limiting
+    rate_limit_requests: int = 100
+    rate_limit_window: int = 60  # seconds
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
+settings = Settings()
+```
+
+## Testing Patterns
+
+### Service Testing
+```python
+# Located in tests/
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from app.core.database import Base
+
+@pytest.fixture
+def test_db():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def test_create_user(test_db):
+    user_service = UserService(test_db)
+    user_data = {
+        "email": "test@example.com",
+        "full_name": "Test User"
+    }
+    user = user_service.create_user(user_data)
+    assert user.email == "test@example.com"
+```
+
+## Best Practices
+
+### Code Organization
+- Keep business logic in services
+- Use schemas for data validation
+- Implement proper error handling
+- Use dependency injection
+- Follow REST API conventions
+
+### Performance
+- Use async/await for I/O operations
+- Implement caching where appropriate
+- Use database indexes for frequently queried fields
+- Implement pagination for list endpoints
+- Use selectinload/joinedload appropriately
+
+### Security
+- Validate all inputs
+- Use parameterized queries
+- Implement proper authentication/authorization
+- Use HTTPS in production
+- Log security events
+
+### Maintainability
+- Write comprehensive tests
+- Use meaningful variable names
+- Add type hints
+- Document complex logic
+- Follow consistent code style

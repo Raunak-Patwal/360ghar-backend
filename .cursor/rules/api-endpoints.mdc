@@ -1,0 +1,90 @@
+---
+globs: *.py
+description: API endpoints structure and routing patterns
+---
+
+# API Endpoints Guide
+
+## API Structure Pattern
+
+Each endpoint file in [app/api/api_v1/endpoints/](mdc:app/api/api_v1/endpoints/) follows this pattern:
+
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.core.database import get_db
+from app.schemas import [SchemaName]
+from app.services import [ServiceName]
+from app.core.auth import get_current_user
+
+router = APIRouter()
+
+@router.get("/endpoint")
+async def get_something(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    return await service.get_something(db, current_user)
+```
+
+## Available Endpoints
+
+### Authentication Endpoints
+- `POST /auth/login` - User login
+- `POST /auth/register` - User registration
+- `GET /auth/me` - Get current user info
+
+### User Management
+- `GET /users/profile` - Get user profile
+- `PUT /users/profile` - Update user profile
+- `GET /users/{user_id}` - Get specific user
+
+### Property Management
+- `GET /properties/` - List properties with filtering
+- `GET /properties/{property_id}` - Get specific property
+- `POST /properties/` - Create property (agents only)
+- `PUT /properties/{property_id}` - Update property (agents only)
+- `DELETE /properties/{property_id}` - Delete property (agents only)
+
+### Agent Management
+- `GET /agents/` - List agents
+- `GET /agents/{agent_id}` - Get specific agent
+- `POST /agents/` - Create agent profile
+- `PUT /agents/{agent_id}` - Update agent profile
+
+### Booking System
+- `GET /bookings/` - List user bookings
+- `GET /bookings/{booking_id}` - Get specific booking
+- `POST /bookings/` - Create booking
+- `PUT /bookings/{booking_id}` - Update booking
+- `DELETE /bookings/{booking_id}` - Cancel booking
+
+### Visit Scheduling
+- `GET /visits/` - List scheduled visits
+- `GET /visits/{visit_id}` - Get specific visit
+- `POST /visits/` - Schedule visit
+- `PUT /visits/{visit_id}` - Update visit
+- `DELETE /visits/{visit_id}` - Cancel visit
+
+### Swipe Interactions
+- `GET /swipes/` - List user swipes
+- `POST /swipes/` - Record swipe action
+- `GET /swipes/matches` - Get matched properties
+
+## Error Handling
+
+Common HTTP status codes:
+- `200` - Success
+- `201` - Created
+- `400` - Bad Request
+- `401` - Unauthorized
+- `403` - Forbidden
+- `404` - Not Found
+- `422` - Validation Error
+- `500` - Internal Server Error
+
+## Authentication Requirements
+
+- **Public endpoints**: No authentication required
+- **Protected endpoints**: `Depends(get_current_user)` required
+- **Agent-only endpoints**: `Depends(get_current_user)` + role check required

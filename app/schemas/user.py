@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from datetime import date, datetime
 from app.utils.validators import ValidationUtils
@@ -27,7 +27,8 @@ class UserUpdate(BaseModel):
     notification_settings: Optional[Dict[str, bool]] = None
     privacy_settings: Optional[Dict[str, Any]] = None
 
-    @validator('full_name')
+    @field_validator('full_name')
+    @classmethod
     def validate_name(cls, v):
         if v:
             v = ValidationUtils.sanitize_string(v, max_length=100)
@@ -35,13 +36,15 @@ class UserUpdate(BaseModel):
                 raise ValueError("Name must be at least 2 characters long")
         return v
     
-    @validator('phone')
+    @field_validator('phone')
+    @classmethod
     def validate_phone(cls, v):
         if v:
             return ValidationUtils.validate_phone(v)
         return v
     
-    @validator('date_of_birth')
+    @field_validator('date_of_birth')
+    @classmethod
     def validate_dob(cls, v):
         if v:
             min_age = 18

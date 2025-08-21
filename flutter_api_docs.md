@@ -160,11 +160,13 @@ Get properties with comprehensive filtering, search, and pagination options.
 **Query Parameters:**
 | Parameter | Type | Description | Default | Example |
 |-----------|------|-------------|---------|---------|
+| **Location & Search** | | | | |
 | `lat` | float | Latitude for location-based search | - | 19.0760 |
 | `lng` | float | Longitude for location-based search | - | 72.8777 |
 | `radius` | int | Search radius in km (1-100) | 5 | 10 |
 | `q` | string | Search query for text search | - | "2BHK apartment" |
-| `property_type` | array | Property types (multiple allowed) | - | house,apartment |
+| **Property Filters** | | | | |
+| `property_type` | array | Property types (multiple allowed) | - | house,apartment,builder_floor |
 | `purpose` | string | Property purpose | - | buy,rent,short_stay |
 | `price_min` | float | Minimum price | - | 5000000 |
 | `price_max` | float | Maximum price | - | 10000000 |
@@ -174,24 +176,48 @@ Get properties with comprehensive filtering, search, and pagination options.
 | `bathrooms_max` | int | Maximum bathrooms | - | 3 |
 | `area_min` | float | Minimum area in sq ft | - | 1000 |
 | `area_max` | float | Maximum area in sq ft | - | 2000 |
+| **Location Filters** | | | | |
 | `city` | string | City filter | - | Mumbai |
 | `locality` | string | Locality filter | - | Andheri |
 | `pincode` | string | Pincode filter | - | 400001 |
+| **Additional Filters** | | | | |
 | `amenities` | array | Amenities filter (multiple) | - | parking,gym,pool |
+| `features` | array | Property features filter (multiple) | - | furnished,east-facing |
 | `parking_spaces_min` | int | Minimum parking spaces | - | 1 |
 | `floor_number_min` | int | Minimum floor number | - | 0 |
 | `floor_number_max` | int | Maximum floor number | - | 20 |
 | `age_max` | int | Maximum property age in years | - | 5 |
-| `parking_spaces_min` | int | Minimum parking spaces | - | 1 |
-| `floor_number_min` | int | Minimum floor number | - | 0 |
-| `floor_number_max` | int | Maximum floor number | - | 20 |
-| `age_max` | int | Maximum property age in years | - | 5 |
+| **Short Stay Filters** | | | | |
 | `check_in` | string | Check-in date (YYYY-MM-DD) for short stays | - | 2024-02-01 |
 | `check_out` | string | Check-out date (YYYY-MM-DD) for short stays | - | 2024-02-05 |
 | `guests` | int | Number of guests (1-20) | - | 2 |
-| `sort_by` | string | Sort order | distance | distance,price_low,price_high,newest,popular,relevance |
+| **Sorting & Pagination** | | | | |
+| `sort_by` | string | Sort order | newest | distance,price_low,price_high,newest,popular,relevance |
 | `page` | int | Page number | 1 | 2 |
 | `limit` | int | Items per page (1-100) | 20 | 50 |
+
+**Available Values:**
+- **Property Types**: `house`, `apartment`, `builder_floor`, `room`
+- **Purposes**: `buy`, `rent`, `short_stay`
+- **Amenity Categories**: `safety`, `recreation`, `convenience`, `utilities`, `services`, `accessibility`
+- **Common Features**: `furnished`, `semi-furnished`, `east-facing`, `west-facing`, `north-facing`, `south-facing`, `corner-plot`, `park-facing`
+
+**Example Queries:**
+
+**Find luxury apartments in Mumbai with specific criteria:**
+```
+GET /api/v1/properties/?property_type=apartment&purpose=buy&price_min=10000000&price_max=50000000&bedrooms_min=3&city=Mumbai&amenities=parking,gym&sort_by=price_low&page=1&limit=20
+```
+
+**Search for rental properties near a location:**
+```
+GET /api/v1/properties/?lat=19.0760&lng=72.8777&radius=10&purpose=rent&price_min=15000&price_max=50000&features=furnished&sort_by=distance
+```
+
+**Find short-stay properties with availability:**
+```
+GET /api/v1/properties/?purpose=short_stay&check_in=2024-06-15&check_out=2024-06-20&guests=4&city=Gurgaon&sort_by=price_low
+```
 
 ### Response
 **Status: 200 OK**
@@ -354,7 +380,16 @@ Record a property swipe (like or dislike).
 ---
 
 ## 7. GET /api/v1/swipes
-Get the user's swipe history with property details.
+Get the user's swipe history with comprehensive filtering, search, and pagination.
+
+### Enhanced Features (NEW):
+This endpoint now supports all property filtering capabilities within user's swiped properties:
+- **Location-based filtering**: Find swiped properties within a specific radius
+- **Text search**: Full-text search across swiped properties
+- **Advanced filtering**: Property type, price, rooms, area, amenities, etc.
+- **Multiple sorting options**: Distance, price, newest, popularity, relevance
+- **Liked attribute**: Each property includes `liked: true/false`
+- **Pagination**: Full pagination support
 
 ### Request
 **Headers:**
@@ -363,62 +398,129 @@ Get the user's swipe history with property details.
 **Query Parameters:**
 | Parameter | Type | Description | Default | Example |
 |-----------|------|-------------|---------|---------|
+| **Location & Search** | | | | |
+| `lat` | float | Latitude for location-based search | - | 28.446400 |
+| `lng` | float | Longitude for location-based search | - | 77.011711 |
+| `radius` | int | Search radius in km (1-100) | 5 | 10 |
+| `q` | string | Search query for text search | - | "luxury apartment" |
+| **Property Filters** | | | | |
+| `property_type` | array | Property types (multiple allowed) | - | apartment,house |
+| `purpose` | string | Property purpose | - | rent,buy,short_stay |
+| `price_min` | float | Minimum price | - | 15000 |
+| `price_max` | float | Maximum price | - | 40000 |
+| `bedrooms_min` | int | Minimum bedrooms | - | 2 |
+| `bedrooms_max` | int | Maximum bedrooms | - | 3 |
+| `bathrooms_min` | int | Minimum bathrooms | - | 1 |
+| `bathrooms_max` | int | Maximum bathrooms | - | 2 |
+| `area_min` | float | Minimum area in sq ft | - | 800 |
+| `area_max` | float | Maximum area in sq ft | - | 1500 |
+| **Location Filters** | | | | |
+| `city` | string | City filter | - | Gurgaon |
+| `locality` | string | Locality filter | - | DLF |
+| `pincode` | string | Pincode filter | - | 122002 |
+| **Additional Filters** | | | | |
+| `amenities` | array | Amenities filter (multiple) | - | parking,gym |
+| `features` | array | Property features filter (multiple) | - | furnished,east-facing |
+| `parking_spaces_min` | int | Minimum parking spaces | - | 1 |
+| `floor_number_min` | int | Minimum floor number | - | 2 |
+| `floor_number_max` | int | Maximum floor number | - | 10 |
+| `age_max` | int | Maximum property age in years | - | 5 |
+| **Short Stay Filters** | | | | |
+| `check_in` | string | Check-in date (YYYY-MM-DD) | - | 2024-06-15 |
+| `check_out` | string | Check-out date (YYYY-MM-DD) | - | 2024-06-20 |
+| `guests` | int | Number of guests (1-20) | - | 4 |
+| **Swipe Filters** | | | | |
 | `is_liked` | boolean | Filter by liked (true) or disliked (false) | - | true |
+| **Sorting & Pagination** | | | | |
+| `sort_by` | string | Sort order | newest | distance,price_low,price_high,newest,popular,relevance |
 | `page` | int | Page number | 1 | 2 |
 | `limit` | int | Items per page (1-100) | 20 | 50 |
+
+### Example Queries
+
+**Find liked properties in Gurgaon within 10km:**
+```
+GET /api/v1/swipes/?lat=28.446400&lng=77.011711&radius=10&is_liked=true&city=Gurgaon&sort_by=distance&page=1&limit=20
+```
+
+**Search for luxury apartments with specific criteria:**
+```
+GET /api/v1/swipes/?q=luxury apartment&property_type=apartment&price_min=15000&price_max=40000&bedrooms_min=2&bedrooms_max=3&sort_by=price_low
+```
+
+**Find swiped properties with amenities:**
+```
+GET /api/v1/swipes/?amenities=parking,gym&is_liked=true&sort_by=newest&page=1&limit=10
+```
 
 ### Response
 **Status: 200 OK**
 ```json
 {
-  "items": [
+  "properties": [
     {
-      "id": 1,
-      "user_id": 123,
-      "property_id": 456,
-      "is_liked": true,
-      "swipe_timestamp": "2024-01-20T10:30:00Z",
-      "created_at": "2024-01-20T10:30:00Z",
-      "updated_at": null,
-      "property": {
-        "id": 456,
-        "title": "2BHK Apartment",
-        "property_type": "apartment",
-        "purpose": "rent",
-        "base_price": 25000,
-        "city": "Mumbai",
-        "locality": "Andheri",
-        "bedrooms": 2,
-        "bathrooms": 2,
-        "area_sqft": 950,
-        "main_image_url": "https://example.com/property.jpg",
-        "images": [
-          {
-            "id": 1,
-            "property_id": 456,
-            "image_url": "https://example.com/img1.jpg",
-            "caption": "Living Room",
-            "display_order": 1,
-            "is_main_image": true
-          }
-        ],
-        "amenities": [
-          {
-            "id": 1,
-            "title": "Parking",
-            "icon": "parking",
-            "category": "transport"
-          }
-        ]
-      }
+      "id": 456,
+      "title": "Luxury 3BHK Apartment",
+      "description": "Spacious apartment with modern amenities",
+      "property_type": "apartment",
+      "purpose": "rent",
+      "status": "available",
+      "latitude": 28.446400,
+      "longitude": 77.011711,
+      "city": "Gurgaon",
+      "locality": "DLF Phase 1",
+      "base_price": 25000,
+      "area_sqft": 1200,
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "parking_spaces": 1,
+      "floor_number": 5,
+      "main_image_url": "https://example.com/property.jpg",
+      "liked": true,
+      "images": [
+        {
+          "id": 1,
+          "property_id": 456,
+          "image_url": "https://example.com/img1.jpg",
+          "caption": "Living Room",
+          "display_order": 1,
+          "is_main_image": true
+        }
+      ],
+      "amenities": [
+        {
+          "id": 1,
+          "title": "Parking",
+          "icon": "parking",
+          "category": "transport"
+        }
+      ],
+      "distance_km": 2.5
     }
   ],
   "total": 45,
   "page": 1,
   "limit": 20,
-  "total_pages": 3
+  "total_pages": 3,
+  "filters_applied": {
+    "is_liked": true,
+    "city": "Gurgaon",
+    "radius_km": 10,
+    "sort_by": "distance"
+  },
+  "search_center": {
+    "latitude": 28.446400,
+    "longitude": 77.011711
+  }
 }
 ```
+
+**Key Changes:**
+- Returns `properties` array instead of `items` array
+- Each property includes a `liked` attribute (`true`/`false`)
+- Supports all the same filtering as the main properties endpoint
+- Includes comprehensive filtering metadata
+- Maintains pagination structure
 
 ---
 

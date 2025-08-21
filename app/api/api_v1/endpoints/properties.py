@@ -83,7 +83,7 @@ async def get_properties_list(
     guests: Optional[int] = Query(None, ge=1, le=20),
     
     # Sorting and pagination
-    sort_by: SortBy = Query(SortBy.distance, description="Sort by: distance, price_low, price_high, newest, popular, relevance"),
+    sort_by: SortBy = Query(SortBy.newest, description="Sort by: distance, price_low, price_high, newest, popular, relevance"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     

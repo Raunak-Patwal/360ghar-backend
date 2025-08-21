@@ -1,0 +1,73 @@
+---
+alwaysApply: true
+description: Core project structure and navigation guide
+---
+
+# 360Ghar Backend Project Structure
+
+## Main Entry Points
+- **Application Entry**: [app/main.py](mdc:app/main.py) - FastAPI application initialization
+- **Alternative Runner**: [run.py](mdc:run.py) - Alternative application runner
+
+## Core Application Structure
+
+### API Layer
+- **API Router**: [app/api/api_v1/api.py](mdc:app/api/api_v1/api.py) - Main API router configuration
+- **Endpoints**:
+  - [app/api/api_v1/endpoints/auth.py](mdc:app/api/api_v1/endpoints/auth.py) - Authentication endpoints
+  - [app/api/api_v1/endpoints/users.py](mdc:app/api/api_v1/endpoints/users.py) - User management
+  - [app/api/api_v1/endpoints/properties.py](mdc:app/api/api_v1/endpoints/properties.py) - Property management
+  - [app/api/api_v1/endpoints/agents.py](mdc:app/api/api_v1/endpoints/agents.py) - Agent management
+  - [app/api/api_v1/endpoints/bookings.py](mdc:app/api/api_v1/endpoints/bookings.py) - Booking system
+  - [app/api/api_v1/endpoints/visits.py](mdc:app/api/api_v1/endpoints/visits.py) - Visit scheduling
+  - [app/api/api_v1/endpoints/swipes.py](mdc:app/api/api_v1/endpoints/swipes.py) - Swipe interactions
+
+### Business Logic Layer
+- **Services**: Located in [app/services/](mdc:app/services/)
+  - [app/services/user.py](mdc:app/services/user.py) - User business logic
+  - [app/services/property.py](mdc:app/services/property.py) - Property business logic
+  - [app/services/booking.py](mdc:app/services/booking.py) - Booking business logic
+  - [app/services/agent.py](mdc:app/services/agent.py) - Agent business logic
+  - [app/services/visit.py](mdc:app/services/visit.py) - Visit business logic
+  - [app/services/swipe.py](mdc:app/services/swipe.py) - Swipe business logic
+
+### Data Layer
+- **Models**: [app/models/models.py](mdc:app/models/models.py) - Database models and relationships
+- **Enums**: [app/models/enums.py](mdc:app/models/enums.py) - Enumeration definitions
+- **Database Configuration**: [app/core/database.py](mdc:app/core/database.py) - Database connection and session management
+- **Types**: [app/db/types.py](mdc:app/db/types.py) - Database type definitions
+
+### Schema Layer
+- **Pydantic Schemas**: Located in [app/schemas/](mdc:app/schemas/)
+  - [app/schemas/user.py](mdc:app/schemas/user.py) - User data validation schemas
+  - [app/schemas/property.py](mdc:app/schemas/property.py) - Property data validation schemas
+  - [app/schemas/booking.py](mdc:app/schemas/booking.py) - Booking data validation schemas
+  - [app/schemas/agent.py](mdc:app/schemas/agent.py) - Agent data validation schemas
+
+### Configuration and Utilities
+- **Core Configuration**: [app/core/config.py](mdc:app/core/config.py) - Application configuration
+- **Authentication**: [app/core/auth.py](mdc:app/core/auth.py) - JWT and authentication logic
+- **Caching**: [app/core/cache.py](mdc:app/core/cache.py) - Caching implementation
+- **Logging**: [app/core/logging.py](mdc:app/core/logging.py) - Logging configuration
+- **Exceptions**: [app/core/exceptions.py](mdc:app/core/exceptions.py) - Custom exception classes
+- **Utilities**:
+  - [app/utils/distance.py](mdc:app/utils/distance.py) - Distance calculation utilities
+  - [app/utils/validators.py](mdc:app/utils/validators.py) - Data validation utilities
+
+### Middleware
+- **Security**: [app/middleware/security.py](mdc:app/middleware/security.py) - Security middleware
+- **Rate Limiting**: [app/middleware/rate_limit.py](mdc:app/middleware/rate_limit.py) - Rate limiting middleware
+
+## Infrastructure and Deployment
+- **Docker**: [Dockerfile](mdc:Dockerfile) and [docker-compose.yml](mdc:docker-compose.yml)
+- **Deployment**: [railway.toml](mdc:railway.toml) and [Procfile](mdc:Procfile)
+- **Database Migrations**: [supabase/migrations/](mdc:supabase/migrations/)
+
+## Testing
+- **Test Files**: [tests/](mdc:tests/)
+- **Data Population**: [populate_data/](mdc:populate_data/) - Test data generation scripts
+
+## Documentation
+- **API Documentation**: [flutter_api_docs.md](mdc:flutter_api_docs.md)
+- **Postman Collection**: [docs/postman/](mdc:docs/postman/)
+- **README**: [README.md](mdc:README.md)

@@ -39,6 +39,7 @@ This version (2.0.0) introduces Supabase for authentication and storage, a unifi
 
 ### Core Functionality
 -   **Tinder-like Swiping**: Swipe right to like, left to pass on properties.
+-   **Enhanced Swipe History**: Advanced filtering and search within user's swiped properties with liked/disliked status.
 -   **Unified Geospatial & Text Search**: A single powerful endpoint for location-based search (latitude, longitude, radius) combined with full-text search and advanced filtering.
 -   **Visit Scheduling**: Schedule property visits, which are automatically assigned to available agents.
 -   **Short-stay Bookings**: An Airbnb-like booking system with availability checks and pricing calculation.
@@ -130,7 +131,13 @@ All endpoints are prefixed with `/api/v1`.
 <summary><strong>↔️ Swipes (`/swipes`)</strong></summary>
 
 -   `POST /`: Record a user's swipe (like or pass) on a property.
--   `GET /`: Get the user's swipe history with property details, with optional filtering by `is_liked`.
+-   `GET /`: **Enhanced Swipe History**. Get user's swipe history with comprehensive property filtering:
+    -   Location-based search (`lat`, `lng`, `radius`)
+    -   Full-text search (`q`)
+    -   Property filters (type, purpose, price, bedrooms, amenities, etc.)
+    -   Advanced sorting (`distance`, `price_low`, `price_high`, `newest`, `popular`, `relevance`)
+    -   **NEW**: Each property includes `liked: true/false` attribute
+    -   Pagination support (`page`, `limit`)
 -   `DELETE /undo`: Undo the user's most recent swipe.
 -   `PUT /{swipe_id}/toggle`: Toggle the like status of a previously swiped property (e.g., unlike a liked property).
 -   `GET /stats`: Get the user's swipe statistics (total swipes, like/pass count, like percentage).

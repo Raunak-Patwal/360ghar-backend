@@ -144,6 +144,7 @@ class Property(PropertyInDB):
     images: Optional[List[PropertyImage]] = None
     amenities: Optional[List[PropertyAmenityResponse]] = None
     distance_km: Optional[float] = None  # For location-based searches
+    liked: Optional[bool] = None  # For swipe history - indicates if user liked this property
     
     class Config:
         from_attributes = True
@@ -224,6 +225,15 @@ class UnifiedPropertyFilter(BaseModel):
     include_unavailable: bool = False
 
 class UnifiedPropertyResponse(BaseModel):
+    properties: List[Property]
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+    filters_applied: Dict[str, Any]
+    search_center: Optional[Dict[str, float]] = None
+
+class SwipeHistoryResponse(BaseModel):
     properties: List[Property]
     total: int
     page: int

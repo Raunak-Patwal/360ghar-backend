@@ -101,6 +101,7 @@ def setup_logging() -> None:
         "console": {
             "class": "logging.StreamHandler",
             "level": level,
+            "stream": "ext://sys.stdout",
         }
     }
 

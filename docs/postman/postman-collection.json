@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "360ghar-api-collection",
 		"name": "360Ghar Real Estate Platform API",
-		"description": "Complete API collection for 360Ghar - Tinder-like real estate platform with comprehensive property filtering, Supabase integration, and AI-powered agents.\n\n## Setup Instructions:\n1. Import this collection into Postman\n2. Create/Import the environment variables\n3. Update SUPABASE_URL and SUPABASE_KEY in environment\n4. Start with Login endpoint to get access token\n5. Token will be automatically saved and used for subsequent requests\n\n## API Modules:\n- **Authentication**: User signup, login, and token management\n- **Users**: Profile management and preferences\n- **Properties**: Comprehensive property search with 25+ filters, discovery, and details\n- **Swipes**: Tinder-like property swiping functionality\n- **Visits**: Property visit scheduling with agents\n- **Bookings**: Short-stay property bookings\n- **Agents**: 360Ghar employee agent management and assignment\n\n## Property Search Capabilities:\nThe Properties module includes 15 different search scenarios covering:\n- **Location-Based Search**: Radius filtering with lat/lng coordinates\n- **Property Types**: Single or multiple property types (apartment, house, builder_floor, room)\n- **Price Filtering**: Min/max price ranges with sorting\n- **Room Filters**: Bedroom and bathroom count filtering\n- **Text Search**: Full-text search across title, description, locality, city\n- **Area Filtering**: Property size in square feet\n- **Location Filters**: City, locality, and pincode filtering\n- **Amenities**: Multiple amenity requirements (Parking, Gym, etc.)\n- **Short Stay**: Guest capacity, check-in/out dates\n- **Sorting Options**: Distance, price (low/high), newest, popularity, relevance\n- **Additional Filters**: Parking spaces, floor number, property age\n- **Comprehensive Filtering**: All filters combined\n\n## Agent System:\nThe platform features 360Ghar employee agents who serve as relationship managers:\n- **Auto-assignment**: New users automatically get assigned agents\n- **Specializations**: Agents specialize in different property types and services\n- **Performance tracking**: Real-time monitoring of agent effectiveness\n- **Load balancing**: Intelligent distribution of users across agents\n\n## Features:\n- Automatic token management\n- Comprehensive response validation tests\n- Example data for all requests\n- Performance monitoring\n- Error handling\n- Environment variable management\n- Property filter validation and testing",
+		"description": "Complete API collection for 360Ghar - Tinder-like real estate platform with comprehensive property filtering, Supabase integration, and AI-powered agents.\n\n## Setup Instructions:\n1. Import this collection into Postman\n2. Create/Import the environment variables\n3. Update SUPABASE_URL and SUPABASE_KEY in environment\n4. Start with Login endpoint to get access token\n5. Token will be automatically saved and used for subsequent requests\n\n## API Modules:\n- **Authentication**: User signup, login, and token management\n- **Users**: Profile management and preferences\n- **Properties**: Comprehensive property search with 25+ filters, discovery, and details\n- **Swipes**: Tinder-like property swiping functionality with enhanced history search and filtering\n- **Visits**: Property visit scheduling with agents\n- **Bookings**: Short-stay property bookings\n- **Agents**: 360Ghar employee agent management and assignment\n\n## Property Search Capabilities:\nThe Properties module includes 15 different search scenarios covering:\n- **Location-Based Search**: Radius filtering with lat/lng coordinates\n- **Property Types**: Single or multiple property types (apartment, house, builder_floor, room)\n- **Price Filtering**: Min/max price ranges with sorting\n- **Room Filters**: Bedroom and bathroom count filtering\n- **Text Search**: Full-text search across title, description, locality, city\n- **Area Filtering**: Property size in square feet\n- **Location Filters**: City, locality, and pincode filtering\n- **Amenities**: Multiple amenity requirements (Parking, Gym, etc.)\n- **Short Stay**: Guest capacity, check-in/out dates\n- **Sorting Options**: Distance, price (low/high), newest, popularity, relevance\n- **Additional Filters**: Parking spaces, floor number, property age\n- **Comprehensive Filtering**: All filters combined\n\n## Agent System:\nThe platform features 360Ghar employee agents who serve as relationship managers:\n- **Auto-assignment**: New users automatically get assigned agents\n- **Specializations**: Agents specialize in different property types and services\n- **Performance tracking**: Real-time monitoring of agent effectiveness\n- **Load balancing**: Intelligent distribution of users across agents\n\n## Features:\n- Automatic token management\n- Comprehensive response validation tests\n- Example data for all requests\n- Performance monitoring\n- Error handling\n- Environment variable management\n- Property filter validation and testing",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "360ghar"
 	},
@@ -1695,7 +1695,7 @@
 					"response": []
 				},
 				{
-					"name": "Get Swipe History",
+					"name": "Get Swipe History - Basic",
 					"event": [
 						{
 							"listen": "test",
@@ -1703,8 +1703,22 @@
 								"exec": [
 									"pm.test('Status code is 200', function() { pm.response.to.have.status(200); });",
 									"const res = pm.response.json();",
-									"pm.test('Response should be an array or object', function() {",
-									"  pm.expect(res).to.be.oneOf([Object, Array]);",
+									"pm.test('Response has properties array', function() {",
+									"  pm.expect(res).to.have.property('properties');",
+									"  pm.expect(res.properties).to.be.an('array');",
+									"  pm.expect(res).to.have.property('total');",
+									"  pm.expect(res).to.have.property('page', 1);",
+									"  pm.expect(res).to.have.property('limit', 20);",
+									"});",
+									"",
+									"pm.test('Properties contain liked attribute', function() {",
+									"  const res = pm.response.json();",
+									"  if (res.properties && res.properties.length > 0) {",
+									"    res.properties.forEach(property => {",
+									"      pm.expect(property).to.have.property('liked');",
+									"      pm.expect(property.liked).to.be.oneOf([true, false]);",
+									"    });",
+									"  }",
 									"});"
 								],
 								"type": "text/javascript"
@@ -1728,15 +1742,336 @@
 							"query": [
 								{
 									"key": "is_liked",
-									"value": "true"
+									"value": "true",
+									"description": "Filter by liked (true) or disliked (false) swipes"
 								},
 								{
 									"key": "page",
-									"value": "1"
+									"value": "1",
+									"description": "Page number for pagination"
 								},
 								{
 									"key": "limit",
-									"value": "20"
+									"value": "20",
+									"description": "Number of items per page"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Swipe History - Location Based",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function() { pm.response.to.have.status(200); });",
+									"pm.test('Response has search center', function() {",
+									"  const res = pm.response.json();",
+									"  pm.expect(res).to.have.property('search_center');",
+									"  pm.expect(res.search_center).to.have.property('latitude', 28.446400);",
+									"  pm.expect(res.search_center).to.have.property('longitude', 77.011711);",
+									"});",
+									"pm.test('Filters applied correctly', function() {",
+									"  const res = pm.response.json();",
+									"  pm.expect(res.filters_applied).to.have.property('radius_km', 10);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/api/v1/swipes/?lat=28.446400&lng=77.011711&radius=10&limit=10",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"swipes",
+								""
+							],
+							"query": [
+								{
+									"key": "lat",
+									"value": "28.446400",
+									"description": "Latitude for location-based search"
+								},
+								{
+									"key": "lng",
+									"value": "77.011711",
+									"description": "Longitude for location-based search"
+								},
+								{
+									"key": "radius",
+									"value": "10",
+									"description": "Search radius in kilometers"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Swipe History - Text Search",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function() { pm.response.to.have.status(200); });",
+									"pm.test('Search query applied', function() {",
+									"  const res = pm.response.json();",
+									"  pm.expect(res.filters_applied).to.have.property('search_query', 'luxury apartment');",
+									"});",
+									"pm.test('Properties contain search terms', function() {",
+									"  const res = pm.response.json();",
+									"  if (res.properties && res.properties.length > 0) {",
+									"    res.properties.forEach(property => {",
+									"      const searchText = (property.title + ' ' + property.description + ' ' + property.locality + ' ' + property.city).toLowerCase();",
+									"      const hasLuxury = searchText.includes('luxury');",
+									"      const hasApartment = searchText.includes('apartment');",
+									"      pm.expect(hasLuxury || hasApartment).to.be.true;",
+									"    });",
+									"  }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/api/v1/swipes/?q=luxury apartment&sort_by=relevance&limit=10",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"swipes",
+								""
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "luxury apartment",
+									"description": "Text search query"
+								},
+								{
+									"key": "sort_by",
+									"value": "relevance",
+									"description": "Sort by relevance to search"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Swipe History - Price Range",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function() { pm.response.to.have.status(200); });",
+									"pm.test('Price filters applied', function() {",
+									"  const res = pm.response.json();",
+									"  pm.expect(res.filters_applied).to.have.property('price_min', 15000);",
+									"  pm.expect(res.filters_applied).to.have.property('price_max', 40000);",
+									"});",
+									"pm.test('Properties within price range', function() {",
+									"  const res = pm.response.json();",
+									"  if (res.properties && res.properties.length > 0) {",
+									"    res.properties.forEach(property => {",
+									"      if (property.base_price) {",
+									"        pm.expect(property.base_price).to.be.at.least(15000);",
+									"        pm.expect(property.base_price).to.be.at.most(40000);",
+									"      }",
+									"    });",
+									"  }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/api/v1/swipes/?price_min=15000&price_max=40000&sort_by=price_low&limit=10",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"swipes",
+								""
+							],
+							"query": [
+								{
+									"key": "price_min",
+									"value": "15000",
+									"description": "Minimum price"
+								},
+								{
+									"key": "price_max",
+									"value": "40000",
+									"description": "Maximum price"
+								},
+								{
+									"key": "sort_by",
+									"value": "price_low",
+									"description": "Sort by price (low to high)"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Swipe History - Comprehensive Filters",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function() { pm.response.to.have.status(200); });",
+									"pm.test('All filters applied correctly', function() {",
+									"  const res = pm.response.json();",
+									"  const filters = res.filters_applied;",
+									"  pm.expect(filters).to.have.property('property_type');",
+									"  pm.expect(filters).to.have.property('purpose', 'rent');",
+									"  pm.expect(filters).to.have.property('price_min', 15000);",
+									"  pm.expect(filters).to.have.property('price_max', 40000);",
+									"  pm.expect(filters).to.have.property('bedrooms_min', 2);",
+									"  pm.expect(filters).to.have.property('bedrooms_max', 3);",
+									"  pm.expect(filters).to.have.property('city', 'Gurgaon');",
+									"  pm.expect(filters).to.have.property('sort_by', 'distance');",
+									"});",
+									"",
+									"pm.test('Response structure is correct', function() {",
+									"  const res = pm.response.json();",
+									"  pm.expect(res).to.have.property('properties');",
+									"  pm.expect(res).to.have.property('total');",
+									"  pm.expect(res).to.have.property('page', 1);",
+									"  pm.expect(res).to.have.property('limit', 20);",
+									"  pm.expect(res).to.have.property('total_pages');",
+									"  pm.expect(res).to.have.property('filters_applied');",
+									"  pm.expect(res).to.have.property('search_center');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/api/v1/swipes/?lat=28.446400&lng=77.011711&radius=10&property_type=apartment&property_type=house&purpose=rent&price_min=15000&price_max=40000&bedrooms_min=2&bedrooms_max=3&city=Gurgaon&sort_by=distance&page=1&limit=20",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"swipes",
+								""
+							],
+							"query": [
+								{
+									"key": "lat",
+									"value": "28.446400",
+									"description": "Latitude for location-based search"
+								},
+								{
+									"key": "lng",
+									"value": "77.011711",
+									"description": "Longitude for location-based search"
+								},
+								{
+									"key": "radius",
+									"value": "10",
+									"description": "Search radius in km"
+								},
+								{
+									"key": "property_type",
+									"value": "apartment",
+									"description": "Property type: Apartment"
+								},
+								{
+									"key": "property_type",
+									"value": "house",
+									"description": "Property type: House"
+								},
+								{
+									"key": "purpose",
+									"value": "rent",
+									"description": "Property purpose: Rent"
+								},
+								{
+									"key": "price_min",
+									"value": "15000",
+									"description": "Minimum price"
+								},
+								{
+									"key": "price_max",
+									"value": "40000",
+									"description": "Maximum price"
+								},
+								{
+									"key": "bedrooms_min",
+									"value": "2",
+									"description": "Minimum bedrooms"
+								},
+								{
+									"key": "bedrooms_max",
+									"value": "3",
+									"description": "Maximum bedrooms"
+								},
+								{
+									"key": "city",
+									"value": "Gurgaon",
+									"description": "Filter by city"
+								},
+								{
+									"key": "sort_by",
+									"value": "distance",
+									"description": "Sort by distance"
+								},
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number"
+								},
+								{
+									"key": "limit",
+									"value": "20",
+									"description": "Items per page"
 								}
 							]
 						}

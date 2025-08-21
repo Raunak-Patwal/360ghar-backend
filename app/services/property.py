@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, update, text
+from sqlalchemy import select, func, and_, update
 from sqlalchemy.orm import selectinload
 from typing import Optional
 from app.models.models import Property, PropertyAmenity, Amenity
@@ -168,11 +168,17 @@ async def get_unified_properties_optimized(
         if filters.search_query:
             logger.debug(f"Adding full-text search filter: {filters.search_query}")
             
-            # Use PostgreSQL full-text search with the indexed __ts_vector__ column
+            # Use PostgreSQL full-text search - create search vector dynamically
             # plainto_tsquery handles normalization and is safer for user input than to_tsquery
             search_query_obj = func.plainto_tsquery('english', filters.search_query)
-            # Use text() to properly reference the ts_vector column
-            conditions.append(text("properties.__ts_vector__ @@ plainto_tsquery('english', :search_query)").params(search_query=filters.search_query))
+            # Use SQLAlchemy's proper text search functions to avoid SQL injection
+            search_vector = func.to_tsvector('english', func.concat(
+                Property.title, ' ',
+                Property.description, ' ',
+                Property.locality, ' ',
+                Property.city
+            ))
+            conditions.append(search_vector.op('@@')(search_query_obj))
         
         # Property type filter - handle list of property types
         if filters.property_type:
@@ -304,8 +310,11 @@ async def get_unified_properties_optimized(
             query = query.where(and_(*conditions))
             count_query = count_query.where(and_(*conditions))
         
-        # Apply sorting
-        sort_by = filters.sort_by or SortBy.distance
+        # Apply sorting - use distance only if location is provided
+        sort_by = filters.sort_by
+        if sort_by is None:
+            # Default to distance if location is provided, otherwise newest
+            sort_by = SortBy.distance if (filters.latitude and filters.longitude) else SortBy.newest
         
         if sort_by == SortBy.distance and distance is not None:
             query = query.order_by(distance)
@@ -320,8 +329,15 @@ async def get_unified_properties_optimized(
             query = query.order_by(Property.like_count.desc(), Property.view_count.desc())
         elif sort_by == SortBy.relevance and search_query_obj is not None:
             # Sort by text search relevance using ts_rank
-            # Create a simple ranking expression for ordering
-            query = query.order_by(text("ts_rank(properties.__ts_vector__, plainto_tsquery('english', :search_query)) DESC").params(search_query=filters.search_query))
+            # Calculate relevance score using SQLAlchemy functions
+            search_vector = func.to_tsvector('english', func.concat(
+                Property.title, ' ',
+                Property.description, ' ',
+                Property.locality, ' ',
+                Property.city
+            ))
+            relevance_score = func.ts_rank(search_vector, search_query_obj)
+            query = query.order_by(relevance_score.desc())
         else:
             # Default sorting
             query = query.order_by(Property.created_at.desc())
