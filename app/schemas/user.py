@@ -21,7 +21,15 @@ class UserBase(BaseModel):
         return v
 
 class UserCreate(UserBase):
+    phone: str  # Override to make phone required for registration
     password: str
+    
+    @field_validator('phone')
+    @classmethod
+    def validate_phone_create(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Phone number is required for registration")
+        return ValidationUtils.validate_phone(v)
     
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
@@ -111,7 +119,7 @@ class Token(BaseModel):
     token_type: str
 
 class TokenData(BaseModel):
-    email: Optional[str] = None
+    phone: Optional[str] = None
 
 class UserPreferences(BaseModel):
     property_type: Optional[List[str]] = None  # house, apartment, builder_floor, room

@@ -348,31 +348,6 @@
             }
           },
           "response": []
-        },
-        {
-          "name": "Refresh Token",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{access_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{BASE_URL}}/api/v1/auth/refresh",
-              "host": [
-                "{{BASE_URL}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "refresh"
-              ]
-            }
-          },
-          "response": []
         }
       ]
     },
@@ -2560,10 +2535,19 @@
         {
           "name": "Toggle Swipe Like",
           "request": {
-            "method": "PUT",
+            "method": "POST",
             "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"swipe_id\": 123\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/swipes/1/toggle",
+              "raw": "{{BASE_URL}}/api/v1/swipes/toggle",
               "host": [
                 "{{BASE_URL}}"
               ],
@@ -2571,7 +2555,6 @@
                 "api",
                 "v1",
                 "swipes",
-                "1",
                 "toggle"
               ]
             }
@@ -2604,6 +2587,86 @@
           "response": []
         },
         {
+          "name": "Get Upcoming Visits",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/upcoming",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                "upcoming"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Past Visits",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/past",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                "past"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Relationship Manager",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has relationship manager data', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('id');",
+                  "    pm.expect(response).to.have.property('name');",
+                  "    pm.expect(response).to.have.property('agent_code');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/relationship-manager",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                "relationship-manager"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Schedule Visit",
           "event": [
             {
@@ -2624,7 +2687,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"property_id\": {{test_property_id}},\n    \"scheduled_date\": \"{{futureDate}}\",\n    \"visitor_name\": \"Test User\",\n    \"visitor_phone\": \"+917890123456\",\n    \"visitor_email\": \"testuser1@360ghar.com\",\n    \"number_of_visitors\": 2,\n    \"preferred_time_slot\": \"morning\",\n    \"special_requirements\": \"Please arrange for parking\"\n}",
+              "raw": "{\n    \"property_id\": {{test_property_id}},\n    \"scheduled_date\": \"{{futureDate}}\",\n    \"special_requirements\": \"Please arrange for parking\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2647,13 +2710,13 @@
           "response": []
         },
         {
-          "name": "Update Visit",
+          "name": "Reschedule Visit",
           "request": {
-            "method": "PATCH",
+            "method": "POST",
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"number_of_visitors\": 3,\n    \"preferred_time_slot\": \"afternoon\",\n    \"special_requirements\": \"Please arrange for parking and wheelchair access\"\n}",
+              "raw": "{\n    \"visit_id\": {{test_visit_id}},\n    \"new_date\": \"{{futureDate}}\",\n    \"reason\": \"Schedule conflict\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2661,7 +2724,7 @@
               }
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/visits/{{test_visit_id}}",
+              "raw": "{{BASE_URL}}/api/v1/visits/reschedule",
               "host": [
                 "{{BASE_URL}}"
               ],
@@ -2669,7 +2732,36 @@
                 "api",
                 "v1",
                 "visits",
-                "{{test_visit_id}}"
+                "reschedule"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Visit",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"visit_id\": {{test_visit_id}},\n    \"reason\": \"Changed my mind about the property\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/cancel",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                "cancel"
               ]
             }
           },
@@ -2863,96 +2955,6 @@
           "response": []
         },
         {
-          "name": "Update Booking Status",
-          "request": {
-            "method": "PUT",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"status\": \"confirmed\",\n    \"notes\": \"Booking confirmed by property manager\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{BASE_URL}}/api/v1/bookings/{{test_booking_id}}/status",
-              "host": [
-                "{{BASE_URL}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "bookings",
-                "{{test_booking_id}}",
-                "status"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Update Payment Status",
-          "request": {
-            "method": "PUT",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"payment_status\": \"paid\",\n    \"payment_method\": \"credit_card\",\n    \"transaction_id\": \"TXN{{$timestamp}}\",\n    \"amount_paid\": 50000\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{BASE_URL}}/api/v1/bookings/{{test_booking_id}}/payment",
-              "host": [
-                "{{BASE_URL}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "bookings",
-                "{{test_booking_id}}",
-                "payment"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Add Review",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"guest_rating\": 5,\n    \"guest_review\": \"Excellent property! Very clean and well-maintained. The host was very responsive and helpful. Would definitely book again.\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{BASE_URL}}/api/v1/bookings/{{test_booking_id}}/review",
-              "host": [
-                "{{BASE_URL}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "bookings",
-                "{{test_booking_id}}",
-                "review"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
           "name": "Cancel Booking",
           "request": {
             "method": "POST",
@@ -2976,6 +2978,64 @@
                 "v1",
                 "bookings",
                 "cancel"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Process Booking Payment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"booking_id\": {{test_booking_id}},\n    \"payment_status\": \"paid\",\n    \"payment_method\": \"credit_card\",\n    \"transaction_id\": \"TXN{{$timestamp}}\",\n    \"amount_paid\": 50000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/bookings/payment",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bookings",
+                "payment"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add Review",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"booking_id\": {{test_booking_id}},\n    \"guest_rating\": 5,\n    \"guest_review\": \"Excellent property! Very clean and well-maintained. The host was very responsive and helpful. Would definitely book again.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/bookings/review",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bookings",
+                "review"
               ]
             }
           },

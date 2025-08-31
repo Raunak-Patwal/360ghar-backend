@@ -66,7 +66,7 @@ async def get_or_create_user_from_supabase(db: AsyncSession, supabase_user_data:
     try:
         # Normalize incoming fields
         supabase_id = supabase_user_data.get("id")
-        email = supabase_user_data.get("email") or None  # empty string -> None
+        email = supabase_user_data.get("email") or None
         phone = supabase_user_data.get("phone") or None
         full_name = (supabase_user_data.get("user_metadata") or {}).get("full_name")
         is_verified = bool(supabase_user_data.get("email_verified", False))
@@ -74,8 +74,11 @@ async def get_or_create_user_from_supabase(db: AsyncSession, supabase_user_data:
         user = await get_user_by_supabase_id(db, supabase_id)
         
         if not user:
-            # Only attempt email lookup if an email is present
-            if email:
+            # Prioritize phone lookup over email since phone is now the primary identifier
+            if phone:
+                user = await get_user_by_phone(db, phone)
+            elif email:
+                # Fallback to email lookup for backward compatibility with existing users
                 user = await get_user_by_email(db, email)
             else:
                 user = None
@@ -93,7 +96,7 @@ async def get_or_create_user_from_supabase(db: AsyncSession, supabase_user_data:
                 # Create new user
                 logger.info(
                     f"Creating new user from Supabase data: "
-                    f"email={'present' if email else 'none'} phone={'present' if phone else 'none'}"
+                    f"phone={'present' if phone else 'none'} email={'present' if email else 'none'}"
                 )
                 user = User(
                     supabase_user_id=supabase_id,
@@ -144,7 +147,7 @@ async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate) -
         update_data = user_update.model_dump(exclude_unset=True)
         logger.debug(f"Updating user {user_id} with fields: {list(update_data.keys())}")
         
-        # Handle email update with conflict checking
+        # Handle email update (no uniqueness validation needed since emails are now non-unique)
         if 'email' in update_data:
             new_email = update_data['email']
             
@@ -152,21 +155,6 @@ async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate) -
             if new_email == user.email:
                 logger.debug(f"Email unchanged for user {user_id}, skipping email update")
                 del update_data['email']
-            elif new_email is not None:
-                # Check if email is already taken by another user
-                email_check_stmt = select(User).where(
-                    User.email == new_email, 
-                    User.id != user_id
-                )
-                email_result = await db.execute(email_check_stmt)
-                existing_user = email_result.scalar_one_or_none()
-                
-                if existing_user:
-                    logger.warning(f"Email {new_email} already exists for user {existing_user.id}")
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=f"Email {new_email} is already registered"
-                    )
         
         # Apply updates
         for field, value in update_data.items():
@@ -182,11 +170,6 @@ async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate) -
         raise
     except IntegrityError as e:
         logger.error(f"Integrity error updating user {user_id}: {str(e)}")
-        if "users_email_key" in str(e):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Email address is already registered"
-            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Data integrity constraint violated"

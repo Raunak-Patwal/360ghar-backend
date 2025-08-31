@@ -220,17 +220,17 @@ async def login(user_login: UserLogin, db: AsyncSession = Depends(get_db)):
 
 @router.post("/register")
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
-    """Register via Supabase Auth"""
+    """Register via Supabase Auth using phone as primary identifier"""
     try:
         supabase = get_supabase_auth_client()
         data = await anyio.to_thread.run_sync(
             lambda: supabase.auth.sign_up({
-                "email": user_data.email,
+                "phone": user_data.phone,
                 "password": user_data.password,
                 "options": {
                     "data": {
                         "full_name": user_data.full_name,
-                        "phone": user_data.phone
+                        "email": user_data.email
                     }
                 }
             })
@@ -239,6 +239,7 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
         if data.user:
             supabase_user_data = {
                 "id": data.user.id,
+                "phone": data.user.phone,
                 "email": data.user.email,
                 "user_metadata": data.user.user_metadata or {}
             }
