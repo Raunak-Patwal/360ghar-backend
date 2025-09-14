@@ -1,0 +1,2168 @@
+{
+  "info": {
+    "_postman_id": "360ghar-admin-dashboard",
+    "name": "360Ghar Admin + Agent Dashboard API",
+    "description": "Complete Postman collection for Admin and Agent Dashboard functionality.\n\n## Overview\nThis collection provides comprehensive API endpoints for managing the 360Ghar real estate platform from both Admin and Agent perspectives.\n\n## User Roles\n- **Admin**: Full system access, user/agent/property management\n- **Agent**: Limited access to assigned users and properties\n- **User**: Standard user endpoints\n\n## Setup Instructions\n1. Import this collection into Postman\n2. Create/update environment with BASE_URL and credentials\n3. Login as Admin or Agent to get access token\n4. Use role-specific endpoints based on your access level\n\n## Environment Variables\n- `BASE_URL`: API base URL (e.g., http://localhost:8000)\n- `access_token`: JWT token (auto-set after login)\n- `current_user_id`: Current user ID\n- `current_user_role`: User role (admin/agent/user)\n\n## Key Features\n- Role-based access control enforcement\n- Comprehensive property filtering and management\n- User-agent assignment system\n- Visit and booking management\n- System statistics and workload monitoring\n- File upload capabilities",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "360ghar-admin"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global Pre-request Script",
+          "pm.variables.set('request_id', pm.variables.replaceIn('{{$guid}}'));",
+          "pm.variables.set('timestamp', new Date().toISOString());",
+          "",
+          "// Set common headers",
+          "pm.request.headers.add({",
+          "    key: 'X-Request-ID',",
+          "    value: pm.variables.get('request_id')",
+          "});",
+          "",
+          "// Log request details",
+          "console.log(`Making ${pm.request.method} request to ${pm.request.url}`);",
+          "",
+          "// Generate sample data helpers",
+          "pm.variables.set('randomEmail', pm.variables.replaceIn('{{$randomEmail}}'));",
+          "pm.variables.set('randomPhone', '+91' + Math.floor(Math.random() * 9000000000 + 1000000000));",
+          "pm.variables.set('randomName', pm.variables.replaceIn('{{$randomFullName}}'));",
+          "pm.variables.set('randomPrice', Math.floor(Math.random() * 50000000 + 1000000));",
+          "pm.variables.set('randomBedrooms', Math.floor(Math.random() * 4 + 1));",
+          "pm.variables.set('randomArea', Math.floor(Math.random() * 3000 + 500));",
+          "pm.variables.set('futureDate', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] + 'T14:00:00Z');"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global Test Script",
+          "console.log(`Response time: ${pm.response.responseTime}ms`);",
+          "",
+          "let jsonResponse = null;",
+          "try {",
+          "    jsonResponse = pm.response.json();",
+          "    pm.environment.set('last_response', JSON.stringify(jsonResponse));",
+          "} catch (e) {",
+          "    // Not JSON response",
+          "}",
+          "",
+          "// Common test for all endpoints",
+          "pm.test('Response has correct content type', function() {",
+          "    const contentType = pm.response.headers.get('Content-Type');",
+          "    if (contentType && !contentType.includes('text/html')) {",
+          "        pm.expect(contentType).to.include('application/json');",
+          "    }",
+          "});",
+          "",
+          "// Check for common error patterns",
+          "if (pm.response.code >= 400) {",
+          "    pm.test('Error response has proper structure', function() {",
+          "        if (jsonResponse && jsonResponse.detail) {",
+          "            console.log('Error:', jsonResponse.detail);",
+          "        }",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Login as Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has access token', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('access_token');",
+                  "    pm.expect(response).to.have.property('user');",
+                  "    pm.expect(response.user.role).to.equal('admin');",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('access_token', response.access_token);",
+                  "    pm.environment.set('current_user_id', response.user.id);",
+                  "    pm.environment.set('current_user_role', response.user.role);",
+                  "    pm.environment.set('token_expiry', new Date(Date.now() + 30 * 60 * 1000).toISOString());",
+                  "    console.log('✅ Logged in as Admin:', response.user.full_name);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+918178340031\",\n  \"password\": \"saksham123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/auth/login/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login as Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('access_token', response.access_token);",
+                  "    pm.environment.set('current_user_id', response.user.id);",
+                  "    pm.environment.set('current_user_role', response.user.role);",
+                  "    pm.environment.set('agent_id', response.user.agent_id);",
+                  "    pm.environment.set('token_expiry', new Date(Date.now() + 30 * 60 * 1000).toISOString());",
+                  "    console.log('✅ Logged in as Agent:', response.user.full_name);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+919876543210\",\n  \"password\": \"agent123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/auth/login/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login",
+                ""
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👥 User Management",
+      "item": [
+        {
+          "name": "📋 List Users (Admin/Agent)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/?page=1&limit=20&q={{search_query}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "q",
+                  "value": "{{search_query}}",
+                  "description": "Search by name, email, or phone",
+                  "disabled": true
+                },
+                {
+                  "key": "agent_id",
+                  "value": "{{filter_agent_id}}",
+                  "description": "Filter by agent (admin only)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "**Admin**: Can view all users, optionally filter by agent\n**Agent**: Can only view assigned users"
+          },
+          "response": []
+        },
+        {
+          "name": "👤 Get User Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/{{target_user_id}}/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                ""
+              ]
+            },
+            "description": "**Admin**: Can access any user\n**Agent**: Can only access assigned users"
+          },
+          "response": []
+        },
+        {
+          "name": "✏️ Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Updated Name\",\n  \"email\": \"updated@example.com\",\n  \"phone\": \"+911234567890\",\n  \"date_of_birth\": \"1990-01-15\",\n  \"preferences\": {\n    \"property_type\": [\"apartment\", \"house\"],\n    \"purpose\": \"rent\",\n    \"budget_min\": 20000,\n    \"budget_max\": 60000,\n    \"bedrooms_min\": 2,\n    \"bedrooms_max\": 3\n  },\n  \"notification_settings\": {\n    \"email_notifications\": true,\n    \"push_notifications\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/{{target_user_id}}/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                ""
+              ]
+            },
+            "description": "**Admin**: Can update any field\n**Agent**: Can update limited fields for assigned users"
+          },
+          "response": []
+        },
+        {
+          "name": "🔗 Assign Agent to User (Admin Only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": {{target_agent_id}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/{{target_user_id}}/assign-agent/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "assign-agent",
+                ""
+              ]
+            },
+            "description": "**Admin Only**: Assign an agent to a specific user"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏢 Agent Management",
+      "item": [
+        {
+          "name": "📋 List All Agents (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/?include_inactive=false",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents"
+              ],
+              "query": [
+                {
+                  "key": "include_inactive",
+                  "value": "false",
+                  "description": "Include deactivated agents"
+                }
+              ]
+            },
+            "description": "**Admin Only**: List all agents in the system"
+          },
+          "response": []
+        },
+        {
+          "name": "➕ Create New Agent (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('new_agent_id', response.id);",
+                  "    console.log('✅ Created Agent ID:', response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": 123,\n  \"employee_id\": \"EMP001\",\n  \"specialization\": \"general\",\n  \"agent_type\": \"general\",\n  \"experience_level\": \"intermediate\",\n  \"years_of_experience\": 5,\n  \"bio\": \"Experienced property agent specializing in residential properties\",\n  \"languages\": [\"English\", \"Hindi\"],\n  \"working_hours\": {\n    \"start\": \"09:00\",\n    \"end\": \"18:00\",\n    \"timezone\": \"Asia/Kolkata\"\n  },\n  \"commission_rate\": 2.0,\n  \"service_areas\": [\"Mumbai\", \"Delhi\", \"Gurgaon\"],\n  \"max_clients\": 30,\n  \"is_available\": true,\n  \"performance_metrics\": {\n    \"total_clients\": 0,\n    \"successful_deals\": 0,\n    \"average_rating\": 0.0\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                ""
+              ]
+            },
+            "description": "**Admin Only**: Create a new agent"
+          },
+          "response": []
+        },
+        {
+          "name": "🔄 Update Agent (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"specialization\": \"luxury\",\n  \"experience_level\": \"expert\",\n  \"years_of_experience\": 8,\n  \"bio\": \"Updated bio - luxury property specialist\",\n  \"commission_rate\": 2.5,\n  \"max_clients\": 25,\n  \"is_available\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/{{target_agent_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "{{target_agent_id}}"
+              ]
+            },
+            "description": "**Admin Only**: Update agent details"
+          },
+          "response": []
+        },
+        {
+          "name": "🚫 Deactivate Agent (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/{{target_agent_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "{{target_agent_id}}"
+              ]
+            },
+            "description": "**Admin Only**: Soft delete/deactivate agent"
+          },
+          "response": []
+        },
+        {
+          "name": "🔄 Toggle Agent Availability (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/{{target_agent_id}}/availability/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "{{target_agent_id}}",
+                "availability",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "is_available",
+                  "value": "true",
+                  "description": "Set availability status"
+                }
+              ]
+            },
+            "description": "**Admin Only**: Toggle agent availability"
+          },
+          "response": []
+        },
+        {
+          "name": "👤 My Agent Profile (Agent)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/me/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "me",
+                ""
+              ]
+            },
+            "description": "**Agent Only**: Get current agent's profile with stats"
+          },
+          "response": []
+        },
+        {
+          "name": "📊 System Workload (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/system/workload/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "system",
+                "workload",
+                ""
+              ]
+            },
+            "description": "**Admin Only**: Get system workload distribution"
+          },
+          "response": []
+        },
+        {
+          "name": "📈 System Statistics (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/system/stats/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "system",
+                "stats",
+                ""
+              ]
+            },
+            "description": "**Admin Only**: Get comprehensive agent system statistics"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏠 Property Management",
+      "item": [
+        {
+          "name": "🔍 Search Properties",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/properties/?page=1&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "lat",
+                  "value": "28.446400",
+                  "disabled": true
+                },
+                {
+                  "key": "lng",
+                  "value": "77.011711",
+                  "disabled": true
+                },
+                {
+                  "key": "radius",
+                  "value": "5",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "{{property_search}}",
+                  "disabled": true
+                },
+                {
+                  "key": "property_type",
+                  "value": "apartment",
+                  "disabled": true
+                },
+                {
+                  "key": "purpose",
+                  "value": "rent",
+                  "disabled": true
+                },
+                {
+                  "key": "price_min",
+                  "value": "20000",
+                  "disabled": true
+                },
+                {
+                  "key": "price_max",
+                  "value": "50000",
+                  "disabled": true
+                },
+                {
+                  "key": "city",
+                  "value": "Gurgaon",
+                  "disabled": true
+                },
+                {
+                  "key": "sort_by",
+                  "value": "newest",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Search properties with comprehensive filters"
+          },
+          "response": []
+        },
+        {
+          "name": "🏠 Get Property Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/properties/{{target_property_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{{target_property_id}}"
+              ]
+            },
+            "description": "Get detailed property information"
+          },
+          "response": []
+        },
+        {
+          "name": "➕ Create Property",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('new_property_id', response.id);",
+                  "    console.log('✅ Created Property ID:', response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Premium 3BHK Apartment in DLF Phase 1\",\n  \"description\": \"Spacious 3BHK apartment with modern amenities and excellent location\",\n  \"property_type\": \"apartment\",\n  \"purpose\": \"rent\",\n  \"base_price\": 45000,\n  \"latitude\": 28.446400,\n  \"longitude\": 77.011711,\n  \"city\": \"Gurgaon\",\n  \"locality\": \"DLF Phase 1\",\n  \"pincode\": \"122002\",\n  \"area_sqft\": 1400,\n  \"bedrooms\": 3,\n  \"bathrooms\": 2,\n  \"balconies\": 2,\n  \"parking_spaces\": 1,\n  \"floor_number\": 8,\n  \"total_floors\": 20,\n  \"age_of_property\": 3,\n  \"max_occupancy\": 5,\n  \"minimum_stay_days\": 30,\n  \"amenity_ids\": [1, 2, 3],\n  \"features\": [\"gym\", \"pool\", \"security\", \"power_backup\"],\n  \"main_image_url\": \"https://example.com/image.jpg\",\n  \"owner_name\": \"Property Owner\",\n  \"owner_contact\": \"+911234567890\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/properties/?owner_id={{owner_user_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "owner_id",
+                  "value": "{{owner_user_id}}",
+                  "description": "Owner user ID (optional, admin/agent only)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "**Admin**: Can create for any owner\n**Agent**: Can create for managed users\n**User**: Can create for self"
+          },
+          "response": []
+        },
+        {
+          "name": "✏️ Update Property",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated - Premium 3BHK Apartment\",\n  \"base_price\": 48000,\n  \"description\": \"Updated description with more details\",\n  \"features\": [\"gym\", \"pool\", \"security\", \"power_backup\", \"clubhouse\"],\n  \"status\": \"available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/properties/{{target_property_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{{target_property_id}}"
+              ]
+            },
+            "description": "**Admin**: Can update any property\n**Agent**: Can update managed users' properties\n**User**: Can update own property"
+          },
+          "response": []
+        },
+        {
+          "name": "🗑️ Delete Property",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/properties/{{target_property_id}}/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{{target_property_id}}",
+                ""
+              ]
+            },
+            "description": "**Admin**: Can delete any property\n**Agent**: Can delete managed users' properties\n**User**: Can delete own property"
+          },
+          "response": []
+        },
+        {
+          "name": "💡 Get Recommendations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/properties/recommendations/?limit=10",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "recommendations",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get personalized property recommendations"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👀 Visit Management",
+      "item": [
+        {
+          "name": "📅 Schedule Visit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('new_visit_id', response.id);",
+                  "    console.log('✅ Scheduled Visit ID:', response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"property_id\": {{target_property_id}},\n  \"scheduled_date\": \"{{futureDate}}\",\n  \"special_requirements\": \"Please ensure parking is available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                ""
+              ]
+            },
+            "description": "Schedule a property visit (any authenticated user)"
+          },
+          "response": []
+        },
+        {
+          "name": "📋 My Visits",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                ""
+              ]
+            },
+            "description": "Get current user's visits with summary"
+          },
+          "response": []
+        },
+        {
+          "name": "📋 List All Visits (Admin/Agent)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/all/?page=1&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                "all",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "scheduled",
+                  "disabled": true
+                },
+                {
+                  "key": "agent_id",
+                  "value": "{{filter_agent_id}}",
+                  "disabled": true,
+                  "description": "Admin only"
+                },
+                {
+                  "key": "property_id",
+                  "value": "{{filter_property_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{filter_user_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "**Admin**: View all visits\n**Agent**: View visits for assigned users/properties"
+          },
+          "response": []
+        },
+        {
+          "name": "👁️ Get Visit Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/{{target_visit_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                "{{target_visit_id}}"
+              ]
+            },
+            "description": "Get detailed visit information"
+          },
+          "response": []
+        },
+        {
+          "name": "✅ Complete Visit (Admin/Agent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Client was very interested in the property. Showed all rooms and amenities.\",\n  \"feedback\": \"Positive visit, client liked the location and amenities. Will follow up tomorrow.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/{{target_visit_id}}/complete/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                "{{target_visit_id}}",
+                "complete",
+                ""
+              ]
+            },
+            "description": "**Admin/Agent**: Mark visit as completed with notes"
+          },
+          "response": []
+        },
+        {
+          "name": "🔄 Reschedule Visit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_date\": \"{{futureDate}}\",\n  \"reason\": \"Client requested different time due to schedule conflict\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/{{target_visit_id}}/reschedule",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                "{{target_visit_id}}",
+                "reschedule"
+              ]
+            },
+            "description": "Reschedule a visit (visit owner)"
+          },
+          "response": []
+        },
+        {
+          "name": "❌ Cancel Visit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Changed plans, no longer need to visit this property\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/{{target_visit_id}}/cancel",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                "{{target_visit_id}}",
+                "cancel"
+              ]
+            },
+            "description": "Cancel a visit (visit owner)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📅 Booking Management",
+      "item": [
+        {
+          "name": "📋 My Bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/bookings/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bookings",
+                ""
+              ]
+            },
+            "description": "Get current user's bookings with summary"
+          },
+          "response": []
+        },
+        {
+          "name": "📋 List All Bookings (Admin/Agent)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/bookings/all/?page=1&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bookings",
+                "all",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "confirmed",
+                  "disabled": true
+                },
+                {
+                  "key": "agent_id",
+                  "value": "{{filter_agent_id}}",
+                  "disabled": true,
+                  "description": "Admin only"
+                },
+                {
+                  "key": "property_id",
+                  "value": "{{filter_property_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "user_id",
+                  "value": "{{filter_user_id}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "**Admin**: View all bookings\n**Agent**: View bookings for assigned users/properties"
+          },
+          "response": []
+        },
+        {
+          "name": "👁️ Get Booking Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/bookings/{{target_booking_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bookings",
+                "{{target_booking_id}}"
+              ]
+            },
+            "description": "Get detailed booking information"
+          },
+          "response": []
+        },
+        {
+          "name": "💳 Process Payment (Admin/Agent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_method\": \"credit_card\",\n  \"transaction_id\": \"TXN{{timestamp}}\",\n  \"amount\": 45000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/bookings/payment/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bookings",
+                "payment",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "booking_id",
+                  "value": "{{target_booking_id}}"
+                }
+              ]
+            },
+            "description": "**Admin/Agent**: Process payment for booking"
+          },
+          "response": []
+        },
+        {
+          "name": "⭐ Add Review (Admin/Agent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"review_text\": \"Excellent property! Clean, well-maintained, and great location.\",\n  \"aspects\": {\n    \"cleanliness\": 5,\n    \"location\": 5,\n    \"value\": 4,\n    \"communication\": 5,\n    \"check_in\": 5\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/bookings/review/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bookings",
+                "review",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "booking_id",
+                  "value": "{{target_booking_id}}"
+                }
+              ]
+            },
+            "description": "**Admin/Agent**: Add review for booking"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🐛 Bug Reports",
+      "item": [
+        {
+          "name": "📝 Create Bug Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"mobile\",\n  \"bug_type\": \"ui_bug\",\n  \"severity\": \"medium\",\n  \"title\": \"Login button not working\",\n  \"description\": \"When clicking login button, nothing happens\",\n  \"steps_to_reproduce\": \"1. Open app\\n2. Click login button\\n3. Nothing happens\",\n  \"expected_behavior\": \"Should navigate to login screen\",\n  \"actual_behavior\": \"Button is unresponsive\",\n  \"device_info\": {\n    \"os\": \"iOS\",\n    \"version\": \"17.0\",\n    \"model\": \"iPhone 14\"\n  },\n  \"app_version\": \"1.2.3\",\n  \"tags\": [\"login\", \"ui\", \"button\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/bugs/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "bugs",
+                ""
+              ]
+            },
+            "description": "Create a new bug report"
+          },
+          "response": []
+        },
+        {
+          "name": "📎 Create Bug Report with Media",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "source",
+                  "value": "mobile",
+                  "type": "text"
+                },
+                {
+                  "key": "bug_type",
+                  "value": "ui_bug",
+                  "type": "text"
+                },
+                {
+                  "key": "severity",
+                  "value": "medium",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "Screenshot attached",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Bug with screenshot",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/bugs/with-media/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "bugs",
+                "with-media",
+                ""
+              ]
+            },
+            "description": "Create bug report with media attachments"
+          },
+          "response": []
+        },
+        {
+          "name": "📋 List Bug Reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/bugs/?page=1&limit=20&status={{bug_status}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "bugs",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "{{bug_status}}",
+                  "disabled": true
+                },
+                {
+                  "key": "bug_type",
+                  "value": "{{bug_type}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List bug reports with filtering"
+          },
+          "response": []
+        },
+        {
+          "name": "👁️ Get Bug Report Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/bugs/{{target_bug_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "bugs",
+                "{{target_bug_id}}"
+              ]
+            },
+            "description": "Get specific bug report details"
+          },
+          "response": []
+        },
+        {
+          "name": "✏️ Update Bug Report",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\",\n  \"assigned_to\": {{target_agent_id}},\n  \"resolution\": \"Working on fixing this issue\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/bugs/{{target_bug_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "bugs",
+                "{{target_bug_id}}"
+              ]
+            },
+            "description": "Update bug report (admin can change status, users can add resolution)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📄 Pages Management",
+      "item": [
+        {
+          "name": "📝 Create Page (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unique_name\": \"privacy-policy\",\n  \"title\": \"Privacy Policy\",\n  \"content\": \"<h1>Privacy Policy</h1><p>Our privacy policy content here...</p>\",\n  \"format\": \"html\",\n  \"custom_config\": {\n    \"show_footer\": true,\n    \"enable_sharing\": false,\n    \"meta_description\": \"Read our privacy policy\"\n  },\n  \"is_active\": true,\n  \"is_draft\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/pages/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "pages",
+                ""
+              ]
+            },
+            "description": "**Admin Only**: Create a new page"
+          },
+          "response": []
+        },
+        {
+          "name": "📋 List Pages (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/pages/?page=1&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "pages",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "is_active",
+                  "value": "true",
+                  "disabled": true
+                },
+                {
+                  "key": "is_draft",
+                  "value": "false",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "**Admin Only**: List all pages"
+          },
+          "response": []
+        },
+        {
+          "name": "👁️ Get Page Details (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/pages/{{target_page_name}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "pages",
+                "{{target_page_name}}"
+              ]
+            },
+            "description": "**Admin Only**: Get page by unique name"
+          },
+          "response": []
+        },
+        {
+          "name": "🌐 Get Page Public",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/pages/{{target_page_name}}/public",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "pages",
+                "{{target_page_name}}",
+                "public"
+              ]
+            },
+            "description": "**Public**: Get page content without authentication"
+          },
+          "response": []
+        },
+        {
+          "name": "✏️ Update Page (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Privacy Policy\",\n  \"content\": \"<h1>Updated Privacy Policy</h1><p>New privacy policy content...</p>\",\n  \"custom_config\": {\n    \"show_footer\": true,\n    \"enable_sharing\": true\n  },\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/pages/{{target_page_name}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "pages",
+                "{{target_page_name}}"
+              ]
+            },
+            "description": "**Admin Only**: Update page content"
+          },
+          "response": []
+        },
+        {
+          "name": "🗑️ Delete Page (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/pages/{{target_page_name}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "pages",
+                "{{target_page_name}}"
+              ]
+            },
+            "description": "**Admin Only**: Soft delete a page"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📱 App Updates",
+      "item": [
+        {
+          "name": "➕ Create App Update (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"platform\": \"ios\",\n  \"version\": \"1.2.4\",\n  \"build_number\": 124,\n  \"release_notes\": \"Bug fixes and performance improvements\",\n  \"download_url\": \"https://apps.apple.com/app/360ghar/id123456789\",\n  \"is_mandatory\": false,\n  \"is_active\": true,\n  \"min_supported_version\": \"1.0.0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/updates/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "updates",
+                ""
+              ]
+            },
+            "description": "**Admin Only**: Create a new app update entry"
+          },
+          "response": []
+        },
+        {
+          "name": "🔍 Check for Updates (Public)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"platform\": \"ios\",\n  \"current_version\": \"1.2.3\",\n  \"build_number\": 123\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/updates/check",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "updates",
+                "check"
+              ]
+            },
+            "description": "**Public**: Check if there's an available update"
+          },
+          "response": []
+        },
+        {
+          "name": "📋 List App Updates (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/updates/?page=1&limit=10",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "updates",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "platform",
+                  "value": "{{platform}}",
+                  "disabled": true
+                },
+                {
+                  "key": "is_active",
+                  "value": "true",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "**Admin Only**: List all app updates"
+          },
+          "response": []
+        },
+        {
+          "name": "✏️ Update App Update (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"release_notes\": \"Updated release notes\",\n  \"is_mandatory\": true,\n  \"download_url\": \"https://updated-url.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/updates/{{target_update_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "updates",
+                "{{target_update_id}}"
+              ]
+            },
+            "description": "**Admin Only**: Update app update entry"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🛠️ Utilities",
+      "item": [
+        {
+          "name": "📋 List Amenities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/amenities/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "amenities",
+                ""
+              ]
+            },
+            "description": "Get list of all active amenities for forms"
+          },
+          "response": []
+        },
+        {
+          "name": "📤 Upload File",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Select image or document file"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/upload/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "upload",
+                ""
+              ]
+            },
+            "description": "Upload files (images, documents) - returns public URL"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📊 System Health & Config",
+      "item": [
+        {
+          "name": "💓 Core Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/core/health",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "core",
+                "health"
+              ]
+            },
+            "description": "**Public**: Check core system health and database connectivity"
+          },
+          "response": []
+        },
+        {
+          "name": "💓 General Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/health",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Check system health and database connectivity"
+          },
+          "response": []
+        },
+        {
+          "name": "⚙️ Get Config",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/config",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "config"
+              ]
+            },
+            "description": "Get application configuration"
+          },
+          "response": []
+        },
+        {
+          "name": "📖 API Documentation",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/openapi.yaml",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "openapi.yaml"
+              ]
+            },
+            "description": "Get OpenAPI specification"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:8000",
+      "type": "string",
+      "description": "API base URL"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string",
+      "description": "JWT access token (auto-set after login)"
+    },
+    {
+      "key": "current_user_id",
+      "value": "",
+      "type": "string",
+      "description": "Current logged-in user ID"
+    },
+    {
+      "key": "current_user_role",
+      "value": "",
+      "type": "string",
+      "description": "Current user role (admin/agent/user)"
+    },
+    {
+      "key": "agent_id",
+      "value": "",
+      "type": "string",
+      "description": "Agent ID (for agent role)"
+    },
+    {
+      "key": "target_user_id",
+      "value": "1",
+      "type": "string",
+      "description": "Target user ID for operations"
+    },
+    {
+      "key": "target_agent_id",
+      "value": "1",
+      "type": "string",
+      "description": "Target agent ID for operations"
+    },
+    {
+      "key": "target_property_id",
+      "value": "1",
+      "type": "string",
+      "description": "Target property ID for operations"
+    },
+    {
+      "key": "target_visit_id",
+      "value": "1",
+      "type": "string",
+      "description": "Target visit ID for operations"
+    },
+    {
+      "key": "target_booking_id",
+      "value": "1",
+      "type": "string",
+      "description": "Target booking ID for operations"
+    },
+    {
+      "key": "owner_user_id",
+      "value": "",
+      "type": "string",
+      "description": "Owner user ID for property creation"
+    },
+    {
+      "key": "filter_agent_id",
+      "value": "",
+      "type": "string",
+      "description": "Agent ID filter"
+    },
+    {
+      "key": "filter_property_id",
+      "value": "",
+      "type": "string",
+      "description": "Property ID filter"
+    },
+    {
+      "key": "filter_user_id",
+      "value": "",
+      "type": "string",
+      "description": "User ID filter"
+    },
+    {
+      "key": "search_query",
+      "value": "",
+      "type": "string",
+      "description": "Search query for users/properties"
+    },
+    {
+      "key": "property_search",
+      "value": "luxury apartment",
+      "type": "string",
+      "description": "Property search query"
+    },
+    {
+      "key": "new_agent_id",
+      "value": "",
+      "type": "string",
+      "description": "Newly created agent ID"
+    },
+    {
+      "key": "new_property_id",
+      "value": "",
+      "type": "string",
+      "description": "Newly created property ID"
+    },
+    {
+      "key": "new_visit_id",
+      "value": "",
+      "type": "string",
+      "description": "Newly created visit ID"
+    },
+    {
+      "key": "token_expiry",
+      "value": "",
+      "type": "string",
+      "description": "Token expiry timestamp"
+    },
+    {
+      "key": "target_bug_id",
+      "value": "1",
+      "type": "string",
+      "description": "Target bug report ID for operations"
+    },
+    {
+      "key": "target_page_name",
+      "value": "privacy-policy",
+      "type": "string",
+      "description": "Target page unique name"
+    },
+    {
+      "key": "target_update_id",
+      "value": "1",
+      "type": "string",
+      "description": "Target app update ID"
+    },
+    {
+      "key": "bug_status",
+      "value": "open",
+      "type": "string",
+      "description": "Bug status filter (open, in_progress, resolved, closed)"
+    },
+    {
+      "key": "bug_type",
+      "value": "ui_bug",
+      "type": "string",
+      "description": "Bug type filter"
+    },
+    {
+      "key": "platform",
+      "value": "ios",
+      "type": "string",
+      "description": "Platform for app updates (ios, android, web)"
+    },
+    {
+      "key": "new_bug_id",
+      "value": "",
+      "type": "string",
+      "description": "Newly created bug report ID"
+    },
+    {
+      "key": "new_page_id",
+      "value": "",
+      "type": "string",
+      "description": "Newly created page ID"
+    },
+    {
+      "key": "new_update_id",
+      "value": "",
+      "type": "string",
+      "description": "Newly created app update ID"
+    }
+  ]
+}

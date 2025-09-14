@@ -24,10 +24,35 @@ if __name__ == "__main__":
 
     environment = os.getenv("ENVIRONMENT", "development")
     reload = environment == "development"
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=port,
-        reload=reload,
-        log_level="info",
-    )
+
+    # Build uvicorn options with safe feature detection
+    uvicorn_kwargs = {
+        "host": "0.0.0.0",
+        "port": port,
+        "reload": reload,
+        "log_level": "info",
+        "use_colors": True,
+        # Keep workers=1 to avoid reload conflicts; uvicorn enforces it with reload anyway
+        "workers": 1,
+    }
+
+    if reload:
+        uvicorn_kwargs["reload_dirs"] = ["app"]
+
+    # Prefer uvloop when available and not on Windows
+    if os.name != "nt":
+        try:
+            import uvloop  # noqa: F401
+            uvicorn_kwargs["loop"] = "uvloop"
+        except Exception:
+            logger.info("uvloop not available; using default asyncio loop")
+
+    # Prefer httptools HTTP parser when available
+    try:
+        import httptools  # noqa: F401
+        uvicorn_kwargs["http"] = "httptools"
+    except Exception:
+        logger.info("httptools not available; using default http implementation")
+
+    # Configure uvicorn with better reload settings
+    uvicorn.run("app.main:app", **uvicorn_kwargs)

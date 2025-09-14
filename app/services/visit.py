@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy import select, and_, or_
+from sqlalchemy.orm import selectinload, aliased
 from datetime import datetime, timezone
 from app.models.models import Visit, Agent, User, Property
 from app.schemas.visit import VisitCreate, VisitUpdate
@@ -271,3 +271,67 @@ async def get_user_property_visit_stats(db: AsyncSession, user_id: int, property
     count = len(rows)
     next_date = rows[0][0] if count else None
     return {"count": count, "next_date": next_date}
+
+
+async def get_all_visits(
+    db: AsyncSession,
+    *,
+    page: int = 1,
+    limit: int = 20,
+    status: Optional[str] = None,
+    filter_agent_id: Optional[int] = None,
+    property_id: Optional[int] = None,
+    user_id: Optional[int] = None,
+):
+    """Global visit listing with optional filters and pagination.
+
+    When filter_agent_id is provided, returns visits for users/properties assigned to that agent.
+    """
+    offset = (page - 1) * limit
+    Owner = aliased(User)
+
+    base = select(Visit).options(
+        selectinload(Visit.property).selectinload(Property.images),
+        selectinload(Visit.property).selectinload(Property.property_amenities),
+    )
+    filters = []
+    if status:
+        filters.append(Visit.status == status)
+    if property_id:
+        filters.append(Visit.property_id == property_id)
+    if user_id:
+        filters.append(Visit.user_id == user_id)
+
+    if filter_agent_id is not None:
+        # Visits where the visiting user is assigned to agent OR the property's owner is assigned to agent
+        base = base.outerjoin(User, Visit.user_id == User.id).outerjoin(Property, Visit.property_id == Property.id).outerjoin(Owner, Property.owner_id == Owner.id)
+        filters.append(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+
+    query = base
+    if filters:
+        query = query.where(and_(*filters))
+    query = query.order_by(Visit.scheduled_date.desc()).offset(offset).limit(limit)
+    result = await db.execute(query)
+    visits = result.scalars().all()
+
+    # Count total with same filters
+    count_query = select(Visit)
+    if filter_agent_id is not None:
+        count_query = count_query.outerjoin(User, Visit.user_id == User.id).outerjoin(Property, Visit.property_id == Property.id).outerjoin(Owner, Property.owner_id == Owner.id)
+        count_query = count_query.where(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+    if status:
+        count_query = count_query.where(Visit.status == status)
+    if property_id:
+        count_query = count_query.where(Visit.property_id == property_id)
+    if user_id:
+        count_query = count_query.where(Visit.user_id == user_id)
+    count_result = await db.execute(count_query)
+    total = len(count_result.scalars().all())
+
+    return {
+        "visits": visits,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total + limit - 1) // limit,
+    }

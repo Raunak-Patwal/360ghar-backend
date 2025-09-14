@@ -31,6 +31,10 @@ class StorageService:
         """Upload agent avatar to Supabase Storage"""
         return await self._upload_file(file, f"agents/{agent_id}", "avatar")
     
+    async def upload_generic(self, file: UploadFile, folder: str = "uploads") -> Dict[str, Any]:
+        """Generic upload for dashboard and misc files"""
+        return await self._upload_file(file, folder, "generic")
+    
     async def _upload_file(self, file: UploadFile, folder: str, file_type: str) -> Dict[str, Any]:
         """Generic file upload method"""
         try:

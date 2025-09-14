@@ -1,18 +1,33 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, update
 from sqlalchemy.orm import selectinload
-from typing import Optional
+from typing import Optional, List
 from app.models.models import Property, PropertyAmenity, Amenity
 from app.schemas.property import PropertyCreate, PropertyUpdate, UnifiedPropertyFilter, SortBy
+from app.schemas.user import User as UserSchema
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-async def create_property(db: AsyncSession, property_data: PropertyCreate, owner_id: int):
+async def create_property(db: AsyncSession, property_data: PropertyCreate, owner_id: int, actor: UserSchema):
     """Create new property"""
     logger.info(f"Creating property for owner {owner_id}, type: {property_data.property_type}")
     
     try:
+        # RBAC checks
+        if actor.role == 'admin':
+            pass
+        elif actor.role == 'agent':
+            # Agent can only create for users they manage
+            from app.models.models import User as UserModel
+            owner = await db.get(UserModel, owner_id)
+            if not owner or actor.agent_id is None or owner.agent_id != actor.agent_id:
+                raise PermissionError("Agent not authorized to create property for this owner")
+        else:
+            # Regular user must be the owner
+            if owner_id != actor.id:
+                raise PermissionError("Users can only create their own properties")
+
         property_dict = property_data.model_dump(exclude_unset=True)
         property_dict["owner_id"] = owner_id
 
@@ -32,6 +47,10 @@ async def create_property(db: AsyncSession, property_data: PropertyCreate, owner
         return PropertySchema.model_validate(db_property)
     except Exception as e:
         logger.error(f"Failed to create property: {str(e)}", exc_info=True)
+        # Re-raise permission errors as HTTP 403 to be handled by endpoint layer
+        if isinstance(e, PermissionError):
+            from fastapi import HTTPException, status
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
         raise
 
 async def get_property(db: AsyncSession, property_id: int):
@@ -58,7 +77,7 @@ async def get_property(db: AsyncSession, property_id: int):
         logger.error(f"Failed to fetch property {property_id}: {str(e)}", exc_info=True)
         raise
 
-async def update_property(db: AsyncSession, property_id: int, property_update: PropertyUpdate):
+async def update_property(db: AsyncSession, property_id: int, property_update: PropertyUpdate, actor: UserSchema):
     """Update property"""
     logger.info(f"Updating property {property_id}")
     
@@ -74,6 +93,15 @@ async def update_property(db: AsyncSession, property_id: int, property_update: P
         if not property_obj:
             logger.warning(f"Property {property_id} not found for update")
             return None
+        # RBAC checks
+        if actor.role == 'admin':
+            pass
+        elif actor.role == 'agent':
+            if actor.agent_id is None or property_obj.owner.agent_id != actor.agent_id:
+                raise PermissionError("Agent not authorized to modify this property")
+        else:
+            if property_obj.owner_id != actor.id:
+                raise PermissionError("Users can only modify their own properties")
         
         update_data = property_update.model_dump(exclude_unset=True)
 
@@ -95,18 +123,30 @@ async def update_property(db: AsyncSession, property_id: int, property_update: P
         return PropertySchema.model_validate(property_obj)
     except Exception as e:
         logger.error(f"Failed to update property {property_id}: {str(e)}", exc_info=True)
+        if isinstance(e, PermissionError):
+            from fastapi import HTTPException, status
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
         raise
 
-async def delete_property(db: AsyncSession, property_id: int):
+async def delete_property(db: AsyncSession, property_id: int, actor: UserSchema):
     """Delete property"""
     logger.info(f"Deleting property {property_id}")
     
     try:
-        stmt = select(Property).where(Property.id == property_id)
+        stmt = select(Property).options(selectinload(Property.owner)).where(Property.id == property_id)
         result = await db.execute(stmt)
         property_obj = result.scalar_one_or_none()
         
         if property_obj:
+            # RBAC checks
+            if actor.role == 'admin':
+                pass
+            elif actor.role == 'agent':
+                if actor.agent_id is None or property_obj.owner.agent_id != actor.agent_id:
+                    raise PermissionError("Agent not authorized to delete this property")
+            else:
+                if property_obj.owner_id != actor.id:
+                    raise PermissionError("Users can only delete their own properties")
             await db.delete(property_obj)
             await db.flush()
             logger.info(f"Property {property_id} deleted successfully")
@@ -116,6 +156,9 @@ async def delete_property(db: AsyncSession, property_id: int):
             return False
     except Exception as e:
         logger.error(f"Failed to delete property {property_id}: {str(e)}", exc_info=True)
+        if isinstance(e, PermissionError):
+            from fastapi import HTTPException, status
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
         raise
 
 async def get_unified_properties_optimized(
@@ -425,4 +468,16 @@ async def increment_property_view_count(db: AsyncSession, property_id: int):
         return result.rowcount > 0
     except Exception as e:
         logger.error(f"Failed to increment view count for property {property_id}: {str(e)}", exc_info=True)
+        raise
+
+async def get_all_amenities(db: AsyncSession) -> List[dict]:
+    """Return all active amenities for use in forms."""
+    try:
+        stmt = select(Amenity).where(Amenity.is_active == True).order_by(Amenity.title.asc())
+        result = await db.execute(stmt)
+        amenities = result.scalars().all()
+        from app.schemas.amenity import Amenity as AmenitySchema
+        return [AmenitySchema.model_validate(a) for a in amenities]
+    except Exception as e:
+        logger.error(f"Failed to list amenities: {str(e)}", exc_info=True)
         raise

@@ -95,6 +95,7 @@ class UserLogin(BaseModel):
 class UserInDB(UserBase):
     id: int
     supabase_user_id: str  # UUID from Supabase Auth
+    role: str = 'user'
     is_active: bool
     is_verified: bool
     profile_image_url: Optional[str] = None

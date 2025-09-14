@@ -25,13 +25,22 @@ logger = get_logger(__name__)
 @router.post("/", response_model=Property)
 async def create_new_property(
     property_data: PropertyCreate,
+    owner_id: Optional[int] = Query(None, description="Owner id (admin/agent only)"),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new property (requires authentication)"""
     logger.info(f"User {current_user.id} creating property of type {property_data.property_type}")
     try:
-        result = await create_property(db, property_data, current_user.id)
+        # Determine owner
+        target_owner_id = current_user.id
+        if owner_id is not None:
+            # Only admins/agents may specify owner_id
+            if current_user.role in ('admin', 'agent'):
+                target_owner_id = owner_id
+            else:
+                raise HTTPException(status_code=403, detail="Only admins or agents can set owner_id")
+        result = await create_property(db, property_data, target_owner_id, current_user)
         logger.info(f"Property created successfully with ID {result.id}")
         return result
     except Exception as e:
@@ -222,7 +231,7 @@ async def update_property_details(
     current_user: UserSchema = Depends(get_current_active_user)
 ):
     """Update property details"""
-    updated_property = await update_property(db, property_id, property_update)
+    updated_property = await update_property(db, property_id, property_update, current_user)
     
     if not updated_property:
         raise HTTPException(status_code=404, detail="Property not found")
@@ -236,7 +245,7 @@ async def delete_property_endpoint(
     current_user: UserSchema = Depends(get_current_active_user)
 ):
     """Delete a property"""
-    success = await delete_property(db, property_id)
+    success = await delete_property(db, property_id, current_user)
     
     if not success:
         raise HTTPException(status_code=404, detail="Property not found")

@@ -52,3 +52,28 @@ class ExperienceLevel(str, Enum):
     beginner = "beginner"
     intermediate = "intermediate"
     expert = "expert"
+
+class BugType(str, Enum):
+    ui_bug = "ui_bug"
+    functionality_bug = "functionality_bug"
+    performance_issue = "performance_issue"
+    crash = "crash"
+    feature_request = "feature_request"
+    other = "other"
+
+class BugSeverity(str, Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+    critical = "critical"
+
+class BugStatus(str, Enum):
+    open = "open"
+    in_progress = "in_progress"
+    resolved = "resolved"
+    closed = "closed"
+
+class PageFormat(str, Enum):
+    html = "html"
+    markdown = "markdown"
+    json = "json"

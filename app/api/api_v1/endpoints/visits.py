@@ -1,14 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.core.database import get_db
 from app.api.api_v1.endpoints.auth import get_current_active_user
+from app.api.api_v1.dependencies.auth import get_current_admin, get_current_agent
 from app.schemas.user import User as UserSchema
 from app.schemas.visit import (
     VisitCreate, VisitUpdate, Visit, VisitList, VisitReschedule, VisitCancel, VisitSlice
 )
 from app.services.visit import (
     create_visit, get_visit, get_user_visits, update_visit,
-    cancel_visit, reschedule_visit
+    cancel_visit, reschedule_visit, get_all_visits, mark_visit_completed
 )
 
 router = APIRouter()
@@ -115,4 +117,83 @@ async def cancel_visit_request(
     updated = await cancel_visit(db, visit_id, cancel_data.reason)
     if not updated:
         raise HTTPException(status_code=400, detail="Failed to cancel visit")
+    return updated
+
+
+@router.get("/all/", response_model=dict)
+async def list_all_visits(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    status: str | None = Query(None),
+    agent_id: int | None = Query(None, description="Admin only: filter by agent id"),
+    property_id: int | None = Query(None),
+    user_id: int | None = Query(None),
+    current_user: UserSchema = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Global visits listing. Admins see all; agents see their managed users/properties."""
+    effective_agent_id = None
+    if current_user.role == 'admin':
+        effective_agent_id = agent_id
+    elif current_user.role == 'agent':
+        effective_agent_id = current_user.agent_id
+        if effective_agent_id is None:
+            return {"visits": [], "total": 0, "page": page, "limit": limit, "total_pages": 0}
+    else:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return await get_all_visits(
+        db,
+        page=page,
+        limit=limit,
+        status=status,
+        filter_agent_id=effective_agent_id,
+        property_id=property_id,
+        user_id=user_id,
+    )
+
+
+@router.post("/{visit_id}/complete/", response_model=Visit)
+async def complete_visit(
+    visit_id: int,
+    payload: dict | None = None,
+    current_user: UserSchema = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Mark a visit as completed. Admins or responsible Agents only."""
+    visit = await get_visit(db, visit_id)
+    if not visit:
+        raise HTTPException(status_code=404, detail="Visit not found")
+
+    # Authorization: admin or agent managing the user/property
+    if current_user.role == 'admin':
+        pass
+    elif current_user.role == 'agent':
+        # Agent must manage either the visiting user or the property owner
+        # Need to check ownership
+        from app.models.models import Property, User
+        # Fetch property owner
+        stmt = select(Property).where(Property.id == visit.property_id)
+        prop_res = await db.execute(stmt)
+        prop = prop_res.scalar_one_or_none()
+        owner_agent_id = None
+        if prop:
+            # Load owner
+            owner = await db.get(User, prop.owner_id)
+            owner_agent_id = getattr(owner, 'agent_id', None) if owner else None
+        if current_user.agent_id is None or not (
+            visit.user.agent_id == current_user.agent_id or owner_agent_id == current_user.agent_id
+        ):
+            raise HTTPException(status_code=403, detail="Agent not authorized to complete this visit")
+    else:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    notes = (payload or {}).get("notes") if payload else None
+    feedback = (payload or {}).get("feedback") if payload else None
+    ok = await mark_visit_completed(db, visit_id, notes, feedback)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Failed to complete visit")
+
+    # Return updated visit
+    updated = await get_visit(db, visit_id)
     return updated

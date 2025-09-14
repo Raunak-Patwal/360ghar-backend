@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_, and_, func
 from sqlalchemy.exc import IntegrityError
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 from fastapi import HTTPException, status
 from app.models.models import User
 from app.schemas.user import UserUpdate
@@ -132,13 +132,55 @@ async def get_or_create_user_from_supabase(db: AsyncSession, supabase_user_data:
         logger.error(f"Failed to get or create user from Supabase: {str(e)}", exc_info=True)
         raise
 
-async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate) -> Optional[User]:
-    logger.info(f"Updating user {user_id}")
-    
+async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
+    """Fetch a user by internal ID."""
     try:
         stmt = select(User).where(User.id == user_id)
         result = await db.execute(stmt)
-        user = result.scalar_one_or_none()
+        return result.scalar_one_or_none()
+    except Exception as e:
+        logger.error(f"Failed to fetch user by id {user_id}: {e}")
+        raise
+
+async def get_all_users(
+    db: AsyncSession,
+    *,
+    page: int = 1,
+    limit: int = 20,
+    search_query: Optional[str] = None,
+    filter_agent_id: Optional[int] = None,
+) -> Tuple[List[User], int]:
+    """Return users with optional agent filter and search, with pagination."""
+    try:
+        offset = (page - 1) * limit
+        conditions = []
+        if filter_agent_id is not None:
+            conditions.append(User.agent_id == filter_agent_id)
+        if search_query:
+            q = f"%{search_query}%"
+            conditions.append(or_(User.full_name.ilike(q), User.email.ilike(q), User.phone.ilike(q)))
+
+        stmt = select(User)
+        count_stmt = select(func.count()).select_from(User)
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+            count_stmt = count_stmt.where(and_(*conditions))
+        stmt = stmt.order_by(User.created_at.desc()).offset(offset).limit(limit)
+        result = await db.execute(stmt)
+        users = result.scalars().all()
+
+        count_result = await db.execute(count_stmt)
+        total = count_result.scalar_one()
+        return users, total
+    except Exception as e:
+        logger.error(f"Failed to list users: {e}")
+        raise
+
+async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate, actor: Optional[User] = None) -> Optional[User]:
+    logger.info(f"Updating user {user_id}")
+    
+    try:
+        user = await get_user_by_id(db, user_id)
         
         if not user:
             logger.warning(f"User {user_id} not found for update")
@@ -146,6 +188,23 @@ async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate) -
         
         update_data = user_update.model_dump(exclude_unset=True)
         logger.debug(f"Updating user {user_id} with fields: {list(update_data.keys())}")
+
+        # RBAC: if an actor is provided and actor is an agent updating other users,
+        # restrict to safe fields only
+        if actor is not None and actor.role == 'agent' and actor.id != user_id:
+            # Ensure the agent is assigned to this user
+            if actor.agent_id is None or user.agent_id != actor.agent_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Agent not authorized to update this user",
+                )
+            allowed_fields = {
+                'email', 'full_name', 'phone', 'profile_image_url',
+                'preferences', 'notification_settings', 'privacy_settings'
+            }
+            update_data = {k: v for k, v in update_data.items() if k in allowed_fields}
+            logger.debug(f"Agent update filtered fields: {list(update_data.keys())}")
+        # Admins can update any fields; end-users can update their own profile via API
         
         # Handle email update (no uniqueness validation needed since emails are now non-unique)
         if 'email' in update_data:

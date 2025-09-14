@@ -320,7 +320,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"+919876543210\",\n  \"password\": \"saksham123\"\n}",
+              "raw": "{\n  \"phone\": \"+918178340031\",\n  \"password\": \"saksham123\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2144,6 +2144,202 @@
         }
       ]
     }
+  ,
+    {
+      "name": "Admin & Agent Portal",
+      "item": [
+        {
+          "name": "Users Management",
+          "item": [
+            {
+              "name": "List Users (Admin/Agent)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/users/?page=1&limit=20",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api","v1","users",""],
+                  "query": [
+                    {"key":"page","value":"1"},
+                    {"key":"limit","value":"20"},
+                    {"key":"q","value":"","disabled": true},
+                    {"key":"agent_id","value":"","description":"Admin only","disabled": true}
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Get User (Admin/Agent)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/users/{{target_user_id}}/",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api","v1","users","{{target_user_id}}",""]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update User (Admin/Agent)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {"key":"Content-Type","value":"application/json"}
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Updated Name\",\n  \"email\": \"admin.updated@example.com\",\n  \"phone\": \"+911234567890\",\n  \"preferences\": { \"budget_min\": 20000, \"budget_max\": 60000 }\n}"
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/users/{{target_user_id}}/",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api","v1","users","{{target_user_id}}",""]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Assign Agent to User (Admin)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {"key":"Content-Type","value":"application/json"}
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"agent_id\": {{target_agent_id}}\n}"
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/users/{{target_user_id}}/assign-agent/",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api","v1","users","{{target_user_id}}","assign-agent",""]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Agent Self",
+          "item": [
+            {
+              "name": "My Agent Profile (Agent)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/agents/me/",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api","v1","agents","me",""]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Amenities",
+          "item": [
+            {
+              "name": "List Amenities",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/amenities/",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api","v1","amenities",""]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Uploads",
+          "item": [
+            {
+              "name": "Upload File",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {"key":"file","type":"file","src":""}
+                  ]
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/upload/",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api","v1","upload",""]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Visits (Global)",
+          "item": [
+            {
+              "name": "List All Visits (Admin/Agent)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/visits/all/?page=1&limit=20",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api","v1","visits","all",""]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Complete Visit (Admin/Agent)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {"key":"Content-Type","value":"application/json"}
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"notes\": \"Showed all rooms; client liked kitchen\",\n  \"feedback\": \"Positive, wants to revisit\"\n}"
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/visits/{{visit_id}}/complete/",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api","v1","visits","{{visit_id}}","complete",""]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Bookings (Global)",
+          "item": [
+            {
+              "name": "List All Bookings (Admin/Agent)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/bookings/all/?page=1&limit=20",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api","v1","bookings","all",""]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    }
   ],
   "variable": [
     {
@@ -2159,6 +2355,21 @@
     {
       "key": "test_password",
       "value": "Test@123456",
+      "type": "string"
+    },
+    {
+      "key": "target_user_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "target_agent_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "visit_id",
+      "value": "1",
       "type": "string"
     }
   ]

@@ -185,11 +185,25 @@ All endpoints are prefixed with `/api/v1`.
    ```
 
 8. **Start the application:**
+
+   **Option 1: Using Python (Recommended for simple development)**
    ```bash
    python run.py
    ```
 
+   **Option 2: Using FastAPI CLI (Recommended for development with hot reload)**
+   ```bash
+   fastapi dev app/main.py --port 8000 --host 0.0.0.0
+   ```
+
+   **Option 3: Production-like environment**
+   ```bash
+   fastapi run app/main.py --port 8000 --host 0.0.0.0
+   ```
+
 The API will be available at `http://localhost:8000`.
+
+> **💡 Development Tip**: FastAPI CLI provides better hot reload performance and additional development features. It's the recommended way for active development.
 
 ## Running with Docker
 

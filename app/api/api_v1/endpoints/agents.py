@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any, Optional
 from app.core.database import get_db
 from app.api.api_v1.endpoints.auth import get_current_active_user
+from app.api.api_v1.dependencies.auth import get_current_admin, get_current_agent
 from app.schemas.user import User as UserSchema
 from app.schemas.agent import (
     Agent, 
@@ -149,15 +150,14 @@ async def get_agent_visit_history(
     visits = await get_agent_visits(db, agent_id, page, limit)
     return visits
 
-# Admin endpoints (TODO: Add admin role check)
+# Admin endpoints
 @router.get("/", response_model=List[Agent])
 async def list_all_agents(
     include_inactive: bool = Query(False, description="Include inactive agents"),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """Get list of all agents (admin endpoint)"""
-    # TODO: Add admin role check
     if include_inactive:
         return await get_all_agents(db)
     else:
@@ -166,11 +166,10 @@ async def list_all_agents(
 @router.post("/", response_model=Agent)
 async def create_new_agent(
     agent_data: AgentCreate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new agent (admin endpoint)"""
-    # TODO: Add admin role check
     agent = await create_agent(db, agent_data)
     if not agent:
         raise HTTPException(
@@ -183,11 +182,10 @@ async def create_new_agent(
 async def update_agent_details(
     agent_id: int,
     update_data: AgentUpdate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """Update agent details (admin endpoint)"""
-    # TODO: Add admin role check
     updated_agent = await update_agent(db, agent_id, update_data)
     if not updated_agent:
         raise HTTPException(
@@ -199,11 +197,10 @@ async def update_agent_details(
 @router.delete("/{agent_id}", response_model=MessageResponse)
 async def deactivate_agent(
     agent_id: int,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """Deactivate an agent (admin endpoint)"""
-    # TODO: Add admin role check
     success = await delete_agent(db, agent_id)
     if not success:
         raise HTTPException(
@@ -216,11 +213,10 @@ async def deactivate_agent(
 async def update_agent_availability_status(
     agent_id: int,
     is_available: bool,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """Update agent availability (admin endpoint)"""
-    # TODO: Add admin role check
     success = await update_agent_availability(db, agent_id, is_available)
     if not success:
         raise HTTPException(
@@ -233,18 +229,35 @@ async def update_agent_availability_status(
 # System monitoring endpoints
 @router.get("/system/workload/", response_model=List[AgentWorkload])
 async def get_system_workload(
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """Get workload distribution across all agents (admin endpoint)"""
-    # TODO: Add admin role check
     return await get_workload_distribution(db)
 
 @router.get("/system/stats/", response_model=AgentSystemStats)
 async def get_system_statistics(
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """Get overall agent system statistics (admin endpoint)"""
-    # TODO: Add admin role check
     return await get_system_stats(db)
+
+# Agent self profile endpoint
+@router.get("/me/", response_model=Agent)
+async def get_my_agent_profile(
+    current_user: UserSchema = Depends(get_current_agent),
+    db: AsyncSession = Depends(get_db)
+):
+    """Return the current agent user's Agent profile.
+
+    Assumes the agent user's `agent_id` links to their Agent record.
+    """
+    if not current_user.agent_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent profile not linked")
+
+    from app.services.agent import get_agent_by_id
+    agent = await get_agent_by_id(db, current_user.agent_id)
+    if not agent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+    return agent

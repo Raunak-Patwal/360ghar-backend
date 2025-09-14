@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.api_v1.endpoints.auth import get_current_active_user
@@ -11,7 +11,7 @@ from app.schemas.common import MessageResponse
 from app.services.booking import (
     create_booking, get_booking, get_user_bookings, update_booking,
     cancel_booking, process_payment, add_review, check_availability,
-    calculate_pricing
+    calculate_pricing, get_all_bookings
 )
 
 router = APIRouter()
@@ -136,9 +136,20 @@ async def process_booking_payment(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     
-    # Check if booking belongs to current user
+    # Check ownership or agent permission
     if booking.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        if current_user.role != 'agent':
+            raise HTTPException(status_code=403, detail="Access denied")
+        # Agent is allowed only if they manage the booking's user or the property's owner
+        from app.models.models import User as UserModel, Property
+        booking_user = await db.get(UserModel, booking.user_id)
+        property_obj = await db.get(Property, booking.property_id)
+        owner = await db.get(UserModel, property_obj.owner_id) if property_obj else None
+        if current_user.agent_id is None or not (
+            (booking_user and booking_user.agent_id == current_user.agent_id) or
+            (owner and owner.agent_id == current_user.agent_id)
+        ):
+            raise HTTPException(status_code=403, detail="Agent not authorized for this booking")
     
     success = await process_payment(db, payment_data)
     if not success:
@@ -156,12 +167,56 @@ async def add_booking_review(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     
-    # Check if booking belongs to current user
+    # Check ownership or agent permission
     if booking.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        if current_user.role != 'agent':
+            raise HTTPException(status_code=403, detail="Access denied")
+        # Agent is allowed only if they manage the booking's user or the property's owner
+        from app.models.models import User as UserModel, Property
+        booking_user = await db.get(UserModel, booking.user_id)
+        property_obj = await db.get(Property, booking.property_id)
+        owner = await db.get(UserModel, property_obj.owner_id) if property_obj else None
+        if current_user.agent_id is None or not (
+            (booking_user and booking_user.agent_id == current_user.agent_id) or
+            (owner and owner.agent_id == current_user.agent_id)
+        ):
+            raise HTTPException(status_code=403, detail="Agent not authorized for this booking")
     
     success = await add_review(db, review_data)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to add review")
     
     return MessageResponse(message="Review added successfully")
+
+
+@router.get("/all/", response_model=BookingList)
+async def list_all_bookings(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    status: str | None = Query(None),
+    agent_id: int | None = Query(None, description="Admin only: filter by agent id"),
+    property_id: int | None = Query(None),
+    user_id: int | None = Query(None),
+    current_user: UserSchema = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Global bookings listing. Admins see all; agents see their managed users/properties."""
+    effective_agent_id = None
+    if current_user.role == 'admin':
+        effective_agent_id = agent_id
+    elif current_user.role == 'agent':
+        effective_agent_id = current_user.agent_id
+        if effective_agent_id is None:
+            return {"bookings": [], "total": 0, "page": page, "limit": limit, "total_pages": 0}
+    else:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return await get_all_bookings(
+        db,
+        page=page,
+        limit=limit,
+        status=status,
+        filter_agent_id=effective_agent_id,
+        property_id=property_id,
+        user_id=user_id,
+    )

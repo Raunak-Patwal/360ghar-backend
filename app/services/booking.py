@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
+from sqlalchemy.orm import aliased
 from datetime import datetime, timedelta
 from app.models.models import Booking, Property
 from app.schemas.booking import BookingCreate, BookingUpdate, BookingPayment, BookingReview
@@ -35,7 +36,22 @@ async def get_user_bookings(db: AsyncSession, user_id: int):
     stmt = select(Booking).where(Booking.user_id == user_id).order_by(Booking.check_in_date.desc())
     result = await db.execute(stmt)
     bookings = result.scalars().all()
-    return {"bookings": bookings, "total": len(bookings)}
+    total = len(bookings)
+
+    now = datetime.utcnow()
+
+    # Calculate counts for different statuses
+    upcoming = sum(1 for b in bookings if b.check_in_date > now and b.booking_status in ["confirmed", "pending"])
+    completed = sum(1 for b in bookings if b.check_out_date < now and b.booking_status in ["confirmed", "completed"])
+    cancelled = sum(1 for b in bookings if b.booking_status == "cancelled")
+
+    return {
+        "bookings": bookings,
+        "total": total,
+        "upcoming": upcoming,
+        "completed": completed,
+        "cancelled": cancelled,
+    }
 
 async def get_user_upcoming_bookings(db: AsyncSession, user_id: int):
     """Get upcoming bookings for a user"""
@@ -193,4 +209,122 @@ async def calculate_pricing(db: AsyncSession, property_id: int, check_in_date: d
             "service_charge_5_percent": service_charges,
             "final_total": total_amount
         }
+    }
+
+
+async def get_all_bookings(
+    db: AsyncSession,
+    *,
+    page: int = 1,
+    limit: int = 20,
+    status: Optional[str] = None,
+    filter_agent_id: Optional[int] = None,
+    property_id: Optional[int] = None,
+    user_id: Optional[int] = None,
+):
+    """Global bookings listing with optional filters and pagination.
+
+    When filter_agent_id is provided, returns bookings for users/properties assigned to that agent.
+    """
+    offset = (page - 1) * limit
+    from app.models.models import User
+    Owner = aliased(User)
+    now = datetime.utcnow()
+
+    base = select(Booking)
+    filters = []
+    if status:
+        filters.append(Booking.booking_status == status)
+    if property_id:
+        filters.append(Booking.property_id == property_id)
+    if user_id:
+        filters.append(Booking.user_id == user_id)
+
+    if filter_agent_id is not None:
+        # Bookings where the booking user is assigned to agent OR the property's owner is assigned to agent
+        from app.models.models import Property, User
+        base = base.outerjoin(User, Booking.user_id == User.id).outerjoin(Property, Booking.property_id == Property.id).outerjoin(Owner, Property.owner_id == Owner.id)
+        filters.append(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+
+    query = base
+    if filters:
+        query = query.where(and_(*filters))
+    query = query.order_by(Booking.check_in_date.desc()).offset(offset).limit(limit)
+    result = await db.execute(query)
+    bookings = result.scalars().all()
+
+    # Count total with same filters
+    count_query = select(Booking)
+    if filter_agent_id is not None:
+        from app.models.models import Property, User
+        count_query = count_query.outerjoin(User, Booking.user_id == User.id).outerjoin(Property, Booking.property_id == Property.id).outerjoin(Owner, Property.owner_id == Owner.id)
+        count_query = count_query.where(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+    if status:
+        count_query = count_query.where(Booking.booking_status == status)
+    if property_id:
+        count_query = count_query.where(Booking.property_id == property_id)
+    if user_id:
+        count_query = count_query.where(Booking.user_id == user_id)
+    count_result = await db.execute(count_query)
+    total = len(count_result.scalars().all())
+
+    # Calculate counts for different statuses
+    # Upcoming: check_in_date > now and status is confirmed/pending
+    upcoming_query = select(Booking)
+    if filter_agent_id is not None:
+        from app.models.models import Property, User
+        upcoming_query = upcoming_query.outerjoin(User, Booking.user_id == User.id).outerjoin(Property, Booking.property_id == Property.id).outerjoin(Owner, Property.owner_id == Owner.id)
+        upcoming_query = upcoming_query.where(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+    if property_id:
+        upcoming_query = upcoming_query.where(Booking.property_id == property_id)
+    if user_id:
+        upcoming_query = upcoming_query.where(Booking.user_id == user_id)
+    upcoming_query = upcoming_query.where(
+        and_(
+            Booking.check_in_date > now,
+            Booking.booking_status.in_(["confirmed", "pending"])
+        )
+    )
+    upcoming_result = await db.execute(upcoming_query)
+    upcoming = len(upcoming_result.scalars().all())
+
+    # Completed: check_out_date < now and status is confirmed/completed
+    completed_query = select(Booking)
+    if filter_agent_id is not None:
+        from app.models.models import Property, User
+        completed_query = completed_query.outerjoin(User, Booking.user_id == User.id).outerjoin(Property, Booking.property_id == Property.id).outerjoin(Owner, Property.owner_id == Owner.id)
+        completed_query = completed_query.where(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+    if property_id:
+        completed_query = completed_query.where(Booking.property_id == property_id)
+    if user_id:
+        completed_query = completed_query.where(Booking.user_id == user_id)
+    completed_query = completed_query.where(
+        and_(
+            Booking.check_out_date < now,
+            Booking.booking_status.in_(["confirmed", "completed"])
+        )
+    )
+    completed_result = await db.execute(completed_query)
+    completed = len(completed_result.scalars().all())
+
+    # Cancelled: status is cancelled
+    cancelled_query = select(Booking)
+    if filter_agent_id is not None:
+        from app.models.models import Property, User
+        cancelled_query = cancelled_query.outerjoin(User, Booking.user_id == User.id).outerjoin(Property, Booking.property_id == Property.id).outerjoin(Owner, Property.owner_id == Owner.id)
+        cancelled_query = cancelled_query.where(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+    if property_id:
+        cancelled_query = cancelled_query.where(Booking.property_id == property_id)
+    if user_id:
+        cancelled_query = cancelled_query.where(Booking.user_id == user_id)
+    cancelled_query = cancelled_query.where(Booking.booking_status == "cancelled")
+    cancelled_result = await db.execute(cancelled_query)
+    cancelled = len(cancelled_result.scalars().all())
+
+    return {
+        "bookings": bookings,
+        "total": total,
+        "upcoming": upcoming,
+        "completed": completed,
+        "cancelled": cancelled,
     }
