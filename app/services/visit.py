@@ -1,9 +1,9 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import selectinload, aliased
 from datetime import datetime, timezone
 from app.models.models import Visit, Agent, User, Property
-from app.schemas.visit import VisitCreate, VisitUpdate
+from app.schemas.visit import VisitCreate, VisitUpdate, Visit as VisitSchema
 from typing import Optional
 
 async def create_visit(db: AsyncSession, user_id: int, visit: VisitCreate):
@@ -207,27 +207,43 @@ async def reschedule_visit(db: AsyncSession, visit_id: int, new_date: datetime, 
     return result.scalar_one_or_none()
 
 async def get_agent_visits(db: AsyncSession, agent_id: int, page: int = 1, limit: int = 20):
-    """Get visits handled by a specific agent"""
+    """Get visits handled by a specific agent (paginated)."""
     offset = (page - 1) * limit
-    
-    stmt = select(Visit).options(
-        selectinload(Visit.property).selectinload(Property.images),
-        selectinload(Visit.property).selectinload(Property.property_amenities)
-    ).where(Visit.agent_id == agent_id).offset(offset).limit(limit).order_by(Visit.scheduled_date.desc())
+
+    # Page data
+    stmt = (
+        select(Visit)
+        .options(
+            selectinload(Visit.property).selectinload(Property.images),
+            selectinload(Visit.property).selectinload(Property.property_amenities),
+        )
+        .where(Visit.agent_id == agent_id)
+        .order_by(Visit.scheduled_date.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
-    visits = result.scalars().all()
-    
-    # Get total count
-    count_stmt = select(Visit).where(Visit.agent_id == agent_id)
-    count_result = await db.execute(count_stmt)
-    total = len(count_result.scalars().all())
-    
+    rows = result.scalars().all()
+    # Convert to Pydantic models to ensure JSON serialization with generic PaginatedResponse
+    items = [VisitSchema.model_validate(r, from_attributes=True) for r in rows]
+
+    # Total count
+    total_stmt = select(func.count(Visit.id)).where(Visit.agent_id == agent_id)
+    total_result = await db.execute(total_stmt)
+    total = int(total_result.scalar() or 0)
+
+    total_pages = (total + limit - 1) // limit if limit else 1
+    has_next = page < total_pages
+    has_prev = page > 1 and total > 0
+
     return {
-        "visits": visits,
+        "items": items,
         "total": total,
         "page": page,
         "limit": limit,
-        "total_pages": (total + limit - 1) // limit
+        "total_pages": total_pages,
+        "has_next": has_next,
+        "has_prev": has_prev,
     }
 
 async def mark_visit_completed(db: AsyncSession, visit_id: int, notes: str = None, feedback: str = None):
@@ -312,26 +328,38 @@ async def get_all_visits(
         query = query.where(and_(*filters))
     query = query.order_by(Visit.scheduled_date.desc()).offset(offset).limit(limit)
     result = await db.execute(query)
-    visits = result.scalars().all()
+    rows = result.scalars().all()
+    items = [VisitSchema.model_validate(r, from_attributes=True) for r in rows]
 
     # Count total with same filters
-    count_query = select(Visit)
+    count_query = select(func.count(Visit.id))
     if filter_agent_id is not None:
-        count_query = count_query.outerjoin(User, Visit.user_id == User.id).outerjoin(Property, Visit.property_id == Property.id).outerjoin(Owner, Property.owner_id == Owner.id)
-        count_query = count_query.where(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+        count_query = (
+            count_query.outerjoin(User, Visit.user_id == User.id)
+            .outerjoin(Property, Visit.property_id == Property.id)
+            .outerjoin(Owner, Property.owner_id == Owner.id)
+            .where(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+        )
     if status:
         count_query = count_query.where(Visit.status == status)
     if property_id:
         count_query = count_query.where(Visit.property_id == property_id)
     if user_id:
         count_query = count_query.where(Visit.user_id == user_id)
+
     count_result = await db.execute(count_query)
-    total = len(count_result.scalars().all())
+    total = int(count_result.scalar() or 0)
+
+    total_pages = (total + limit - 1) // limit if limit else 1
+    has_next = page < total_pages
+    has_prev = page > 1 and total > 0
 
     return {
-        "visits": visits,
+        "items": items,
         "total": total,
         "page": page,
         "limit": limit,
-        "total_pages": (total + limit - 1) // limit,
+        "total_pages": total_pages,
+        "has_next": has_next,
+        "has_prev": has_prev,
     }

@@ -306,7 +306,7 @@
               }
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/users/{{target_user_id}}/",
+              "raw": "{{BASE_URL}}/api/v1/users/{{target_user_id}}",
               "host": [
                 "{{BASE_URL}}"
               ],
@@ -314,8 +314,7 @@
                 "api",
                 "v1",
                 "users",
-                "{{target_user_id}}",
-                ""
+                "{{target_user_id}}"
               ]
             },
             "description": "**Admin**: Can update any field\n**Agent**: Can update limited fields for assigned users"
@@ -370,7 +369,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/agents/?include_inactive=false",
+              "raw": "{{BASE_URL}}/api/v1/agents/?include_inactive=false&page=1&limit=20",
               "host": [
                 "{{BASE_URL}}"
               ],
@@ -384,10 +383,20 @@
                   "key": "include_inactive",
                   "value": "false",
                   "description": "Include deactivated agents"
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
                 }
               ]
             },
-            "description": "**Admin Only**: List all agents in the system"
+            "description": "**Admin Only**: List all agents in the system with pagination"
           },
           "response": []
         },
@@ -418,7 +427,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"user_id\": 123,\n  \"employee_id\": \"EMP001\",\n  \"specialization\": \"general\",\n  \"agent_type\": \"general\",\n  \"experience_level\": \"intermediate\",\n  \"years_of_experience\": 5,\n  \"bio\": \"Experienced property agent specializing in residential properties\",\n  \"languages\": [\"English\", \"Hindi\"],\n  \"working_hours\": {\n    \"start\": \"09:00\",\n    \"end\": \"18:00\",\n    \"timezone\": \"Asia/Kolkata\"\n  },\n  \"commission_rate\": 2.0,\n  \"service_areas\": [\"Mumbai\", \"Delhi\", \"Gurgaon\"],\n  \"max_clients\": 30,\n  \"is_available\": true,\n  \"performance_metrics\": {\n    \"total_clients\": 0,\n    \"successful_deals\": 0,\n    \"average_rating\": 0.0\n  }\n}",
+              "raw": "{\n  \"name\": \"John Smith\",\n  \"description\": \"Experienced property agent specializing in residential properties\",\n  \"avatar_url\": \"https://example.com/avatar.jpg\",\n  \"languages\": [\"English\", \"Hindi\"],\n  \"agent_type\": \"general\",\n  \"experience_level\": \"intermediate\",\n  \"working_hours\": {\n    \"start\": \"09:00\",\n    \"end\": \"18:00\",\n    \"timezone\": \"Asia/Kolkata\"\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -453,7 +462,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"specialization\": \"luxury\",\n  \"experience_level\": \"expert\",\n  \"years_of_experience\": 8,\n  \"bio\": \"Updated bio - luxury property specialist\",\n  \"commission_rate\": 2.5,\n  \"max_clients\": 25,\n  \"is_available\": true\n}",
+              "raw": "{\n  \"name\": \"John Smith (Updated)\",\n  \"description\": \"Luxury property specialist with extensive experience\",\n  \"agent_type\": \"specialist\",\n  \"experience_level\": \"expert\",\n  \"is_available\": true,\n  \"working_hours\": {\n    \"start\": \"10:00\",\n    \"end\": \"19:00\",\n    \"timezone\": \"Asia/Kolkata\"\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -592,6 +601,259 @@
               ]
             },
             "description": "**Admin Only**: Get comprehensive agent system statistics"
+          },
+          "response": []
+        },
+        {
+          "name": "👤 Get My Agent",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/assigned/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "assigned",
+                ""
+              ]
+            },
+            "description": "**User**: Get your assigned agent"
+          },
+          "response": []
+        },
+        {
+          "name": "🔗 Assign Agent to Me",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": {{target_agent_id}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/assign/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "assign",
+                ""
+              ]
+            },
+            "description": "**User**: Assign an agent to yourself (auto-assign if no agent_id provided)"
+          },
+          "response": []
+        },
+        {
+          "name": "📋 Get Available Agents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/available/?page=1&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "available",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "specialization",
+                  "value": "",
+                  "description": "Filter by specialization (optional)",
+                  "disabled": true
+                },
+                {
+                  "key": "agent_type",
+                  "value": "",
+                  "description": "Filter by agent type (general, specialist, senior)",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                }
+              ]
+            },
+            "description": "**User**: Get list of available agents with optional filters"
+          },
+          "response": []
+        },
+        {
+          "name": "📋 Get Agents by Type",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/types/general/?page=1&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "types",
+                "general",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                }
+              ]
+            },
+            "description": "**User**: Get agents by type (general, specialist, senior)"
+          },
+          "response": []
+        },
+        {
+          "name": "📋 Get Agents by Specialization",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/specializations/luxury/?page=1&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "specializations",
+                "luxury",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                }
+              ]
+            },
+            "description": "**User**: Get agents by specialization"
+          },
+          "response": []
+        },
+        {
+          "name": "👤 Get Agent Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/{{target_agent_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "{{target_agent_id}}"
+              ]
+            },
+            "description": "**User**: Get details of a specific agent"
+          },
+          "response": []
+        },
+        {
+          "name": "📊 Get Agent Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/{{target_agent_id}}/stats/",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "{{target_agent_id}}",
+                "stats",
+                ""
+              ]
+            },
+            "description": "**User**: Get agent details with performance statistics"
+          },
+          "response": []
+        },
+        {
+          "name": "📅 Get Agent Visit History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agents/{{target_agent_id}}/visits/?page=1&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agents",
+                "{{target_agent_id}}",
+                "visits",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                }
+              ]
+            },
+            "description": "**User**: Get visits handled by a specific agent"
           },
           "response": []
         }
@@ -1216,7 +1478,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payment_method\": \"credit_card\",\n  \"transaction_id\": \"TXN{{timestamp}}\",\n  \"amount\": 45000\n}",
+              "raw": "{\n  \"booking_id\": {{target_booking_id}},\n  \"payment_method\": \"credit_card\",\n  \"transaction_id\": \"TXN{{timestamp}}\",\n  \"amount\": 45000\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1234,12 +1496,6 @@
                 "bookings",
                 "payment",
                 ""
-              ],
-              "query": [
-                {
-                  "key": "booking_id",
-                  "value": "{{target_booking_id}}"
-                }
               ]
             },
             "description": "**Admin/Agent**: Process payment for booking"
@@ -1258,7 +1514,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"rating\": 5,\n  \"review_text\": \"Excellent property! Clean, well-maintained, and great location.\",\n  \"aspects\": {\n    \"cleanliness\": 5,\n    \"location\": 5,\n    \"value\": 4,\n    \"communication\": 5,\n    \"check_in\": 5\n  }\n}",
+              "raw": "{\n  \"booking_id\": {{target_booking_id}},\n  \"guest_rating\": 5,\n  \"guest_review\": \"Excellent property! Clean, well-maintained, and great location.\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1276,12 +1532,6 @@
                 "bookings",
                 "review",
                 ""
-              ],
-              "query": [
-                {
-                  "key": "booking_id",
-                  "value": "{{target_booking_id}}"
-                }
               ]
             },
             "description": "**Admin/Agent**: Add review for booking"
@@ -1313,14 +1563,13 @@
               }
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/bugs/",
+              "raw": "{{BASE_URL}}/api/v1/bugs/",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "bugs",
                 ""
               ]
@@ -1370,14 +1619,13 @@
               ]
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/bugs/with-media/",
+              "raw": "{{BASE_URL}}/api/v1/bugs/with-media/",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "bugs",
                 "with-media",
                 ""
@@ -1393,25 +1641,26 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/bugs/?page=1&limit=20&status={{bug_status}}",
+              "raw": "{{BASE_URL}}/api/v1/bugs/?limit=20&offset=0&status={{bug_status}}",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "bugs",
                 ""
               ],
               "query": [
                 {
-                  "key": "page",
-                  "value": "1"
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Number of results"
                 },
                 {
-                  "key": "limit",
-                  "value": "20"
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Pagination offset"
                 },
                 {
                   "key": "status",
@@ -1435,14 +1684,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/bugs/{{target_bug_id}}",
+              "raw": "{{BASE_URL}}/api/v1/bugs/{{target_bug_id}}",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "bugs",
                 "{{target_bug_id}}"
               ]
@@ -1471,14 +1719,13 @@
               }
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/bugs/{{target_bug_id}}",
+              "raw": "{{BASE_URL}}/api/v1/bugs/{{target_bug_id}}",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "bugs",
                 "{{target_bug_id}}"
               ]
@@ -1512,14 +1759,13 @@
               }
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/pages/",
+              "raw": "{{BASE_URL}}/api/v1/pages/",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "pages",
                 ""
               ]
@@ -1534,25 +1780,26 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/pages/?page=1&limit=20",
+              "raw": "{{BASE_URL}}/api/v1/pages/?limit=20&offset=0",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "pages",
                 ""
               ],
               "query": [
                 {
-                  "key": "page",
-                  "value": "1"
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Number of results"
                 },
                 {
-                  "key": "limit",
-                  "value": "20"
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Pagination offset"
                 },
                 {
                   "key": "is_active",
@@ -1576,14 +1823,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/pages/{{target_page_name}}",
+              "raw": "{{BASE_URL}}/api/v1/pages/{{target_page_name}}",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "pages",
                 "{{target_page_name}}"
               ]
@@ -1601,14 +1847,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/pages/{{target_page_name}}/public",
+              "raw": "{{BASE_URL}}/api/v1/pages/{{target_page_name}}/public",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "pages",
                 "{{target_page_name}}",
                 "public"
@@ -1638,14 +1883,13 @@
               }
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/pages/{{target_page_name}}",
+              "raw": "{{BASE_URL}}/api/v1/pages/{{target_page_name}}",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "pages",
                 "{{target_page_name}}"
               ]
@@ -1660,14 +1904,13 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/pages/{{target_page_name}}",
+              "raw": "{{BASE_URL}}/api/v1/pages/{{target_page_name}}",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "pages",
                 "{{target_page_name}}"
               ]
@@ -1701,14 +1944,13 @@
               }
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/updates/",
+              "raw": "{{BASE_URL}}/api/v1/updates/",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "updates",
                 ""
               ]
@@ -1740,14 +1982,13 @@
               }
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/updates/check",
+              "raw": "{{BASE_URL}}/api/v1/updates/check",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "updates",
                 "check"
               ]
@@ -1762,25 +2003,26 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/updates/?page=1&limit=10",
+              "raw": "{{BASE_URL}}/api/v1/updates/?limit=10&offset=0",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "updates",
                 ""
               ],
               "query": [
                 {
-                  "key": "page",
-                  "value": "1"
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Number of results"
                 },
                 {
-                  "key": "limit",
-                  "value": "10"
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Pagination offset"
                 },
                 {
                   "key": "platform",
@@ -1818,14 +2060,13 @@
               }
             },
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/updates/{{target_update_id}}",
+              "raw": "{{BASE_URL}}/api/v1/updates/{{target_update_id}}",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "core",
                 "updates",
                 "{{target_update_id}}"
               ]
@@ -1906,14 +2147,11 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{BASE_URL}}/api/v1/core/health",
+              "raw": "{{BASE_URL}}/health",
               "host": [
                 "{{BASE_URL}}"
               ],
               "path": [
-                "api",
-                "v1",
-                "core",
                 "health"
               ]
             },

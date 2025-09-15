@@ -287,16 +287,3 @@ async def update_app_update(
 ):
     """Update an app update entry (admin only)"""
     return await core_service.update_app_update(update_id, update_data)
-
-# ============================================================================
-# HEALTH CHECK ENDPOINT
-# ============================================================================
-
-@router.get("/health", response_model=Dict[str, Any])
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "service": "360ghar-core"
-    }

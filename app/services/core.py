@@ -149,7 +149,12 @@ class CoreService:
     async def get_page_public(self, unique_name: str) -> Optional[PagePublicResponse]:
         """Get a page for public access (without sensitive data)"""
         query = select(Page).where(
-            and_(Page.unique_name == unique_name, Page.is_active == True, Page.is_draft == False)
+            and_(
+                Page.unique_name == unique_name,
+                Page.is_active == True,
+                Page.is_draft == False,
+                Page.is_private == False,
+            )
         )
 
         result = await self.db.execute(query)

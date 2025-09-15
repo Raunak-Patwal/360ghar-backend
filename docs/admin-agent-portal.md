@@ -17,7 +17,7 @@ Stack: React + Redux Toolkit (with RTK Query) + Shadcn UI. Backend: FastAPI + Su
   - Agent: `/dashboard`, `/agents/me`, `/clients`, `/clients/:id`, `/properties`, `/visits`, `/bookings`, `/profile`.
 - State
   - Slices: `auth`, `ui`, `notifications`.
-  - RTK Query APIs: `authApi`, `usersApi`, `agentsApi`, `propertiesApi`, `visitsApi`, `bookingsApi`, `amenitiesApi`, `uploadApi`.
+  - RTK Query APIs: `authApi`, `usersApi`, `agentsApi`, `propertiesApi`, `visitsApi`, `bookingsApi`, `amenitiesApi`, `uploadApi`, `coreApi`.
   - Base URL: `/api/v1`. Inject `Authorization: Bearer <token>` in `prepareHeaders`.
 - UI Kit
   - Shadcn data tables (with server-side pagination), forms (react-hook-form + zod), sheets/dialogs for edits, toasts for actions.
@@ -33,6 +33,7 @@ Stack: React + Redux Toolkit (with RTK Query) + Shadcn UI. Backend: FastAPI + Su
 - Bookings: global listing with filters, process payments, add reviews.
 - Amenities: fetch list for forms.
 - Uploads: generic file upload (returns public URL).
+- Core Features: Bug reports, pages management, app updates.
 
 ### Agent
 
@@ -60,36 +61,7 @@ Base path: `/api/v1`
   - `limit`: int (default: 20, min: 1, max: 100) - Items per page
   - `q`: str (optional) - Search by name, email, or phone
   - `agent_id`: int (optional, admin only) - Filter users by assigned agent
-- **Response**:
-  ```json
-  {
-    "items": [
-      {
-        "id": 1,
-        "email": "user@example.com",
-        "full_name": "John Doe",
-        "phone": "+1234567890",
-        "role": "user",
-        "is_active": true,
-        "agent_id": 1,
-        "agent": {
-          "id": 1,
-          "user_id": 2,
-          "employee_id": "EMP001",
-          "specialization": "general",
-          "agent_type": "general"
-        },
-        "created_at": "2024-01-01T00:00:00Z"
-      }
-    ],
-    "total": 100,
-    "page": 1,
-    "limit": 20,
-    "total_pages": 5,
-    "has_next": true,
-    "has_prev": false
-  }
-  ```
+- **Response**: `PaginatedResponse`
 
 #### GET `/users/{user_id}/`
 - **Description**: Get user details by ID
@@ -191,11 +163,13 @@ Base path: `/api/v1`
 ### Agents
 
 #### GET `/agents/`
-- **Description**: List all agents
+- **Description**: List all agents with pagination
 - **Access**: Admin only
 - **Query Parameters**:
   - `include_inactive`: bool (default: false) - Include deactivated agents
-- **Response**: Array of agent objects
+  - `page`: int (default: 1, min: 1) - Page number
+  - `limit`: int (default: 20, min: 1, max: 100) - Items per page
+- **Response**: `PaginatedResponse`
 
 #### POST `/agents/`
 - **Description**: Create new agent
@@ -296,12 +270,14 @@ Base path: `/api/v1`
 - **Response**: Assignment confirmation
 
 #### GET `/agents/available/`
-- **Description**: Get list of available agents
+- **Description**: Get list of available agents with pagination
 - **Access**: Any authenticated user
 - **Query Parameters**:
   - `specialization`: str (optional) - Filter by specialization
   - `agent_type`: str (optional) - Filter by agent type
-- **Response**: Array of available agents
+  - `page`: int (default: 1, min: 1) - Page number
+  - `limit`: int (default: 20, min: 1, max: 100) - Items per page
+- **Response**: `PaginatedResponse`
 
 #### GET `/agents/{agent_id}`
 - **Description**: Get agent details
@@ -317,19 +293,25 @@ Base path: `/api/v1`
 - **Description**: Get visits handled by agent
 - **Access**: Any authenticated user
 - **Query Parameters**:
-  - `page`: int (default: 1)
-  - `limit`: int (default: 20)
-- **Response**: Paginated visits list
+  - `page`: int (default: 1, min: 1) - Page number
+  - `limit`: int (default: 20, min: 1, max: 100) - Items per page
+- **Response**: `PaginatedResponse`
 
 #### GET `/agents/types/{agent_type}`
 - **Description**: Get agents by type
 - **Access**: Any authenticated user
-- **Response**: Array of agents of specified type
+- **Query Parameters**:
+  - `page`: int (default: 1, min: 1) - Page number
+  - `limit`: int (default: 20, min: 1, max: 100) - Items per page
+- **Response**: `PaginatedResponse`
 
 #### GET `/agents/specializations/{specialization}`
 - **Description**: Get agents by specialization
 - **Access**: Any authenticated user
-- **Response**: Array of agents with specified specialization
+- **Query Parameters**:
+  - `page`: int (default: 1, min: 1) - Page number
+  - `limit`: int (default: 20, min: 1, max: 100) - Items per page
+- **Response**: `PaginatedResponse`
 
 ### Properties
 
@@ -503,6 +485,215 @@ Base path: `/api/v1`
 - **Query Parameters**:
   - `limit`: int (default: 10, min: 1, max: 50)
 - **Response**: Array of recommended properties
+
+## Property Creation (Admin/Agent Portal)
+
+This section provides a complete, copy-pasteable guide to build the Admin/Agent portal “Create Property” page: data dependencies, RBAC, form structure, map/location capture, image handling via Supabase, request/response contracts, and example RTK Query hooks.
+
+### Roles & Authorization
+
+- Admin: Creates property for any user by passing `owner_id` as a query param.
+- Agent: Creates property only for users they manage by passing `owner_id` the agent is assigned to; backend enforces this.
+- User: Creates property for self; do not pass `owner_id`.
+
+Authorization header is required for all calls: `Authorization: Bearer <token>`.
+
+### Data Pre-Fetch (populate form controls)
+
+- Users list for owner selection (Admin/Agent only): `GET /api/v1/users/?page=1&limit=20&q=<search>`
+- Amenities for multi-select: `GET /api/v1/amenities/`
+- Optional: Agents listing (for contextual display), not required for creation.
+
+### Form Sections and Fields
+
+- Basic Info: `title` (required), `description`
+- Classification: `property_type` (enum: apartment | house | builder_floor | room), `purpose` (enum: buy | rent | short_stay)
+- Pricing: `base_price` (required), optional `price_per_sqft`, `monthly_rent`, `daily_rate`, `security_deposit`, `maintenance_charges`
+- Location: `latitude`, `longitude`, `city`, `state`, `country` (default India), `pincode`, `locality`, `sub_locality`, `landmark`, `full_address`
+- Details: `area_sqft`, `bedrooms`, `bathrooms`, `balconies`, `parking_spaces`, `floor_number`, `total_floors`, `age_of_property`, `max_occupancy`, `minimum_stay_days`
+- Amenities & Features: `amenity_ids` (array of amenity IDs), `features` (array of strings), `tags` (array of strings)
+- Owner Info (displayed, optionally editable): `owner_name`, `owner_contact`, `builder_name`
+- Media: `main_image_url` (string URL). Gallery images: see Image Handling below.
+
+Validation highlights (backend):
+- Title length and sanitization enforced; description HTML sanitized.
+- `base_price` must be >= 0.
+- If both latitude and longitude provided, they must be valid coordinates; backend sets a PostGIS point automatically.
+- `pincode` validated when provided.
+
+### Location Selection UX
+
+- Provide two capture modes:
+  - Manual: Two inputs for `latitude` and `longitude`.
+  - Map pick: Use a map component (Leaflet/Google Maps/Mapbox). On click or place search, set `latitude` and `longitude` in form state.
+- Optional: Reverse geocode to suggest `city`, `locality`, and `full_address` (client-side only; backend does not reverse geocode).
+- Submit the numeric `latitude` and `longitude`; backend persists a geospatial point for search/sorting.
+
+### Image Handling (Supabase Storage)
+
+Backend centralizes uploads to Supabase; the portal should upload files to the backend, not directly to Supabase.
+
+- Endpoint: `POST /api/v1/upload/` (multipart form-data, field: `file`)
+- Returns: `{ file_path, public_url, file_type, file_size, content_type, original_filename }`
+- Allowed image types: `image/jpeg`, `image/jpg`, `image/png`, `image/webp`, `image/gif`
+
+Recommended flow:
+- Step 1: User selects images locally; for each file, call `POST /upload/` and collect returned `public_url`s.
+- Step 2: Choose one image as the “Main Image” and set `main_image_url` in the property creation payload.
+- Step 3: Submit the create-property request. Gallery images persistence is planned (see “Gallery images — planned API” below). For now, store only `main_image_url` server-side.
+
+Notes:
+- Current upload route stores files in a generic folder and returns a `public_url`. The bucket name is configured server-side.
+- A specialized upload to `properties/{property_id}` exists at the service layer and will be exposed via a property-scoped API (see planned API below).
+
+### Create Property — API Contract
+
+- Endpoint: `POST /api/v1/properties/`
+- Query: `owner_id` (int, optional; admin/agent only)
+- Body (example):
+```json
+{
+  "title": "Premium 3BHK Apartment in DLF Phase 1",
+  "description": "Spacious 3BHK apartment with modern amenities and excellent location",
+  "property_type": "apartment",
+  "purpose": "rent",
+  "base_price": 45000,
+  "latitude": 28.4464,
+  "longitude": 77.011711,
+  "city": "Gurgaon",
+  "state": "Haryana",
+  "locality": "DLF Phase 1",
+  "pincode": "122002",
+  "area_sqft": 1400,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "balconies": 2,
+  "parking_spaces": 1,
+  "floor_number": 8,
+  "total_floors": 20,
+  "age_of_property": 3,
+  "max_occupancy": 5,
+  "minimum_stay_days": 30,
+  "amenity_ids": [1, 2, 3],
+  "features": ["gym", "pool", "power_backup"],
+  "tags": ["near_metro", "corner_unit"],
+  "main_image_url": "https://<supabase-public-url>/uploads/uuid.jpg",
+  "owner_name": "Property Owner",
+  "owner_contact": "+911234567890",
+  "builder_name": "DLF"
+}
+```
+
+Backend behavior:
+- Owner resolution: If `owner_id` is provided, backend enforces role and agent-user linkage; else owner is the current user.
+- Geospatial field `location` is set from `latitude` and `longitude` when both present.
+- The created property is returned as a full property object; `images` will be empty until gallery APIs are added; `amenities` are populated once amenity linking is implemented (see note below).
+
+Important note about amenities: The request accepts `amenity_ids`. Display and filtering by amenities are supported in search, but amenity linking during creation/update is being finalized in the service layer. Keep sending `amenity_ids`; it will be used once the linking logic is enabled.
+
+### End-to-End Creation Flow (UI sequence)
+
+1) Load owners (Admin/Agent): `GET /users/` with search and pagination.
+2) Load amenities: `GET /amenities/` to populate a multi-select.
+3) User selects images; upload each via `POST /upload/`; collect `public_url`s.
+4) Map pick or manual entry for `latitude` and `longitude` (optional but recommended).
+5) Build property payload; set `main_image_url` using the chosen uploaded image URL; include selected `amenity_ids`.
+6) Submit `POST /properties/?owner_id=<ownerId>` (omit `owner_id` for self-owned).
+7) On success, navigate to property details page; surface the “Add Gallery Images” action once that API is available.
+
+### RTK Query Snippets (Frontend)
+
+Create an API slice or extend the existing base API.
+
+```typescript
+// propertiesApi.ts
+import { api } from './api';
+
+export const propertiesApi = api.injectEndpoints({
+  endpoints: (build) => ({
+    uploadFile: build.mutation<
+      { public_url: string; file_path: string },
+      FormData
+    >({
+      query: (form) => ({
+        url: '/upload/',
+        method: 'POST',
+        body: form,
+      }),
+    }),
+    createProperty: build.mutation<any, { payload: any; ownerId?: number }>({
+      query: ({ payload, ownerId }) => ({
+        url: ownerId ? `/properties/?owner_id=${ownerId}` : '/properties/',
+        method: 'POST',
+        body: payload,
+      }),
+      invalidatesTags: ['Property'],
+    }),
+  }),
+});
+
+export const { useUploadFileMutation, useCreatePropertyMutation } = propertiesApi;
+```
+
+Usage in component:
+
+```typescript
+const [uploadFile] = useUploadFileMutation();
+const [createProperty, { isLoading }] = useCreatePropertyMutation();
+
+async function handleCreate(formValues: any, files: File[], ownerId?: number) {
+  // 1) Upload images
+  const uploaded: string[] = [];
+  for (const f of files) {
+    const fd = new FormData();
+    fd.append('file', f);
+    const res = await uploadFile(fd).unwrap();
+    uploaded.push(res.public_url);
+  }
+
+  // 2) Choose main image
+  const mainImageUrl = uploaded[0] || undefined;
+
+  // 3) Build payload
+  const payload = {
+    ...formValues,
+    latitude: formValues.latitude ? Number(formValues.latitude) : undefined,
+    longitude: formValues.longitude ? Number(formValues.longitude) : undefined,
+    amenity_ids: formValues.amenity_ids || undefined,
+    main_image_url: mainImageUrl,
+  };
+
+  // 4) Create property
+  const created = await createProperty({ payload, ownerId }).unwrap();
+  return created;
+}
+```
+
+### Gallery Images — Planned API (for reference)
+
+To persist a property gallery and maintain ordering/main flag, the backend will expose property-scoped endpoints that use the existing storage service foldering (`properties/{property_id}`):
+
+- `POST /api/v1/properties/{property_id}/images/` — multipart upload(s) using `files[]`; returns created rows with `image_url`, `display_order`, `is_main_image`.
+- `PUT /api/v1/properties/{property_id}/images/{image_id}` — update caption/order/main flag.
+- `DELETE /api/v1/properties/{property_id}/images/{image_id}` — delete image.
+
+Until these endpoints land, store `main_image_url` only. Keep gallery `public_url`s in UI state for preview if needed.
+
+### Error States & Edge Cases
+
+- 400 on invalid image type; restrict file inputs to allowed content types.
+- 403 if an agent attempts to create a property for a user they do not manage, or if a non-admin/non-agent passes `owner_id`.
+- 404 if `owner_id` references a non-existent user.
+- Missing `latitude`/`longitude` is allowed; property will be created but won’t benefit from geo search/sort until updated.
+- Use optimistic UI and toasts; show server errors from the response `detail` field when present.
+
+### QA Checklist (Portal)
+
+- Owner selection honors RBAC and `owner_id` behavior.
+- Amenities load and multi-select works; IDs are passed in payload.
+- Map pick correctly updates lat/lng; manual entry validated as numbers.
+- Upload returns `public_url`; main image is set in payload and shows in property card.
+- Create call returns property and navigates to its details page.
 
 ### Amenities
 
@@ -788,7 +979,7 @@ Base path: `/api/v1`
 
 #### Bug Reports
 
-##### POST `/core/bugs/`
+##### POST `/bugs/`
 - **Description**: Create a new bug report
 - **Access**: Any authenticated user
 - **Request Body**:
@@ -813,13 +1004,13 @@ Base path: `/api/v1`
   ```
 - **Response**: Created bug report object
 
-##### POST `/core/bugs/with-media/`
+##### POST `/bugs/with-media/`
 - **Description**: Create bug report with media attachments
 - **Access**: Any authenticated user
 - **Request**: Multipart form-data with fields and file uploads
 - **Response**: Created bug report with media URLs
 
-##### GET `/core/bugs/`
+##### GET `/bugs/`
 - **Description**: List bug reports with filtering
 - **Access**:
   - Admin: Can view all bug reports
@@ -828,16 +1019,16 @@ Base path: `/api/v1`
 - **Query Parameters**:
   - `status`: str (optional) - Filter by status (open, in_progress, resolved, closed)
   - `bug_type`: str (optional) - Filter by bug type
-  - `page`: int (default: 1)
-  - `limit`: int (default: 20)
-- **Response**: Paginated list of bug reports
+  - `limit`: int (default: 20, min: 1, max: 100) - Number of results
+  - `offset`: int (default: 0, min: 0) - Pagination offset
+- **Response**: List of bug reports
 
-##### GET `/core/bugs/{bug_id}`
+##### GET `/bugs/{bug_id}`
 - **Description**: Get specific bug report details
 - **Access**: Bug report owner or admin
 - **Response**: Complete bug report object
 
-##### PUT `/core/bugs/{bug_id}`
+##### PUT `/bugs/{bug_id}`
 - **Description**: Update bug report
 - **Access**:
   - Admin: Can update any field
@@ -848,7 +1039,7 @@ Base path: `/api/v1`
 
 #### Pages Management
 
-##### POST `/core/pages/`
+##### POST `/pages/`
 - **Description**: Create a new page
 - **Access**: Admin only
 - **Request Body**:
@@ -869,40 +1060,40 @@ Base path: `/api/v1`
   ```
 - **Response**: Created page object
 
-##### GET `/core/pages/`
+##### GET `/pages/`
 - **Description**: List all pages
 - **Access**: Admin only
 - **Query Parameters**:
   - `is_active`: bool (optional)
   - `is_draft`: bool (optional)
-  - `page`: int (default: 1)
-  - `limit`: int (default: 20)
-- **Response**: Paginated list of pages
+  - `limit`: int (default: 20, min: 1, max: 100) - Number of results
+  - `offset`: int (default: 0, min: 0) - Pagination offset
+- **Response**: List of pages
 
-##### GET `/core/pages/{unique_name}`
+##### GET `/pages/{unique_name}`
 - **Description**: Get page by unique name
 - **Access**: Admin only
 - **Response**: Page object
 
-##### GET `/core/pages/{unique_name}/public`
+##### GET `/pages/{unique_name}/public`
 - **Description**: Get page content for public access
 - **Access**: Public (no authentication required)
 - **Response**: Public page object (without sensitive fields)
 
-##### PUT `/core/pages/{unique_name}`
+##### PUT `/pages/{unique_name}`
 - **Description**: Update page content
 - **Access**: Admin only
 - **Request Body**: Page update fields
 - **Response**: Updated page object
 
-##### DELETE `/core/pages/{unique_name}`
+##### DELETE `/pages/{unique_name}`
 - **Description**: Delete (soft delete) a page
 - **Access**: Admin only
 - **Response**: Success message
 
 #### App Updates
 
-##### POST `/core/updates/`
+##### POST `/updates/`
 - **Description**: Create a new app update entry
 - **Access**: Admin only
 - **Request Body**:
@@ -920,7 +1111,7 @@ Base path: `/api/v1`
   ```
 - **Response**: Created app update object
 
-##### POST `/core/updates/check`
+##### POST `/updates/check`
 - **Description**: Check if there's an available update
 - **Access**: Public (no authentication required)
 - **Request Body**:
@@ -943,17 +1134,17 @@ Base path: `/api/v1`
   }
   ```
 
-##### GET `/core/updates/`
+##### GET `/updates/`
 - **Description**: List all app updates
 - **Access**: Admin only
 - **Query Parameters**:
   - `platform`: str (optional) - ios, android, web
   - `is_active`: bool (optional)
-  - `page`: int (default: 1)
-  - `limit`: int (default: 10)
-- **Response**: Paginated list of app updates
+  - `limit`: int (default: 10, min: 1, max: 100) - Number of results
+  - `offset`: int (default: 0, min: 0) - Pagination offset
+- **Response**: List of app updates
 
-##### PUT `/core/updates/{update_id}`
+##### PUT `/updates/{update_id}`
 - **Description**: Update app update entry
 - **Access**: Admin only
 - **Request Body**: App update fields to update
@@ -961,7 +1152,7 @@ Base path: `/api/v1`
 
 #### System Health
 
-##### GET `/core/health`
+##### GET `/health`
 - **Description**: System health check
 - **Access**: Public (no authentication required)
 - **Response**:
@@ -972,6 +1163,11 @@ Base path: `/api/v1`
     "service": "360ghar-core"
   }
   ```
+
+##### GET `/config`
+- **Description**: Get application configuration info (non-sensitive settings)
+- **Access**: Public (no authentication required)
+- **Response**: Configuration details about the application
 
 ## RTK Query Setup
 
@@ -989,7 +1185,7 @@ export const api = createApi({
     },
   }),
   endpoints: () => ({}),
-  tagTypes: ['User', 'Agent', 'Property', 'Visit', 'Booking', 'BugReport', 'Page', 'AppUpdate'],
+  tagTypes: ['User', 'Agent', 'Property', 'Visit', 'Booking', 'BugReport', 'Page', 'AppUpdate', 'Amenity'],
 });
 ```
 
@@ -1338,29 +1534,39 @@ coreApi.injectEndpoints({
     // Bug Reports
     createBugReport: builder.mutation<BugReportResponse, BugReportCreate>({
       query: (data) => ({
-        url: '/core/bugs/',
+        url: '/bugs/',
         method: 'POST',
         body: data
       }),
       invalidatesTags: ['BugReport']
     }),
 
-    getBugReports: builder.query<PaginatedResponse<BugReportResponse>, BugReportsQuery>({
+    createBugReportWithMedia: builder.mutation<BugReportResponse, FormData>({
+      query: (formData) => ({
+        url: '/bugs/with-media/',
+        method: 'POST',
+        body: formData,
+        formData: true
+      }),
+      invalidatesTags: ['BugReport']
+    }),
+
+    getBugReports: builder.query<BugReportResponse[], BugReportsQuery>({
       query: (params) => ({
-        url: '/core/bugs/',
-        params: { page: 1, limit: 20, ...params }
+        url: '/bugs/',
+        params: { limit: 20, offset: 0, ...params }
       }),
       providesTags: ['BugReport']
     }),
 
     getBugReport: builder.query<BugReportResponse, number>({
-      query: (id) => `/core/bugs/${id}`,
+      query: (id) => `/bugs/${id}`,
       providesTags: ['BugReport']
     }),
 
     updateBugReport: builder.mutation<BugReportResponse, { id: number; data: BugReportUpdate }>({
       query: ({ id, data }) => ({
-        url: `/core/bugs/${id}`,
+        url: `/bugs/${id}`,
         method: 'PUT',
         body: data
       }),
@@ -1370,33 +1576,33 @@ coreApi.injectEndpoints({
     // Pages
     createPage: builder.mutation<PageResponse, PageCreate>({
       query: (data) => ({
-        url: '/core/pages/',
+        url: '/pages/',
         method: 'POST',
         body: data
       }),
       invalidatesTags: ['Page']
     }),
 
-    getPages: builder.query<PaginatedResponse<PageResponse>, PagesQuery>({
+    getPages: builder.query<PageResponse[], PagesQuery>({
       query: (params) => ({
-        url: '/core/pages/',
-        params: { page: 1, limit: 20, ...params }
+        url: '/pages/',
+        params: { limit: 20, offset: 0, ...params }
       }),
       providesTags: ['Page']
     }),
 
     getPage: builder.query<PageResponse, string>({
-      query: (uniqueName) => `/core/pages/${uniqueName}`,
+      query: (uniqueName) => `/pages/${uniqueName}`,
       providesTags: ['Page']
     }),
 
     getPagePublic: builder.query<PagePublicResponse, string>({
-      query: (uniqueName) => `/core/pages/${uniqueName}/public`
+      query: (uniqueName) => `/pages/${uniqueName}/public`
     }),
 
     updatePage: builder.mutation<PageResponse, { uniqueName: string; data: PageUpdate }>({
       query: ({ uniqueName, data }) => ({
-        url: `/core/pages/${uniqueName}`,
+        url: `/pages/${uniqueName}`,
         method: 'PUT',
         body: data
       }),
@@ -1405,7 +1611,7 @@ coreApi.injectEndpoints({
 
     deletePage: builder.mutation<void, string>({
       query: (uniqueName) => ({
-        url: `/core/pages/${uniqueName}`,
+        url: `/pages/${uniqueName}`,
         method: 'DELETE'
       }),
       invalidatesTags: ['Page']
@@ -1414,7 +1620,7 @@ coreApi.injectEndpoints({
     // App Updates
     createAppUpdate: builder.mutation<AppUpdateResponse, AppUpdateCreate>({
       query: (data) => ({
-        url: '/core/updates/',
+        url: '/updates/',
         method: 'POST',
         body: data
       }),
@@ -1423,23 +1629,23 @@ coreApi.injectEndpoints({
 
     checkForUpdates: builder.query<AppUpdateCheckResponse, AppUpdateCheckRequest>({
       query: (data) => ({
-        url: '/core/updates/check',
+        url: '/updates/check',
         method: 'POST',
         body: data
       })
     }),
 
-    getAppUpdates: builder.query<PaginatedResponse<AppUpdateResponse>, AppUpdatesQuery>({
+    getAppUpdates: builder.query<AppUpdateResponse[], AppUpdatesQuery>({
       query: (params) => ({
-        url: '/core/updates/',
-        params: { page: 1, limit: 10, ...params }
+        url: '/updates/',
+        params: { limit: 10, offset: 0, ...params }
       }),
       providesTags: ['AppUpdate']
     }),
 
     updateAppUpdate: builder.mutation<AppUpdateResponse, { id: number; data: AppUpdateUpdate }>({
       query: ({ id, data }) => ({
-        url: `/core/updates/${id}`,
+        url: `/updates/${id}`,
         method: 'PUT',
         body: data
       }),
@@ -1448,7 +1654,7 @@ coreApi.injectEndpoints({
 
     // Health Check
     healthCheck: builder.query<HealthResponse, void>({
-      query: () => '/core/health'
+      query: () => '/health'
     })
   })
 });
@@ -1458,15 +1664,8 @@ coreApi.injectEndpoints({
 
 ### Common Types
 ```typescript
-interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  page: number;
-  limit: number;
-  total_pages: number;
-  has_next: boolean;
-  has_prev: boolean;
-}
+// Most list endpoints return arrays directly or specialized response types
+// Some endpoints use PaginatedResponse with items, total, page, limit, etc.
 
 interface User {
   id: number;
@@ -1475,20 +1674,56 @@ interface User {
   phone: string;
   role: 'user' | 'agent' | 'admin';
   is_active: boolean;
+  is_verified: boolean;
   agent_id?: number;
   agent?: Agent;
+  supabase_user_id: string;
   created_at: string;
+  updated_at: string;
   preferences?: UserPreferences;
+  date_of_birth?: string;
+  profile_image_url?: string;
+  current_latitude?: number;
+  current_longitude?: number;
+  preferred_locations?: string[];
+  notification_settings?: Record<string, boolean>;
+  privacy_settings?: Record<string, any>;
 }
 
 interface Agent {
   id: number;
   user_id: number;
-  employee_id: string;
-  specialization: string;
+  name: string;
+  description?: string;
+  avatar_url?: string;
+  languages: string[];
   agent_type: 'general' | 'specialist' | 'senior';
+  experience_level: 'beginner' | 'intermediate' | 'expert';
+  working_hours: Record<string, any>;
+  is_active: boolean;
   is_available: boolean;
-  // ... other agent fields
+  total_users_assigned: number;
+  user_satisfaction_rating: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AgentWithStats extends Agent {
+  total_conversations: number;
+  total_interactions: number;
+  avg_response_time_minutes: number;
+  satisfaction_rate: number;
+  efficiency_score: number;
+}
+
+interface AgentWorkload {
+  agent_id: number;
+  agent_name: string;
+  active_clients: number;
+  pending_visits: number;
+  active_bookings: number;
+  utilization_rate: number;
+  max_capacity: number;
 }
 ```
 
@@ -1576,4 +1811,3 @@ const baseQueryWithErrorHandling: BaseQueryFn<string | FetchArgs, unknown, ApiEr
 - **Code splitting**: Split code by route/feature
 
 This comprehensive documentation provides all the necessary information to build a fully functional admin and agent portal for the 360Ghar platform.
-

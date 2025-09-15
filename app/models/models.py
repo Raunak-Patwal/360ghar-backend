@@ -329,6 +329,8 @@ class Page(Base):
     custom_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Additional config for clients
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_draft: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Pages are private by default; toggle false to make them publicly accessible
+    is_private: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     view_count: Mapped[int] = mapped_column(Integer, default=0)

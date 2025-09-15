@@ -38,6 +38,86 @@ async def get_available_agents(db: AsyncSession) -> List[AgentSchema]:
     agents = result.scalars().all()
     return [AgentSchema.model_validate(agent.__dict__) for agent in agents]
 
+async def _paginate_agents(
+    db: AsyncSession,
+    base_stmt,
+    page: int = 1,
+    limit: int = 20,
+):
+    offset = (page - 1) * limit
+    # Page rows
+    page_stmt = base_stmt.offset(offset).limit(limit)
+    result = await db.execute(page_stmt)
+    rows = result.scalars().all()
+    items = [AgentSchema.model_validate(r.__dict__) for r in rows]
+
+    # Total count
+    count_stmt = base_stmt.with_only_columns(func.count(Agent.id)).order_by(None)
+    count_result = await db.execute(count_stmt)
+    total = int(count_result.scalar() or 0)
+
+    total_pages = (total + limit - 1) // limit if limit else 1
+    has_next = page < total_pages
+    has_prev = page > 1 and total > 0
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages,
+        "has_next": has_next,
+        "has_prev": has_prev,
+    }
+
+async def get_available_agents_paginated(
+    db: AsyncSession,
+    *,
+    page: int = 1,
+    limit: int = 20,
+    agent_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Paginated available agents, optionally filtered by type."""
+    stmt = select(Agent).where(and_(Agent.is_active == True, Agent.is_available == True))
+    if agent_type:
+        stmt = stmt.where(Agent.agent_type == agent_type)
+    stmt = stmt.order_by(Agent.id.desc())
+    return await _paginate_agents(db, stmt, page, limit)
+
+async def get_agents_by_type_paginated(
+    db: AsyncSession,
+    *,
+    page: int = 1,
+    limit: int = 20,
+    agent_type: str,
+) -> Dict[str, Any]:
+    stmt = select(Agent).where(and_(Agent.is_active == True, Agent.agent_type == agent_type)).order_by(Agent.id.desc())
+    return await _paginate_agents(db, stmt, page, limit)
+
+async def get_agents_by_specialization_paginated(
+    db: AsyncSession,
+    *,
+    page: int = 1,
+    limit: int = 20,
+    specialization: str,
+) -> Dict[str, Any]:
+    # We don't currently track specialization in DB; return active agents paginated
+    stmt = select(Agent).where(Agent.is_active == True).order_by(Agent.id.desc())
+    return await _paginate_agents(db, stmt, page, limit)
+
+async def get_all_agents_paginated(
+    db: AsyncSession,
+    *,
+    page: int = 1,
+    limit: int = 20,
+    include_inactive: bool = False,
+) -> Dict[str, Any]:
+    stmt = select(Agent)
+    if not include_inactive:
+        stmt = stmt.where(Agent.is_active == True)
+    stmt = stmt.order_by(Agent.id.desc())
+    return await _paginate_agents(db, stmt, page, limit)
+
 async def get_agent_by_id(db: AsyncSession, agent_id: int) -> Optional[AgentSchema]:
     """Get a specific agent by ID"""
     stmt = select(Agent).where(Agent.id == agent_id)

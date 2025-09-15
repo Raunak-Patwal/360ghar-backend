@@ -58,6 +58,7 @@ class PageCreate(BaseModel):
     custom_config: Optional[Dict[str, Any]] = Field(None, description="Custom configuration for clients")
     is_active: bool = Field(default=True, description="Whether the page is active")
     is_draft: bool = Field(default=False, description="Whether this is a draft version")
+    is_private: bool = Field(default=True, description="Whether the page is private (not public)")
 
 class PageUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200, description="Page title")
@@ -66,6 +67,7 @@ class PageUpdate(BaseModel):
     custom_config: Optional[Dict[str, Any]] = Field(None, description="Custom configuration")
     is_active: Optional[bool] = Field(None, description="Whether the page is active")
     is_draft: Optional[bool] = Field(None, description="Whether this is a draft version")
+    is_private: Optional[bool] = Field(None, description="Whether the page is private (not public)")
 
 class PageResponse(BaseModel):
     id: int
@@ -76,6 +78,7 @@ class PageResponse(BaseModel):
     custom_config: Optional[Dict[str, Any]]
     is_active: bool
     is_draft: bool
+    is_private: bool
     created_by: Optional[int]
     updated_by: Optional[int]
     view_count: int

@@ -8,6 +8,7 @@ from app.schemas.user import User as UserSchema
 from app.schemas.visit import (
     VisitCreate, VisitUpdate, Visit, VisitList, VisitReschedule, VisitCancel, VisitSlice
 )
+from app.schemas.common import PaginatedResponse
 from app.services.visit import (
     create_visit, get_visit, get_user_visits, update_visit,
     cancel_visit, reschedule_visit, get_all_visits, mark_visit_completed
@@ -120,7 +121,7 @@ async def cancel_visit_request(
     return updated
 
 
-@router.get("/all/", response_model=dict)
+@router.get("/all/", response_model=PaginatedResponse)
 async def list_all_visits(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
@@ -138,7 +139,7 @@ async def list_all_visits(
     elif current_user.role == 'agent':
         effective_agent_id = current_user.agent_id
         if effective_agent_id is None:
-            return {"visits": [], "total": 0, "page": page, "limit": limit, "total_pages": 0}
+            return {"items": [], "total": 0, "page": page, "limit": limit, "total_pages": 0, "has_next": False, "has_prev": page > 1}
     else:
         raise HTTPException(status_code=403, detail="Access denied")
 

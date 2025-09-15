@@ -14,7 +14,7 @@ from app.schemas.agent import (
     AgentWorkload,
     AgentSystemStats
 )
-from app.schemas.common import MessageResponse
+from app.schemas.common import MessageResponse, PaginatedResponse
 from app.services.agent import (
     get_all_agents,
     get_active_agents,
@@ -31,6 +31,10 @@ from app.services.agent import (
     update_agent_availability,
     get_workload_distribution,
     get_system_stats,
+    get_available_agents_paginated,
+    get_agents_by_type_paginated,
+    get_agents_by_specialization_paginated,
+    get_all_agents_paginated,
 )
 from app.services.visit import get_agent_visits
 
@@ -67,44 +71,41 @@ async def assign_my_agent(
     return assignment
 
 # Public agent information endpoints
-@router.get("/available/", response_model=List[Agent])
+@router.get("/available/", response_model=PaginatedResponse)
 async def list_available_agents(
     specialization: Optional[str] = Query(None, description="Filter by specialization"),
     agent_type: Optional[str] = Query(None, description="Filter by agent type"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get list of available agents with optional filters"""
     if specialization:
-        agents = await get_agents_by_specialization(db, specialization)
-        # Filter only available ones
-        return [agent for agent in agents if agent.is_available]
-    elif agent_type:
-        agents = await get_agents_by_type(db, agent_type)
-        # Filter only available ones
-        return [agent for agent in agents if agent.is_available]
-    else:
-        return await get_available_agents(db)
+        return await get_agents_by_specialization_paginated(db, page=page, limit=limit, specialization=specialization)
+    return await get_available_agents_paginated(db, page=page, limit=limit, agent_type=agent_type)
 
-@router.get("/types/{agent_type}", response_model=List[Agent])
+@router.get("/types/{agent_type}", response_model=PaginatedResponse)
 async def get_agents_by_agent_type(
     agent_type: str,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get agents by type (general, specialist, senior)"""
-    agents = await get_agents_by_type(db, agent_type)
-    return agents
+    return await get_agents_by_type_paginated(db, page=page, limit=limit, agent_type=agent_type)
 
-@router.get("/specializations/{specialization}", response_model=List[Agent])
+@router.get("/specializations/{specialization}", response_model=PaginatedResponse)
 async def get_agents_by_agent_specialization(
     specialization: str,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get agents by specialization - returns all active agents"""
-    agents = await get_agents_by_specialization(db, specialization)
-    return agents
+    return await get_agents_by_specialization_paginated(db, page=page, limit=limit, specialization=specialization)
 
 @router.get("/{agent_id}", response_model=Agent)
 async def get_agent_details(
@@ -137,7 +138,7 @@ async def get_agent_statistics(
         )
     return agent_with_stats
 
-@router.get("/{agent_id}/visits/")
+@router.get("/{agent_id}/visits/", response_model=PaginatedResponse)
 async def get_agent_visit_history(
     agent_id: int,
     page: int = Query(1, ge=1, description="Page number"),
@@ -151,17 +152,16 @@ async def get_agent_visit_history(
     return visits
 
 # Admin endpoints
-@router.get("/", response_model=List[Agent])
+@router.get("/", response_model=PaginatedResponse)
 async def list_all_agents(
     include_inactive: bool = Query(False, description="Include inactive agents"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     current_user: UserSchema = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """Get list of all agents (admin endpoint)"""
-    if include_inactive:
-        return await get_all_agents(db)
-    else:
-        return await get_active_agents(db)
+    return await get_all_agents_paginated(db, page=page, limit=limit, include_inactive=include_inactive)
 
 @router.post("/", response_model=Agent)
 async def create_new_agent(
