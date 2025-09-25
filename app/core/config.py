@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     
     # CORS settings
     CORS_ORIGINS: list = [
+        # Local development
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8080",
@@ -57,8 +58,10 @@ class Settings(BaseSettings):
         "http://127.0.0.1:6000",
         "http://127.0.0.1:7000",
         "http://127.0.0.1:9000",
+        # Production domains
         "https://360ghar.com",
         "https://www.360ghar.com",
+        "https://admin.360ghar.com"
     ]
     
     class Config:

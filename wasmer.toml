@@ -1,0 +1,20 @@
+[package]
+name = "360ghar-backend"
+version = "1.0.0"
+description = "360Ghar Real Estate Backend API"
+
+[dependencies]
+"python/python" = "=3.12"
+
+[fs]
+"/app" = "./."
+
+[[command]]
+name = "start"
+module = "python/python:python"
+runner = "wasi"
+
+[command.annotations.wasi]
+cwd = "/app"
+main-args = ["run.py"]
+env = ["PYTHONPATH=/app"]

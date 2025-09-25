@@ -110,10 +110,20 @@ app = FastAPI(
     ]
 )
 
+# Configure CORS properly for production and development
+if settings.ENVIRONMENT == "development":
+    # Development: Allow all origins with no credentials for easier testing
+    cors_origins = ["*"]
+    cors_credentials = False
+else:
+    # Production: Use specific origins with credentials
+    cors_origins = settings.CORS_ORIGINS
+    cors_credentials = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.ENVIRONMENT == "development" else settings.CORS_ORIGINS,
-    allow_credentials=False if settings.ENVIRONMENT == "development" else True,
+    allow_origins=cors_origins,
+    allow_credentials=cors_credentials,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=[
         "Accept",
