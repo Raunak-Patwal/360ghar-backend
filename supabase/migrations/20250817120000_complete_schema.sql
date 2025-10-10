@@ -41,6 +41,7 @@ CREATE TYPE experience_level AS ENUM ('beginner', 'intermediate', 'expert');
 CREATE TABLE public.agents (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR NOT NULL,
+    contact_number VARCHAR,
     description TEXT,
     avatar_url VARCHAR,
     languages JSONB,

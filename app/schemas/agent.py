@@ -5,6 +5,7 @@ from app.models.enums import AgentType, ExperienceLevel
 
 class AgentBase(BaseModel):
     name: str
+    contact_number: Optional[str] = None
     description: Optional[str] = None
     avatar_url: Optional[str] = None
     languages: Optional[List[str]] = ["english"]
@@ -21,6 +22,7 @@ class AgentCreate(AgentBase):
 
 class AgentUpdate(BaseModel):
     name: Optional[str] = None
+    contact_number: Optional[str] = None
     description: Optional[str] = None
     avatar_url: Optional[str] = None
     languages: Optional[List[str]] = None
