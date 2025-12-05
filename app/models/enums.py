@@ -91,3 +91,8 @@ class ImageCategory(str, Enum):
     exterior = "exterior"
     interior = "interior"
     others = "others"
+
+class UserRole(str, Enum):
+    user = "user"
+    agent = "agent"
+    admin = "admin"

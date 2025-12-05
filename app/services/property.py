@@ -1,4 +1,3 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import (
     select,
     func,
@@ -10,13 +9,28 @@ from sqlalchemy import (
     bindparam,
     MetaData,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from pgvector.sqlalchemy import Vector
 from app.models.properties import Property, PropertyAmenity, Amenity
-from app.schemas.property import PropertyCreate, PropertyUpdate, UnifiedPropertyFilter, SortBy
+from app.schemas.property import (
+    PropertyCreate,
+    PropertyUpdate,
+    UnifiedPropertyFilter,
+    SortBy,
+    Property as PropertySchema,
+)
 from app.schemas.user import User as UserSchema
 from app.core.logging import get_logger
+from app.core.cache import PropertyCacheManager
+from app.core.exceptions import (
+    PropertyNotFoundException,
+    PropertyOwnershipError,
+    InsufficientPermissionsError,
+)
+from app.models.enums import UserRole
+from app.repositories.property_repository import PropertyRepository
 from app.vector.embedding_client import embed_query
 
 vector_metadata = MetaData()
@@ -33,6 +47,17 @@ VECTOR_WEIGHT = 0.6
 TEXT_WEIGHT = 0.4
 
 logger = get_logger(__name__)
+
+
+def _get_actor_role(actor: UserSchema) -> UserRole:
+    """Safely convert actor role to enum."""
+    try:
+        return UserRole(actor.role)
+    except ValueError:
+        logger.warning(
+            "Unknown user role provided", extra={"user_id": actor.id, "role": actor.role}
+        )
+        return UserRole.user
 
 async def create_property(db: AsyncSession, property_data: PropertyCreate, owner_id: int, actor: UserSchema):
     """Create new property"""

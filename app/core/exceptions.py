@@ -61,3 +61,40 @@ class ServiceUnavailableException(BaseAPIException):
     """Service unavailable exception"""
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     detail = "Service temporarily unavailable"
+
+# Domain-specific exceptions
+class PropertyNotFoundException(NotFoundException):
+    """Property not found exception"""
+    detail = "Property not found"
+
+class UserNotFoundException(NotFoundException):
+    """User not found exception"""
+    detail = "User not found"
+
+class AgentNotFoundException(NotFoundException):
+    """Agent not found exception"""
+    detail = "Agent not found"
+
+class BookingNotFoundException(NotFoundException):
+    """Booking not found exception"""
+    detail = "Booking not found"
+
+class VisitNotFoundException(NotFoundException):
+    """Visit not found exception"""
+    detail = "Visit not found"
+
+class InsufficientPermissionsError(ForbiddenException):
+    """Insufficient permissions error"""
+    detail = "Insufficient permissions to perform this action"
+
+class PropertyOwnershipError(ForbiddenException):
+    """Property ownership error"""
+    detail = "You can only modify your own properties"
+
+class BookingConflictError(ConflictException):
+    """Booking conflict error"""
+    detail = "Property not available for the requested dates"
+
+class DuplicateSwipeError(ConflictException):
+    """Duplicate swipe error"""
+    detail = "You have already swiped on this property"
