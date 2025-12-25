@@ -1,7 +1,7 @@
 from pydantic import BaseModel, field_validator, ConfigDict, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from app.models.enums import PropertyType, PropertyPurpose, PropertyStatus
+from app.models.enums import PropertyType, PropertyPurpose, PropertyStatus, ImageCategory
 from app.utils.validators import ValidationUtils
 from app.schemas.amenity import PropertyAmenityResponse
 from enum import Enum
@@ -9,6 +9,7 @@ from enum import Enum
 class PropertyImageBase(BaseModel):
     image_url: str
     caption: Optional[str] = None
+    image_category: ImageCategory = ImageCategory.others
     display_order: int = 0
     is_main_image: bool = False
 
@@ -48,6 +49,8 @@ class PropertyBase(BaseModel):
     parking_spaces: Optional[int] = None
     video_urls: Optional[List[str]] = None
     google_street_view_url: Optional[str] = None
+    floor_plan_url: Optional[str] = None
+    video_tour_url: Optional[str] = None
 
 class PropertyCreate(PropertyBase):
     price_per_sqft: Optional[float] = None
@@ -70,6 +73,9 @@ class PropertyCreate(PropertyBase):
     owner_name: Optional[str] = None
     owner_contact: Optional[str] = None
     builder_name: Optional[str] = None
+    floor_plan_url: Optional[str] = None
+    video_tour_url: Optional[str] = None
+    search_keywords: Optional[str] = None
 
     @field_validator("title")
     @classmethod
@@ -184,6 +190,9 @@ class PropertyInDB(PropertyBase):
     owner_name: Optional[str] = None
     owner_contact: Optional[str] = None
     builder_name: Optional[str] = None
+    floor_plan_url: Optional[str] = None
+    video_tour_url: Optional[str] = None
+    search_keywords: Optional[str] = None
     view_count: int
     like_count: int
     interest_count: int
