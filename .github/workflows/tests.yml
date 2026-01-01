@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main, develop, property-management]
+    branches: [main, develop]
   pull_request:
     branches: [main, develop]
 
@@ -11,20 +11,6 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      postgres:
-        image: postgis/postgis:15-3.4
-        env:
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
       redis:
         image: redis:7-alpine
         ports:
@@ -39,6 +25,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Build test database image
+        run: docker build -t test-postgres -f .github/Dockerfile.test-db .
+
+      - name: Start PostgreSQL container
+        run: |
+          docker run -d \
+            --name test-postgres \
+            -e POSTGRES_USER=test_user \
+            -e POSTGRES_PASSWORD=test_password \
+            -e POSTGRES_DB=test_db \
+            -p 5432:5432 \
+            test-postgres
+
+          # Wait for PostgreSQL to be ready
+          for i in {1..30}; do
+            if docker exec test-postgres pg_isready -U test_user -d test_db; then
+              echo "PostgreSQL is ready"
+              break
+            fi
+            echo "Waiting for PostgreSQL... ($i/30)"
+            sleep 2
+          done
+
+      - name: Setup PostgreSQL extensions
+        env:
+          PGPASSWORD: test_password
+        run: |
+          psql -h localhost -U test_user -d test_db -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          psql -h localhost -U test_user -d test_db -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -49,13 +65,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Setup PostgreSQL extensions
-        env:
-          PGPASSWORD: test_password
-        run: |
-          psql -h localhost -U test_user -d test_db -c "CREATE EXTENSION IF NOT EXISTS vector;"
-          psql -h localhost -U test_user -d test_db -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 
       - name: Run tests
         env:
