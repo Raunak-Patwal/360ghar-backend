@@ -1,0 +1,180 @@
+"""
+ChatGPT App Module for 360Ghar.
+
+This module provides ChatGPT-specific MCP tools and widget registration for
+the 360Ghar real estate platform's ChatGPT App integration.
+
+Tools:
+- Discovery tools: Property search, details, feed, swipe, shortlist
+- Visit tools: Schedule, list, get, cancel visits
+
+Widgets:
+- PropertySearchWidget, PropertyDetailsWidget, PropertySwipeWidget
+- VisitSchedulerWidget, VisitListWidget
+- LeaseDetailsWidget, MaintenanceWidget, OwnerDashboardWidget
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional, Dict, Any
+
+from fastmcp import FastMCP
+
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+# Widget directory (where built HTML bundles are stored)
+# Located at project_root/chatgpt-widgets/dist/
+WIDGET_DIR = Path(__file__).parent.parent.parent.parent / "chatgpt-widgets" / "dist"
+
+# Widget to tool mapping with metadata
+WIDGETS: Dict[str, Dict[str, Any]] = {
+    "PropertySearchWidget": {
+        "tools": ["discovery.search"],
+        "title": "Property Search Results",
+        "description": "Grid view of property search results with filtering",
+    },
+    "PropertyDetailsWidget": {
+        "tools": ["discovery.property.get"],
+        "title": "Property Details",
+        "description": "Full property details with images and amenities",
+    },
+    "PropertySwipeWidget": {
+        "tools": ["discovery.feed"],
+        "title": "Property Discovery",
+        "description": "Swipe-based property discovery interface",
+    },
+    "VisitSchedulerWidget": {
+        "tools": ["visits.schedule"],
+        "title": "Schedule Visit",
+        "description": "Schedule a property visit with date/time selection",
+    },
+    "VisitListWidget": {
+        "tools": ["visits.list"],
+        "title": "My Visits",
+        "description": "List of scheduled property visits",
+    },
+    "LeaseDetailsWidget": {
+        "tools": ["tenant.lease.current"],
+        "title": "Lease Details",
+        "description": "Current lease information for tenants",
+    },
+    "MaintenanceWidget": {
+        "tools": ["tenant.maintenance.list", "tenant.maintenance.create"],
+        "title": "Maintenance Requests",
+        "description": "Submit and track maintenance requests",
+    },
+    "OwnerDashboardWidget": {
+        "tools": ["owner.properties.list", "owner.dashboard.overview"],
+        "title": "Owner Dashboard",
+        "description": "Property owner dashboard with stats and listings",
+    },
+    # Property Management Widgets
+    "LeaseManagementWidget": {
+        "tools": ["owner.leases.list", "owner.leases.get"],
+        "title": "Lease Management",
+        "description": "View and manage property leases",
+    },
+    "RentCollectionWidget": {
+        "tools": ["owner.rent.status", "owner.rent.record_payment", "owner.rent.history"],
+        "title": "Rent Collection",
+        "description": "Track rent payments and record transactions",
+    },
+    "TenantRentWidget": {
+        "tools": ["tenant.rent.dues", "tenant.rent.history"],
+        "title": "My Rent",
+        "description": "View rent dues and payment history",
+    },
+}
+
+
+def load_widget_html(widget_name: str) -> Optional[str]:
+    """Load widget HTML bundle from disk."""
+    widget_path = WIDGET_DIR / f"{widget_name}.html"
+    if widget_path.exists():
+        return widget_path.read_text()
+    return None
+
+
+def get_widget_for_tool(tool_name: str) -> Optional[str]:
+    """Get the widget URI for a tool."""
+    for widget_name, config in WIDGETS.items():
+        if tool_name in config["tools"]:
+            return f"ui://widget/{widget_name.lower()}.html"
+    return None
+
+
+def register_chatgpt_widgets(mcp: FastMCP) -> None:
+    """Register ChatGPT widget HTML bundles as MCP resources.
+
+    Widgets are registered with mimeType 'text/html+skybridge' which
+    ChatGPT uses to render them in iframes.
+    """
+    registered_count = 0
+    for widget_name, config in WIDGETS.items():
+        widget_html = load_widget_html(widget_name)
+        if widget_html:
+            resource_uri = f"ui://widget/{widget_name.lower()}.html"
+
+            # Create resource handler for this widget
+            @mcp.resource(
+                resource_uri,
+                mime_type="text/html+skybridge",
+                name=config["title"],
+                description=config["description"],
+            )
+            async def get_widget(html=widget_html, name=widget_name):
+                return {
+                    "contents": [{
+                        "uri": f"ui://widget/{name.lower()}.html",
+                        "mimeType": "text/html+skybridge",
+                        "text": html,
+                        "_meta": {
+                            "openai/widgetPrefersBorder": True,
+                            "openai/widgetDomain": "https://chatgpt.com",
+                            "openai/widgetCSP": {
+                                "connect_domains": [
+                                    "https://api.360ghar.com",
+                                    "https://*.360ghar.com",
+                                ],
+                                "resource_domains": [
+                                    "https://images.360ghar.com",
+                                    "https://*.cloudinary.com",
+                                ],
+                            },
+                        },
+                    }]
+                }
+
+            registered_count += 1
+            logger.info(f"Registered ChatGPT widget: {widget_name} -> {resource_uri}")
+        else:
+            logger.debug(f"Widget not found (build required): {widget_name}")
+
+    logger.info(f"Registered {registered_count}/{len(WIDGETS)} ChatGPT widgets")
+
+
+def register_chatgpt_tools(mcp: FastMCP) -> None:
+    """Register all ChatGPT-specific tools on the MCP server.
+
+    This imports and registers:
+    - Discovery tools (search, property details, feed, swipe, etc.)
+    - Visit tools (schedule, list, get, cancel)
+    - Property Management tools (leases, rent, maintenance for owners/tenants)
+    """
+    # Import tool modules to trigger registration
+    from app.mcp.chatgpt import discovery_tools  # noqa: F401
+    from app.mcp.chatgpt import visit_tools  # noqa: F401
+    from app.mcp.chatgpt import pm_tools  # noqa: F401
+
+    logger.info("Registered ChatGPT tools (discovery, visits, property management)")
+
+
+__all__ = [
+    "register_chatgpt_tools",
+    "register_chatgpt_widgets",
+    "get_widget_for_tool",
+    "load_widget_html",
+    "WIDGETS",
+]

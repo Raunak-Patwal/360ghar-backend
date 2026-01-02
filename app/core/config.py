@@ -131,7 +131,11 @@ class Settings(BaseSettings):
         # Production domains
         "https://360ghar.com",
         "https://www.360ghar.com",
-        "https://admin.360ghar.com"
+        "https://admin.360ghar.com",
+        # ChatGPT App domains (for widget iframes and MCP calls)
+        "https://chatgpt.com",
+        "https://chat.openai.com",
+        "https://platform.openai.com",
     ]
     
     model_config = SettingsConfigDict(

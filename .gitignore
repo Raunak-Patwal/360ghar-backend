@@ -135,6 +135,10 @@ dmypy.json
 *.swo
 *~
 
+# Node.js
+node_modules/
+package-lock.json
+
 # OS
 .DS_Store
 .DS_Store?

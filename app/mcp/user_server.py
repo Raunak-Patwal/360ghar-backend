@@ -1019,3 +1019,16 @@ async def user_system_status(jwt: Optional[str] = None) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in user.system.status: {e}", exc_info=True)
         return internal_error_response(f"Failed to get system status: {str(e)}")
+
+
+# ============================================================================
+# ChatGPT App Tools Registration
+# ============================================================================
+# Import ChatGPT tools to register them on this MCP server
+# These imports trigger the @user_mcp.tool decorators in the chatgpt module
+try:
+    from app.mcp.chatgpt import discovery_tools  # noqa: F401
+    from app.mcp.chatgpt import visit_tools  # noqa: F401
+    logger.info("ChatGPT App tools registered successfully")
+except ImportError as e:
+    logger.warning(f"ChatGPT tools not registered: {e}")
