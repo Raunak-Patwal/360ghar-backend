@@ -22,7 +22,13 @@ def get_public_base_url() -> str:
     if settings.ENVIRONMENT == "production":
         return "https://api.360ghar.com"
 
-    return "http://localhost:8000"
+    try:
+        from fastmcp.server.dependencies import get_http_request
+
+        request = get_http_request()
+        return str(request.base_url).rstrip("/")
+    except Exception:
+        return "https://api.360ghar.com"
 
 
 class SupabaseTokenVerifier(TokenVerifier):
@@ -49,7 +55,9 @@ class SupabaseTokenVerifier(TokenVerifier):
         if expected_resources:
             allowed.extend([r for r in expected_resources if r])
 
-        self.expected_resources = {r.rstrip("/") for r in allowed if isinstance(r, str) and r.strip()}
+        self.expected_resources = {
+            r.rstrip("/") for r in allowed if isinstance(r, str) and r.strip()
+        }
 
     async def verify_token(self, token: str) -> AccessToken | None:
         """
@@ -74,13 +82,16 @@ class SupabaseTokenVerifier(TokenVerifier):
                     expires_at_raw = token_data.get("expires_at")
                     expires_at = int(expires_at_raw) if expires_at_raw else None
                     token_resource = token_data.get("resource")
-                    logger.debug("Token found in store", extra={"user_id": user_id, "resource": token_resource})
+                    logger.debug(
+                        "Token found in store",
+                        extra={"user_id": user_id, "resource": token_resource},
+                    )
 
                     # Expiration check
                     if expires_at and time.time() > expires_at:
                         logger.warning(
                             "Token has expired",
-                            extra={"user_id": user_id, "expires_at": expires_at}
+                            extra={"user_id": user_id, "expires_at": expires_at},
                         )
                         return None
 
@@ -95,7 +106,7 @@ class SupabaseTokenVerifier(TokenVerifier):
                                     "expected": sorted(self.expected_resources),
                                     "got": token_resource,
                                     "user_id": user_id,
-                                }
+                                },
                             )
                             return None
 
@@ -124,11 +135,13 @@ class SupabaseTokenVerifier(TokenVerifier):
                                     "required": self.required_scopes,
                                     "got": token_scopes,
                                     "missing": list(missing_scopes),
-                                }
+                                },
                             )
                             return None
 
-                    logger.info("OAuth token verified", extra={"user_id": user_id, "scope": claims["scope"]})
+                    logger.info(
+                        "OAuth token verified", extra={"user_id": user_id, "scope": claims["scope"]}
+                    )
 
                     return AccessToken(
                         token=token,
@@ -141,7 +154,9 @@ class SupabaseTokenVerifier(TokenVerifier):
                 else:
                     logger.debug("Token not found in OAuth store")
             else:
-                logger.debug("Token format not recognized as OAuth token", extra={"has_dots": "." in token})
+                logger.debug(
+                    "Token format not recognized as OAuth token", extra={"has_dots": "." in token}
+                )
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.error("Error verifying OAuth token", extra={"error": str(exc)}, exc_info=True)
 
@@ -210,4 +225,6 @@ def configure_fastmcp_auth() -> None:
         fastmcp.settings.server_auth = "app.mcp.auth_provider.SupabaseAuthProvider"
         logger.info("FastMCP auth configured", extra={"provider": "SupabaseAuthProvider"})
     else:
-        logger.debug("FastMCP auth already configured", extra={"provider": fastmcp.settings.server_auth})
+        logger.debug(
+            "FastMCP auth already configured", extra={"provider": fastmcp.settings.server_auth}
+        )

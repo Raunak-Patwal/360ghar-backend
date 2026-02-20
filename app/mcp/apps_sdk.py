@@ -76,12 +76,13 @@ def _public_base_url() -> str:
     """Return the public base URL (scheme+host) for discovery metadata."""
     if settings.PUBLIC_BASE_URL:
         return settings.PUBLIC_BASE_URL.rstrip("/")
-    # Fallback: best-effort from request context, else localhost.
+    if settings.ENVIRONMENT == "production":
+        return "https://api.360ghar.com"
     try:
         request = get_http_request()
         return str(request.base_url).rstrip("/")
     except Exception:
-        return "http://localhost:8000"
+        return "https://api.360ghar.com"
 
 
 def _resource_metadata_url_for_current_request() -> str:
@@ -115,7 +116,7 @@ def build_www_authenticate(
     resource_metadata_url = resource_metadata_url or _resource_metadata_url_for_current_request()
     # Per Apps SDK docs, include resource_metadata plus error + description.
     return (
-        'Bearer '
+        "Bearer "
         f'resource_metadata="{resource_metadata_url}", '
         f'error="{error}", '
         f'error_description="{error_description}", '
@@ -244,6 +245,7 @@ class AppsSDKFastMCP(FastMCP):
         # Advertise MCP Apps UI extension so Claude, VS Code, MCPJam, etc.
         # know this server can return interactive HTML resources.
         original_create_init = self._mcp_server.create_initialization_options
+
         def _patched_create_init(
             notification_options: Any = None,
             experimental_capabilities: Optional[Dict[str, Any]] = None,
@@ -254,6 +256,7 @@ class AppsSDKFastMCP(FastMCP):
                 notification_options=notification_options,
                 experimental_capabilities=caps,
             )
+
         self._mcp_server.create_initialization_options = _patched_create_init
 
     async def _mcp_call_tool(  # type: ignore[override]
@@ -278,7 +281,9 @@ class AppsSDKFastMCP(FastMCP):
                     _meta=result_meta,
                 )
             except AuthRequiredError as exc:
-                logger.info("MCP tool requires auth", extra={"tool": key, "auth_message": exc.message})
+                logger.info(
+                    "MCP tool requires auth", extra={"tool": key, "auth_message": exc.message}
+                )
                 return mcp_types.CallToolResult(
                     content=[
                         mcp_types.TextContent(
@@ -299,7 +304,9 @@ class AppsSDKFastMCP(FastMCP):
                 logger.warning("MCP tool not found", extra={"tool": key})
                 raise NotFoundError(f"Unknown tool: {key}")
             except Exception as exc:  # pragma: no cover - defensive fallback
-                logger.error("MCP tool failed", extra={"tool": key, "error": str(exc)}, exc_info=True)
+                logger.error(
+                    "MCP tool failed", extra={"tool": key, "error": str(exc)}, exc_info=True
+                )
                 return mcp_types.CallToolResult(
                     content=[mcp_types.TextContent(type="text", text=str(exc))],
                     isError=True,

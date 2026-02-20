@@ -7,6 +7,7 @@ MCP Server Architecture:
 
 All servers share the same OAuth authentication infrastructure.
 """
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +25,11 @@ from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import BaseAPIException
 from app.core.logging import get_logger
-from app.middleware.security import RequestIDMiddleware, SecurityHeadersMiddleware, RequestLoggingMiddleware
+from app.middleware.security import (
+    RequestIDMiddleware,
+    SecurityHeadersMiddleware,
+    RequestLoggingMiddleware,
+)
 from app.middleware.trailing_slash import StripTrailingSlashMiddleware
 from app.mcp.auth_provider import SupabaseTokenVerifier, configure_fastmcp_auth, get_public_base_url
 from app.mcp.chatgpt import register_chatgpt_widgets
@@ -112,6 +117,7 @@ def create_app(testing: bool = False) -> FastAPI:
                             from app.services.notification_scheduler import (
                                 start_notification_scheduler,
                             )
+
                             start_notification_scheduler(app)
                         except Exception as sched_e:
                             logger.error("Failed to start notification scheduler: %s", sched_e)
@@ -121,6 +127,7 @@ def create_app(testing: bool = False) -> FastAPI:
                             from app.services.vector_sync_scheduler import (
                                 start_vector_sync_scheduler,
                             )
+
                             start_vector_sync_scheduler(app)
                         except Exception as sched_vec_e:
                             logger.error("Failed to start vector sync scheduler: %s", sched_vec_e)
@@ -167,11 +174,7 @@ def create_app(testing: bool = False) -> FastAPI:
         },
         servers=[
             {
-                "url": "http://localhost:8000",
-                "description": "Development server",
-            },
-            {
-                "url": "https://api.360ghar.com",
+                "url": settings.PUBLIC_BASE_URL or "https://api.360ghar.com",
                 "description": "Production server",
             },
         ],
@@ -229,9 +232,8 @@ def create_app(testing: bool = False) -> FastAPI:
 
         path = str(request.url.path)
         is_mcp_tool_route = (
-            (path.startswith("/mcp") and not path.startswith("/mcp/oauth"))
-            or path.startswith("/mcp-admin")
-        )
+            path.startswith("/mcp") and not path.startswith("/mcp/oauth")
+        ) or path.startswith("/mcp-admin")
         if is_mcp_tool_route:
             base_url = settings.PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
             if path.startswith("/mcp-admin"):
@@ -240,8 +242,7 @@ def create_app(testing: bool = False) -> FastAPI:
                 resource_metadata = f"{base_url}/.well-known/oauth-protected-resource/mcp"
             headers = {
                 "WWW-Authenticate": (
-                    f'Bearer resource_metadata="{resource_metadata}", '
-                    'scope="mcp:read mcp:write"'
+                    f'Bearer resource_metadata="{resource_metadata}", scope="mcp:read mcp:write"'
                 )
             }
             return JSONResponse(
@@ -267,9 +268,8 @@ def create_app(testing: bool = False) -> FastAPI:
 
         path = str(request.url.path)
         is_mcp_tool_route = (
-            (path.startswith("/mcp") and not path.startswith("/mcp/oauth"))
-            or path.startswith("/mcp-admin")
-        )
+            path.startswith("/mcp") and not path.startswith("/mcp/oauth")
+        ) or path.startswith("/mcp-admin")
         if is_mcp_tool_route:
             headers = {
                 "WWW-Authenticate": (
