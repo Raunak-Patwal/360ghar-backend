@@ -5,6 +5,7 @@ fastapi-cli==0.0.8
 hypercorn
 pydantic>=2.5.2
 pydantic-settings>=2.1.0
+pydantic-ai>=1.0.0
 python-multipart>=0.0.20
 python-jose[cryptography]==3.3.0
 python-dotenv>=1.1.0
@@ -23,7 +24,7 @@ fastapi-debug-toolbar>=0.6.0
 psycopg[binary]
 aiohttp>=3.9.0,<4
 email-validator
-fastmcp==2.12.4
+fastmcp>=3.0.0
 websockets==15.0.1
 google-auth>=2.23.0
 APScheduler>=3.10.4
