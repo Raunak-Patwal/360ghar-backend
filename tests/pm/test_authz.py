@@ -10,7 +10,7 @@ from app.models.enums import (
     PropertyType,
 )
 from app.models.pm_leases import Lease
-from app.models.properties import Property
+from app.models.properties import Amenity, Property, PropertyAmenity
 from app.models.users import User
 from app.services.pm_authz import assert_can_access_property
 
@@ -68,6 +68,13 @@ async def test_pm_authz_owner_agent_tenant_property_access(test_db):
     test_db.add(prop)
     await test_db.flush()
 
+    amenity = Amenity(title="Gym", icon="dumbbell", category="fitness", is_active=True)
+    test_db.add(amenity)
+    await test_db.flush()
+    prop_amenity = PropertyAmenity(property_id=prop.id, amenity_id=amenity.id)
+    test_db.add(prop_amenity)
+    await test_db.flush()
+
     lease = Lease(
         property_id=prop.id,
         owner_id=owner.id,
@@ -86,6 +93,8 @@ async def test_pm_authz_owner_agent_tenant_property_access(test_db):
     # Owner can access
     p1 = await assert_can_access_property(test_db, actor=owner, property_id=prop.id)
     assert p1.id == prop.id
+    assert len(p1.property_amenities) == 1
+    assert p1.property_amenities[0].amenity.title == "Gym"
 
     # RM can access (via owner.agent_id match)
     p2 = await assert_can_access_property(test_db, actor=rm_user, property_id=prop.id)

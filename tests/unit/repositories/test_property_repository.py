@@ -38,6 +38,10 @@ class TestPropertyRepository:
         result = await repository.get_property_with_owner(1)
 
         assert result == mock_property
+        stmt = mock_session.execute.await_args.args[0]
+        option_paths = [str(option.path) for option in stmt._with_options]
+        assert any("Property.property_amenities" in path for path in option_paths)
+        assert any("PropertyAmenity.amenity" in path for path in option_paths)
 
     @pytest.mark.asyncio
     async def test_get_property_with_owner_not_found(self, repository, mock_session):

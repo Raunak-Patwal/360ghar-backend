@@ -14,7 +14,7 @@ from app.core.exceptions import (
 )
 from app.models.enums import LeaseStatus, UserRole
 from app.models.pm_leases import Lease
-from app.models.properties import Property
+from app.models.properties import Property, PropertyAmenity
 from app.models.users import User
 
 
@@ -70,7 +70,11 @@ async def assert_can_access_property(
     """
     stmt = (
         select(Property)
-        .options(selectinload(Property.owner), selectinload(Property.images))
+        .options(
+            selectinload(Property.owner),
+            selectinload(Property.images),
+            selectinload(Property.property_amenities).selectinload(PropertyAmenity.amenity),
+        )
         .where(Property.id == property_id)
     )
     res = await db.execute(stmt)
@@ -167,4 +171,3 @@ async def get_accessible_owner_ids(db: AsyncSession, *, actor: User) -> Optional
         res = await db.execute(select(User.id).where(User.agent_id == actor.agent_id))
         return [int(r[0]) for r in res.all()]
     return [actor.id]
-

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AgentChatRequest(BaseModel):
@@ -35,6 +35,16 @@ class ConversationMessageOut(BaseModel):
     tool_name: Optional[str] = None
     tool_args: Optional[dict[str, Any]] = None
     tool_result: Optional[dict[str, Any]] = None
+    widget_name: Optional[str] = None
+    widget_data: Optional[dict[str, Any]] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _populate_widget_fields(self):
+        """Map DB columns to widget fields for widget messages."""
+        if self.role == "widget":
+            self.widget_name = self.tool_name
+            self.widget_data = self.tool_result
+        return self

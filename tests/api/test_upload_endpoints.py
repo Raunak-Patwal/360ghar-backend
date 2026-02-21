@@ -18,11 +18,10 @@ class TestUploadFileEndpoint:
         with patch(
             "app.api.api_v1.endpoints.upload.storage_service"
         ) as mock_storage:
-            mock_storage.upload_generic = AsyncMock(
+            mock_storage.upload_and_track = AsyncMock(
                 return_value={
-                    "url": "https://storage.example.com/file.jpg",
-                    "filename": "file.jpg",
-                    "size": 1024,
+                    "public_url": "https://storage.example.com/file.jpg",
+                    "path": "users/1/uploads/file.jpg",
                 }
             )
 
@@ -36,6 +35,8 @@ class TestUploadFileEndpoint:
             )
 
             assert response.status_code == 200
+            payload = response.json()
+            assert payload["public_url"] == "https://storage.example.com/file.jpg"
 
     @pytest.mark.asyncio
     async def test_upload_file_unauthorized(self, client: AsyncClient):
@@ -56,11 +57,10 @@ class TestUploadFileEndpoint:
         with patch(
             "app.api.api_v1.endpoints.upload.storage_service"
         ) as mock_storage:
-            mock_storage.upload_generic = AsyncMock(
+            mock_storage.upload_and_track = AsyncMock(
                 return_value={
-                    "url": "https://storage.example.com/image.png",
-                    "filename": "image.png",
-                    "content_type": "image/png",
+                    "public_url": "https://storage.example.com/image.png",
+                    "mime_type": "image/png",
                 }
             )
 
@@ -73,6 +73,8 @@ class TestUploadFileEndpoint:
             )
 
             assert response.status_code == 200
+            payload = response.json()
+            assert payload["public_url"].endswith("image.png")
 
     @pytest.mark.asyncio
     async def test_upload_pdf_file(self, authenticated_client: AsyncClient):
@@ -80,11 +82,10 @@ class TestUploadFileEndpoint:
         with patch(
             "app.api.api_v1.endpoints.upload.storage_service"
         ) as mock_storage:
-            mock_storage.upload_generic = AsyncMock(
+            mock_storage.upload_and_track = AsyncMock(
                 return_value={
-                    "url": "https://storage.example.com/document.pdf",
-                    "filename": "document.pdf",
-                    "content_type": "application/pdf",
+                    "public_url": "https://storage.example.com/document.pdf",
+                    "mime_type": "application/pdf",
                 }
             )
 
@@ -97,3 +98,5 @@ class TestUploadFileEndpoint:
             )
 
             assert response.status_code == 200
+            payload = response.json()
+            assert payload["public_url"].endswith("document.pdf")

@@ -7,6 +7,7 @@ These tools enable property management features for owners and tenants:
 
 All tools use ChatGPT-specific response formatting for rich widget display.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
@@ -77,12 +78,12 @@ def _serialize_lease(lease) -> Dict[str, Any]:
         }
 
     tenant_data = None
-    if lease.tenant:
+    if lease.tenant_user:
         tenant_data = {
-            "id": lease.tenant.id,
-            "name": lease.tenant.full_name,
-            "phone": lease.tenant.phone,
-            "email": lease.tenant.email,
+            "id": lease.tenant_user.id,
+            "name": lease.tenant_user.full_name,
+            "phone": lease.tenant_user.phone,
+            "email": lease.tenant_user.email,
         }
 
     return {
@@ -97,7 +98,9 @@ def _serialize_lease(lease) -> Dict[str, Any]:
         "security_deposit": float(lease.security_deposit) if lease.security_deposit else None,
         "payment_due_day": lease.payment_due_day,
         "status": lease.status.value if hasattr(lease.status, "value") else lease.status,
-        "rent_paid_through": lease.rent_paid_through.isoformat() if hasattr(lease, "rent_paid_through") and lease.rent_paid_through else None,
+        "rent_paid_through": lease.rent_paid_through.isoformat()
+        if hasattr(lease, "rent_paid_through") and lease.rent_paid_through
+        else None,
         "created_at": lease.created_at.isoformat() if lease.created_at else None,
     }
 
@@ -113,7 +116,9 @@ def _serialize_rent_charge(charge) -> Dict[str, Any]:
         "amount_paid": float(charge.amount_paid) if charge.amount_paid else 0,
         "balance": float(charge.amount_due - charge.amount_paid) if charge.amount_due else 0,
         "status": charge.status.value if hasattr(charge.status, "value") else charge.status,
-        "late_fee": float(charge.late_fee) if hasattr(charge, "late_fee") and charge.late_fee else 0,
+        "late_fee": float(charge.late_fee)
+        if hasattr(charge, "late_fee") and charge.late_fee
+        else 0,
     }
 
 
@@ -124,7 +129,9 @@ def _serialize_rent_payment(payment) -> Dict[str, Any]:
         "rent_charge_id": payment.rent_charge_id,
         "amount": float(payment.amount) if payment.amount else 0,
         "payment_date": payment.payment_date.isoformat() if payment.payment_date else None,
-        "payment_method": payment.payment_method.value if hasattr(payment.payment_method, "value") else payment.payment_method,
+        "payment_method": payment.payment_method.value
+        if hasattr(payment.payment_method, "value")
+        else payment.payment_method,
         "transaction_id": payment.transaction_id,
         "notes": payment.notes,
         "created_at": payment.created_at.isoformat() if payment.created_at else None,
@@ -715,8 +722,7 @@ async def owner_rent_history(
     },
     meta=OWNER_DASHBOARD_META,
 )
-async def owner_dashboard_overview(
-) -> Dict[str, Any]:
+async def owner_dashboard_overview() -> Dict[str, Any]:
     """Get a comprehensive dashboard overview for property owners.
 
     Shows portfolio summary, occupancy stats, rent collection, and recent activity.
@@ -846,15 +852,21 @@ async def owner_maintenance_list(
             if status:
                 status_norm = status.lower().strip()
                 if status_norm == "open":
-                    stmt = stmt.where(MaintenanceRequest.request_status == MaintenanceRequestStatus.open)
+                    stmt = stmt.where(
+                        MaintenanceRequest.request_status == MaintenanceRequestStatus.open
+                    )
                 elif status_norm == "in_progress":
-                    stmt = stmt.where(MaintenanceRequest.work_order_status == WorkOrderStatus.in_progress)
+                    stmt = stmt.where(
+                        MaintenanceRequest.work_order_status == WorkOrderStatus.in_progress
+                    )
                 elif status_norm == "scheduled":
                     stmt = stmt.where(MaintenanceRequest.scheduled_for.is_not(None))
                 elif status_norm == "completed":
                     stmt = stmt.where(MaintenanceRequest.completed_at.is_not(None))
                 elif status_norm == "cancelled":
-                    stmt = stmt.where(MaintenanceRequest.work_order_status == WorkOrderStatus.cancelled)
+                    stmt = stmt.where(
+                        MaintenanceRequest.work_order_status == WorkOrderStatus.cancelled
+                    )
 
             if priority:
                 priority_norm = priority.lower().strip()
@@ -996,7 +1008,9 @@ async def owner_maintenance_update(
             # Update optional fields
             if scheduled_date:
                 try:
-                    request.scheduled_for = datetime.fromisoformat(scheduled_date.replace("Z", "+00:00"))
+                    request.scheduled_for = datetime.fromisoformat(
+                        scheduled_date.replace("Z", "+00:00")
+                    )
                 except ValueError:
                     pass
             if estimated_cost is not None:
@@ -1061,8 +1075,7 @@ async def owner_maintenance_update(
     },
     meta=TENANT_RENT_META,
 )
-async def tenant_rent_dues(
-) -> Dict[str, Any]:
+async def tenant_rent_dues() -> Dict[str, Any]:
     """View current rent dues for the tenant.
 
     Shows outstanding rent charges and payment due dates.
@@ -1099,10 +1112,20 @@ async def tenant_rent_dues(
                 )
 
             # Get outstanding charges
-            charges_stmt = select(RentCharge).where(
-                RentCharge.lease_id.in_(lease_ids),
-                RentCharge.status.in_([RentChargeStatus.pending, RentChargeStatus.partial, RentChargeStatus.overdue]),
-            ).order_by(RentCharge.due_date)
+            charges_stmt = (
+                select(RentCharge)
+                .where(
+                    RentCharge.lease_id.in_(lease_ids),
+                    RentCharge.status.in_(
+                        [
+                            RentChargeStatus.pending,
+                            RentChargeStatus.partial,
+                            RentChargeStatus.overdue,
+                        ]
+                    ),
+                )
+                .order_by(RentCharge.due_date)
+            )
 
             charges_result = await db.execute(charges_stmt)
             charges = charges_result.scalars().all()

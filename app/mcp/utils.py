@@ -4,6 +4,7 @@ Shared utilities for MCP servers.
 Provides common helper functions for database access, user resolution,
 and role-based authorization used across both User and Admin MCP servers.
 """
+
 from __future__ import annotations
 
 from typing import Any, Optional, TYPE_CHECKING
@@ -115,7 +116,9 @@ def serialize_property_basic(prop: Any) -> dict:
     return {
         "id": prop.id,
         "title": prop.title,
-        "property_type": getattr(prop, "property_type", None).value if getattr(prop, "property_type", None) else None,
+        "property_type": getattr(prop, "property_type", None).value
+        if getattr(prop, "property_type", None)
+        else None,
         "purpose": getattr(prop, "purpose", None).value if getattr(prop, "purpose", None) else None,
         "status": getattr(prop, "status", None).value if getattr(prop, "status", None) else None,
         "city": prop.city,
@@ -130,7 +133,9 @@ def serialize_property_basic(prop: Any) -> dict:
         "area_sqft": getattr(prop, "area_sqft", None),
         "is_available": getattr(prop, "is_available", True),
         "is_managed": getattr(prop, "is_managed", False),
-        "management_status": getattr(prop, "management_status", None).value if getattr(prop, "management_status", None) else None,
+        "management_status": getattr(prop, "management_status", None).value
+        if getattr(prop, "management_status", None)
+        else None,
         "latitude": prop.latitude,
         "longitude": prop.longitude,
         "main_image_url": prop.main_image_url,
@@ -139,52 +144,69 @@ def serialize_property_basic(prop: Any) -> dict:
 
 
 def serialize_property_full(prop: Any) -> dict:
-    """Serialize a property object to full dict for MCP responses."""
+    """Serialize a property object to full dict for MCP responses.
+
+    Handles both SQLAlchemy models and Pydantic models.
+    """
+    if hasattr(prop, "model_dump"):
+        return prop.model_dump()
+
     basic = serialize_property_basic(prop)
-    basic.update({
-        "description": prop.description,
-        "sub_locality": getattr(prop, "sub_locality", None),
-        "landmark": getattr(prop, "landmark", None),
-        "pincode": getattr(prop, "pincode", None),
-        "state": getattr(prop, "state", None),
-        "country": getattr(prop, "country", None),
-        "price_per_sqft": getattr(prop, "price_per_sqft", None),
-        "security_deposit": getattr(prop, "security_deposit", None),
-        "maintenance_charges": getattr(prop, "maintenance_charges", None),
-        "balconies": getattr(prop, "balconies", None),
-        "parking_spaces": getattr(prop, "parking_spaces", None),
-        "floor_number": getattr(prop, "floor_number", None),
-        "total_floors": getattr(prop, "total_floors", None),
-        "max_occupancy": getattr(prop, "max_occupancy", None),
-        "age_of_property": getattr(prop, "age_of_property", None),
-        "virtual_tour_url": getattr(prop, "virtual_tour_url", None),
-        "video_tour_url": getattr(prop, "video_tour_url", None),
-        "features": getattr(prop, "features", None),
-        "tags": getattr(prop, "tags", None),
-        "available_from": getattr(prop, "available_from", None).isoformat() if getattr(prop, "available_from", None) else None,
-        "minimum_stay_days": getattr(prop, "minimum_stay_days", None),
-        "owner_name": getattr(prop, "owner_name", None),
-        "builder_name": getattr(prop, "builder_name", None),
-        "view_count": getattr(prop, "view_count", 0),
-        "like_count": getattr(prop, "like_count", 0),
-        "payment_due_day": getattr(prop, "payment_due_day", None),
-        "grace_period_days": getattr(prop, "grace_period_days", None),
-        "late_fee_policy": getattr(prop, "late_fee_policy", None),
-        "images": [
-            {"url": i.image_url, "caption": getattr(i, "caption", None)}
-            for i in (prop.images or [])
-        ],
-        "amenities": [
+
+    amenities_data = []
+    prop_amenities = getattr(prop, "property_amenities", None) or []
+    for a in prop_amenities:
+        amenity_obj = getattr(a, "amenity", a) if hasattr(a, "amenity") else a
+        amenities_data.append(
             {
-                "id": getattr(a, "amenity", a).id if hasattr(a, "amenity") else getattr(a, "id", None),
-                "title": getattr(a, "amenity", a).title if hasattr(a, "amenity") else getattr(a, "title", None),
-                "icon": getattr(getattr(a, "amenity", a), "icon", None) if hasattr(a, "amenity") else getattr(a, "icon", None),
-                "category": getattr(getattr(a, "amenity", a), "category", None) if hasattr(a, "amenity") else getattr(a, "category", None),
+                "id": getattr(amenity_obj, "id", None),
+                "title": getattr(amenity_obj, "title", None),
+                "icon": getattr(amenity_obj, "icon", None),
+                "category": getattr(amenity_obj, "category", None),
             }
-            for a in (prop.amenities or [])
-        ],
-        "updated_at": getattr(prop, "updated_at", None).isoformat() if getattr(prop, "updated_at", None) else None,
-    })
+        )
+
+    basic.update(
+        {
+            "description": prop.description,
+            "sub_locality": getattr(prop, "sub_locality", None),
+            "landmark": getattr(prop, "landmark", None),
+            "pincode": getattr(prop, "pincode", None),
+            "state": getattr(prop, "state", None),
+            "country": getattr(prop, "country", None),
+            "price_per_sqft": getattr(prop, "price_per_sqft", None),
+            "security_deposit": getattr(prop, "security_deposit", None),
+            "maintenance_charges": getattr(prop, "maintenance_charges", None),
+            "balconies": getattr(prop, "balconies", None),
+            "parking_spaces": getattr(prop, "parking_spaces", None),
+            "floor_number": getattr(prop, "floor_number", None),
+            "total_floors": getattr(prop, "total_floors", None),
+            "max_occupancy": getattr(prop, "max_occupancy", None),
+            "age_of_property": getattr(prop, "age_of_property", None),
+            "virtual_tour_url": getattr(prop, "virtual_tour_url", None),
+            "video_tour_url": getattr(prop, "video_tour_url", None),
+            "features": getattr(prop, "features", None),
+            "tags": getattr(prop, "tags", None),
+            "available_from": getattr(prop, "available_from", None).isoformat()
+            if getattr(prop, "available_from", None)
+            else None,
+            "minimum_stay_days": getattr(prop, "minimum_stay_days", None),
+            "owner_name": getattr(prop, "owner_name", None),
+            "builder_name": getattr(prop, "builder_name", None),
+            "view_count": getattr(prop, "view_count", 0),
+            "like_count": getattr(prop, "like_count", 0),
+            "payment_due_day": getattr(prop, "payment_due_day", None),
+            "grace_period_days": getattr(prop, "grace_period_days", None),
+            "images": [
+                {"url": i.image_url, "caption": getattr(i, "caption", None)}
+                for i in (getattr(prop, "images", None) or [])
+            ],
+            "amenities": amenities_data,
+            "updated_at": getattr(prop, "updated_at", None).isoformat()
+            if getattr(prop, "updated_at", None)
+            else None,
+        }
+    )
     return basic
 
 
@@ -204,13 +226,21 @@ def serialize_booking(booking: Any) -> dict:
         "service_charges": float(getattr(booking, "service_charges", 0) or 0),
         "discount_amount": float(getattr(booking, "discount_amount", 0) or 0),
         "total_amount": float(getattr(booking, "total_amount", 0) or 0),
-        "booking_status": getattr(booking, "booking_status", None),
-        "payment_status": getattr(booking, "payment_status", None),
+        "booking_status": getattr(booking, "booking_status", None).value
+        if getattr(booking, "booking_status", None)
+        else None,
+        "payment_status": getattr(booking, "payment_status", None).value
+        if getattr(booking, "payment_status", None)
+        else None,
         "payment_method": getattr(booking, "payment_method", None),
         "special_requests": getattr(booking, "special_requests", None),
         "cancellation_reason": getattr(booking, "cancellation_reason", None),
-        "cancellation_date": getattr(booking, "cancellation_date", None).isoformat() if getattr(booking, "cancellation_date", None) else None,
-        "created_at": booking.created_at.isoformat() if getattr(booking, "created_at", None) else None,
+        "cancellation_date": getattr(booking, "cancellation_date", None).isoformat()
+        if getattr(booking, "cancellation_date", None)
+        else None,
+        "created_at": booking.created_at.isoformat()
+        if getattr(booking, "created_at", None)
+        else None,
     }
 
 
@@ -228,11 +258,14 @@ def serialize_lease(lease: Any) -> dict:
         "status": getattr(lease, "status", None).value if getattr(lease, "status", None) else None,
         "payment_due_day": getattr(lease, "payment_due_day", None),
         "grace_period_days": getattr(lease, "grace_period_days", None),
-        "late_fee_policy": getattr(lease, "late_fee_policy", None),
-        "terms": getattr(lease, "terms", None),
-        "notes": getattr(lease, "notes", None),
+        "late_fee_amount": getattr(lease, "late_fee_amount", None),
+        "late_fee_percentage": getattr(lease, "late_fee_percentage", None),
+        "terms": getattr(lease, "lease_terms", None),
+        "notes": getattr(lease, "special_clauses", None),
         "created_at": lease.created_at.isoformat() if getattr(lease, "created_at", None) else None,
-        "updated_at": getattr(lease, "updated_at", None).isoformat() if getattr(lease, "updated_at", None) else None,
+        "updated_at": getattr(lease, "updated_at", None).isoformat()
+        if getattr(lease, "updated_at", None)
+        else None,
     }
 
 
@@ -249,7 +282,9 @@ def serialize_maintenance_request(req: Any) -> dict:
     priority_value = "urgent" if urgency_value == "emergency" else urgency_value
 
     request_status = getattr(req, "request_status", None)
-    request_status_value = request_status.value if hasattr(request_status, "value") else request_status
+    request_status_value = (
+        request_status.value if hasattr(request_status, "value") else request_status
+    )
 
     work_order_status = getattr(req, "work_order_status", None)
     work_order_status_value = (
@@ -285,14 +320,20 @@ def serialize_maintenance_request(req: Any) -> dict:
         "status": status_value,
         "request_status": request_status_value,
         "work_order_status": work_order_status_value,
-        "estimated_cost": float(getattr(req, "estimated_cost", 0) or 0) if getattr(req, "estimated_cost", None) else None,
-        "actual_cost": float(getattr(req, "actual_cost", 0) or 0) if getattr(req, "actual_cost", None) else None,
+        "estimated_cost": float(getattr(req, "estimated_cost", 0) or 0)
+        if getattr(req, "estimated_cost", None)
+        else None,
+        "actual_cost": float(getattr(req, "actual_cost", 0) or 0)
+        if getattr(req, "actual_cost", None)
+        else None,
         "scheduled_date": scheduled_for.isoformat() if scheduled_for else None,
         "completed_at": completed_at.isoformat() if completed_at else None,
         "vendor_name": getattr(req, "vendor_name", None),
         "notes": getattr(req, "completion_notes", None),
         "created_at": req.created_at.isoformat() if getattr(req, "created_at", None) else None,
-        "updated_at": getattr(req, "updated_at", None).isoformat() if getattr(req, "updated_at", None) else None,
+        "updated_at": getattr(req, "updated_at", None).isoformat()
+        if getattr(req, "updated_at", None)
+        else None,
     }
 
 

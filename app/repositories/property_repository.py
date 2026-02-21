@@ -26,7 +26,11 @@ class PropertyRepository(BaseRepository[Property]):
     async def get_property_with_owner(self, property_id: int) -> Optional[Property]:
         stmt = (
             select(Property)
-            .options(selectinload(Property.images), selectinload(Property.owner))
+            .options(
+                selectinload(Property.images),
+                selectinload(Property.owner),
+                selectinload(Property.property_amenities).selectinload(PropertyAmenity.amenity),
+            )
             .where(Property.id == property_id)
         )
         result = await self.session.execute(stmt)

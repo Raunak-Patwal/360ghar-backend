@@ -179,7 +179,7 @@ class TestBugEndpoints:
             assert payload["media_urls"] == ["https://cdn.example.com/uploads/bug.png"]
 
             create_args = mock_create.await_args.args
-            bug_data = create_args[1]
+            bug_data = create_args[0]
             assert bug_data.source == "web"
             assert bug_data.bug_type == BugType.ui_bug
             assert bug_data.device_info == {"os": "iOS"}

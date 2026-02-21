@@ -63,6 +63,7 @@ async def agent_chat(
 
     async def event_stream():
         full_response = ""
+        widget_events: list[dict] = []
         try:
             async for event in service.stream_response(
                 user_message=body.message,
@@ -71,13 +72,22 @@ async def agent_chat(
                 user=current_user,
                 db=db,
             ):
+                import json as _json
                 # Extract response text from done event to persist
                 if '"response_text"' in event:
-                    import json as _json
                     try:
                         line = event.split("data: ", 1)[1].split("\n")[0]
                         data = _json.loads(line)
                         full_response = data.get("response_text", "")
+                    except Exception:
+                        pass
+                # Capture widget events for persistence
+                elif '"widget_name"' in event:
+                    try:
+                        line = event.split("data: ", 1)[1].split("\n")[0]
+                        data = _json.loads(line)
+                        if "widget_name" in data:
+                            widget_events.append(data)
                     except Exception:
                         pass
                 yield event
@@ -86,16 +96,24 @@ async def agent_chat(
             import json as _json
             yield f"event: error\ndata: {_json.dumps({'code': 'STREAM_ERROR', 'message': str(exc)[:200]})}\n\n"
         finally:
-            # Persist assistant response
-            if full_response:
-                try:
+            try:
+                # Persist widget events
+                for we in widget_events:
                     await conversation_store.add_message(
                         db, conversation_id=conversation.id,
-                        role="assistant", content=full_response,
+                        role="widget",
+                        tool_name=we.get("widget_name"),
+                        tool_result=we.get("structured_content"),
+                    )
+                # Persist assistant response (even if empty when widgets were emitted)
+                if full_response or widget_events:
+                    await conversation_store.add_message(
+                        db, conversation_id=conversation.id,
+                        role="assistant", content=full_response or "",
                     )
                     await db.commit()
-                except Exception as exc:
-                    logger.error("Failed to persist assistant message: %s", exc)
+            except Exception as exc:
+                logger.error("Failed to persist messages: %s", exc)
 
     return StreamingResponse(
         event_stream(),
