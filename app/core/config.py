@@ -1,7 +1,7 @@
 from pathlib import Path
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
+
     DATABASE_URL: str
     SUPABASE_URL: str
     SENTRY_DSN: str
@@ -19,15 +19,15 @@ class Settings(BaseSettings):
     SUPABASE_SECRET_KEY: str
     # API Keys for middleware (comma-separated)
     VALID_API_KEYS: str = ""
-    
+
     # External AI/Search integrations
     PERPLEXITY_API_KEY: Optional[str] = None
     PERPLEXITY_MODEL: str = "sonar"
-    
+
     # Image search via SerpAPI (Google Images)
     SERPAPI_API_KEY: Optional[str] = None
     SERPAPI_SEARCH_ENDPOINT: str = "https://serpapi.com/search.json"
-    
+
     # Gemini AI settings
     GOOGLE_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-3-flash-preview"
@@ -40,14 +40,23 @@ class Settings(BaseSettings):
 
     # Vastu analyzer settings
     VASTU_DEFAULT_PROVIDER: str = "glm"  # "gemini" or "glm"
-    
+
+    # Pydantic AI Agent settings
+    AI_AGENT_MODEL: str = "glm-4.7-flash"  # ZhipuAI GLM-4.7-Flash
+    # Note: Base URL excludes /chat/completions as Pydantic AI adds it automatically
+    AI_AGENT_API_BASE: str = "https://open.bigmodel.cn/api/paas/v4"  # ZhipuAI base URL
+    AI_AGENT_FALLBACK_MODEL: Optional[str] = None
+    AI_AGENT_MAX_TOKENS: int = 64096
+    AI_AGENT_TEMPERATURE: float = 0.7
+    AI_AGENT_MAX_HISTORY: int = 50
+
     # Vector sync settings
     VECTOR_SYNC_ENABLED: bool = True
     VECTOR_SYNC_CRON: Optional[str] = "0 9 * * *"  # once daily at 9:00 AM
     VECTOR_SYNC_INTERVAL_SECONDS: int = 300  # used when CRON not provided
     VECTOR_SYNC_BATCH_SIZE: int = 500
     VECTOR_SYNC_MAX_RETRIES: int = 3
-    
+
     @property
     def ASYNC_DATABASE_URL(self) -> str:
         """Convert DATABASE_URL to async format for psycopg (better PgBouncer support)"""
@@ -56,14 +65,14 @@ class Settings(BaseSettings):
             url = url.replace("postgresql://", "postgresql+psycopg://", 1)
         elif url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg://", 1)
-        
+
         return url
 
     @property
     def SUPABASE_CLIENT_KEY(self) -> str:
         """Return the key used for non-privileged Supabase auth flows."""
         return self.SUPABASE_PUBLISHABLE_KEY.strip()
-    
+
     REDIS_URL: str = "redis://localhost:6379"
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
@@ -82,14 +91,14 @@ class Settings(BaseSettings):
 
     # Endpoint-specific TTLs (in seconds)
     CACHE_TTL_AMENITIES: int = 86400  # 24 hours
-    CACHE_TTL_PROPERTIES_LIST: int = 43200 # 12 hours
+    CACHE_TTL_PROPERTIES_LIST: int = 43200  # 12 hours
     CACHE_TTL_PROPERTY_DETAIL: int = 86400  # 24 hours
     CACHE_TTL_BLOG_POSTS: int = 86400  # 24 hours
     CACHE_TTL_BLOG_CATEGORIES: int = 86400  # 24 hours
     CACHE_TTL_BLOG_TAGS: int = 86400  # 24 hours
     CACHE_TTL_FAQS: int = 86400  # 24 hours
     CACHE_TTL_VERSIONS: int = 86400  # 24 hours
-    
+
     # Supabase Storage - Single unified bucket for all uploads
     SUPABASE_STORAGE_BUCKET: str = "360ghar-storage"
 
@@ -116,7 +125,7 @@ class Settings(BaseSettings):
     SMS_PROVIDER_API_URL: Optional[str] = None
     SMS_PROVIDER_API_KEY: Optional[str] = None
     SMS_SENDER_ID: Optional[str] = None
-    
+
     # CORS settings
     CORS_ORIGINS: list = [
         # Local development
@@ -146,15 +155,16 @@ class Settings(BaseSettings):
         "https://360ghar.com",
         "https://www.360ghar.com",
         "https://admin.360ghar.com",
-    # ChatGPT App domains (for widget iframes and MCP calls)
-    "https://chatgpt.com",
-    "https://chat.openai.com",
-    "https://platform.openai.com",
+        # ChatGPT App domains (for widget iframes and MCP calls)
+        "https://chatgpt.com",
+        "https://chat.openai.com",
+        "https://platform.openai.com",
     ]
 
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),
         case_sensitive=True,
     )
+
 
 settings = Settings()

@@ -9,6 +9,12 @@ from app.core.config import settings
 class ColorFormatter(logging.Formatter):
     """Simple ANSI color formatter for terminal readability."""
 
+    # Map internal logger names to cleaner display names
+    NAME_MAP = {
+        "uvicorn.error": "uvicorn",
+        "uvicorn.access": "uvicorn",
+    }
+
     COLORS = {
         "RESET": "\033[0m",
         "DIM": "\033[2m",
@@ -50,6 +56,11 @@ class ColorFormatter(logging.Formatter):
         self.use_colors = use_colors
 
     def format(self, record: logging.LogRecord) -> str:
+        # Map logger name to cleaner display name
+        display_name = self.NAME_MAP.get(record.name, record.name)
+        original_name = record.name
+        record.name = display_name
+
         # Build key=value suffix for custom extras
         extras: Dict[str, Any] = {
             k: v
@@ -68,6 +79,10 @@ class ColorFormatter(logging.Formatter):
             suffix = " " + " ".join(parts)
 
         base = super().format(record)
+
+        # Restore original name for other handlers
+        record.name = original_name
+
         if not self.use_colors:
             return base + suffix
 

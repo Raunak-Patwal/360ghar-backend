@@ -37,7 +37,11 @@ WIDGETS: Dict[str, Dict[str, Any]] = {
         "description": "Grid view of property search results with filtering",
     },
     "PropertyDetailsWidget": {
-        "tools": ["discovery_property_get"],
+        "tools": [
+            "discovery_property_get",
+            "owner_properties_get",
+            "agent_properties_get",
+        ],
         "title": "Property Details",
         "description": "Full property details with images and amenities",
     },
@@ -47,12 +51,16 @@ WIDGETS: Dict[str, Dict[str, Any]] = {
         "description": "Swipe-based property discovery interface",
     },
     "VisitSchedulerWidget": {
-        "tools": ["visits_schedule"],
+        "tools": ["visits_schedule", "bookings_get"],
         "title": "Schedule Visit",
         "description": "Schedule a property visit with date/time selection",
     },
     "VisitListWidget": {
-        "tools": ["visits_list"],
+        "tools": [
+            "visits_list",
+            "bookings_list",
+            "agent_bookings_list_all",
+        ],
         "title": "My Visits",
         "description": "List of scheduled property visits",
     },
@@ -62,23 +70,42 @@ WIDGETS: Dict[str, Dict[str, Any]] = {
         "description": "Current lease information for tenants",
     },
     "MaintenanceWidget": {
-        "tools": ["tenant_maintenance_list", "tenant_maintenance_create"],
+        "tools": [
+            "tenant_maintenance_list",
+            "tenant_maintenance_create",
+            "agent_maintenance_list",
+        ],
         "title": "Maintenance Requests",
         "description": "Submit and track maintenance requests",
     },
     "OwnerDashboardWidget": {
-        "tools": ["owner_properties_list", "owner_dashboard_overview"],
+        "tools": [
+            "owner_properties_list",
+            "owner_dashboard_overview",
+            "agent_properties_list",
+            "agent_dashboard_overview",
+        ],
         "title": "Owner Dashboard",
         "description": "Property owner dashboard with stats and listings",
     },
     # Property Management Widgets
     "LeaseManagementWidget": {
-        "tools": ["owner_leases_list", "owner_leases_get"],
+        "tools": [
+            "owner_leases_list",
+            "owner_leases_get",
+            "agent_leases_list",
+        ],
         "title": "Lease Management",
         "description": "View and manage property leases",
     },
     "RentCollectionWidget": {
-        "tools": ["owner_rent_status", "owner_rent_record_payment", "owner_rent_history"],
+        "tools": [
+            "owner_rent_status",
+            "owner_rent_record_payment",
+            "owner_rent_history",
+            "agent_rent_list_due",
+            "agent_rent_record_payment",
+        ],
         "title": "Rent Collection",
         "description": "Track rent payments and record transactions",
     },
@@ -103,6 +130,14 @@ def get_widget_for_tool(tool_name: str) -> Optional[str]:
     for widget_name, config in WIDGETS.items():
         if tool_name in config["tools"]:
             return f"ui://widget/{widget_name.lower()}.html"
+    return None
+
+
+def get_widget_name_for_tool(tool_name: str) -> Optional[str]:
+    """Get the widget class name for a tool (e.g. 'OwnerDashboardWidget')."""
+    for widget_name, config in WIDGETS.items():
+        if tool_name in config["tools"]:
+            return widget_name
     return None
 
 
@@ -201,6 +236,7 @@ __all__ = [
     "register_chatgpt_tools",
     "register_chatgpt_widgets",
     "get_widget_for_tool",
+    "get_widget_name_for_tool",
     "load_widget_html",
     "WIDGETS",
 ]

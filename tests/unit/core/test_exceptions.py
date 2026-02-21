@@ -54,7 +54,8 @@ class TestBaseAPIException:
     def test_extra_kwargs(self):
         """Test extra kwargs stored in extra attribute."""
         exc = BaseAPIException(error_code="E001", context={"key": "value"})
-        assert exc.extra == {"error_code": "E001", "context": {"key": "value"}}
+        assert exc.error_code == "E001"
+        assert exc.extra == {"context": {"key": "value"}}
 
 
 class TestNotFoundExceptions:

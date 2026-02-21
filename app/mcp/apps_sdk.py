@@ -5,16 +5,18 @@ This module bridges FastMCP's ToolResult model with ChatGPT Apps expectations:
 - Tool responses must support result-level `_meta` (widget-only) and `isError`.
 - Auth-required tool calls should return `_meta["mcp/www_authenticate"]` to trigger
   ChatGPT's OAuth linking UI (per Apps SDK docs).
+
+Compatible with FastMCP 3.0+.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-import fastmcp.server.context
+from pydantic import Field
+
 from fastmcp import FastMCP
-from fastmcp.exceptions import DisabledError, NotFoundError, ToolError
+from fastmcp.exceptions import NotFoundError, ToolError
 from fastmcp.server.dependencies import get_http_request
 from fastmcp.tools.tool import ToolResult
 from mcp import types as mcp_types
@@ -36,7 +38,15 @@ MCP_SECURITY_SCHEMES_OAUTH2_ONLY: list[dict[str, Any]] = [
 
 
 class AppsSDKToolResult(ToolResult):
-    """ToolResult that also carries MCP result-level meta and isError."""
+    """ToolResult that also carries ``isError`` for MCP CallToolResult.
+
+    FastMCP 3.0's ``ToolResult`` already supports ``meta`` (mapped to ``_meta``)
+    and ``structured_content``.  This subclass adds ``is_error`` and overrides
+    ``to_mcp_result()`` so the standard ``_call_tool_mcp`` handler propagates
+    ``isError`` to the wire-format ``CallToolResult``.
+    """
+
+    is_error: bool = Field(default=False, exclude=True)
 
     def __init__(
         self,
@@ -46,9 +56,31 @@ class AppsSDKToolResult(ToolResult):
         result_meta: Optional[Dict[str, Any]] = None,
         is_error: bool = False,
     ) -> None:
-        super().__init__(content=content, structured_content=structured_content)
-        self.result_meta = result_meta
+        super().__init__(
+            content=content,
+            structured_content=structured_content,
+            meta=result_meta,
+        )
         self.is_error = is_error
+
+    def to_mcp_result(
+        self,
+    ) -> (
+        list[mcp_types.ContentBlock]
+        | tuple[list[mcp_types.ContentBlock], dict[str, Any]]
+        | mcp_types.CallToolResult
+    ):
+        """Override to propagate ``isError`` into the MCP response."""
+        if self.meta is not None or self.is_error:
+            return mcp_types.CallToolResult(
+                content=self.content,
+                structuredContent=self.structured_content,
+                isError=self.is_error,
+                _meta=self.meta,  # type: ignore[call-arg]
+            )
+        if self.structured_content is None:
+            return self.content
+        return self.content, self.structured_content
 
 
 class AuthRequiredError(ToolError):
@@ -233,11 +265,18 @@ def error_response(
 
 class AppsSDKFastMCP(FastMCP):
     """
-    FastMCP server variant that can emit CallToolResult with result-level `_meta`.
+    FastMCP server variant with MCP Apps UI extension support.
 
     Supports both ChatGPT Apps (OpenAI) and MCP Apps (SEP-1865) from a single
     server URL by advertising the ``io.modelcontextprotocol/ui`` extension
     capability and emitting standard + OpenAI-compatible metadata.
+
+    In FastMCP 3.0+, ``AppsSDKToolResult.to_mcp_result()`` handles ``isError``
+    and ``_meta`` propagation.  This subclass:
+
+    1. Patches ``create_initialization_options`` to advertise UI capability.
+    2. Overrides ``_call_tool_mcp`` to catch ``AuthRequiredError`` and return
+       the appropriate ``CallToolResult`` with ``mcp/www_authenticate`` metadata.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -259,55 +298,44 @@ class AppsSDKFastMCP(FastMCP):
 
         self._mcp_server.create_initialization_options = _patched_create_init
 
-    async def _mcp_call_tool(  # type: ignore[override]
+    async def _call_tool_mcp(  # type: ignore[override]
         self, key: str, arguments: dict[str, Any]
-    ) -> mcp_types.CallToolResult:
+    ) -> (
+        list[mcp_types.ContentBlock]
+        | tuple[list[mcp_types.ContentBlock], dict[str, Any]]
+        | mcp_types.CallToolResult
+        | mcp_types.CreateTaskResult
+    ):
+        """Override to catch AuthRequiredError and map to OAuth challenge response."""
         logger.info("MCP tool invoked", extra={"tool": key, "args_keys": list(arguments.keys())})
-        async with fastmcp.server.context.Context(fastmcp=self):
-            try:
-                result = await self._call_tool(key, arguments)
-
-                result_meta: Optional[Dict[str, Any]] = None
-                is_error = False
-                if isinstance(result, AppsSDKToolResult):
-                    result_meta = result.result_meta
-                    is_error = result.is_error
-
-                logger.debug("MCP tool completed", extra={"tool": key, "is_error": is_error})
-                return mcp_types.CallToolResult(
-                    content=result.content,
-                    structuredContent=result.structured_content,
-                    isError=is_error,
-                    _meta=result_meta,
-                )
-            except AuthRequiredError as exc:
-                logger.info(
-                    "MCP tool requires auth", extra={"tool": key, "auth_message": exc.message}
-                )
-                return mcp_types.CallToolResult(
-                    content=[
-                        mcp_types.TextContent(
-                            type="text",
-                            text=exc.message,
-                        )
-                    ],
-                    structuredContent=exc.structured_content,
-                    isError=True,
-                    _meta={
-                        "mcp/www_authenticate": [exc.www_authenticate],
-                    },
-                )
-            except DisabledError:
-                logger.warning("MCP tool disabled", extra={"tool": key})
-                raise NotFoundError(f"Unknown tool: {key}")
-            except NotFoundError:
-                logger.warning("MCP tool not found", extra={"tool": key})
-                raise NotFoundError(f"Unknown tool: {key}")
-            except Exception as exc:  # pragma: no cover - defensive fallback
-                logger.error(
-                    "MCP tool failed", extra={"tool": key, "error": str(exc)}, exc_info=True
-                )
-                return mcp_types.CallToolResult(
-                    content=[mcp_types.TextContent(type="text", text=str(exc))],
-                    isError=True,
-                )
+        try:
+            result = await super()._call_tool_mcp(key, arguments)
+            logger.debug("MCP tool completed", extra={"tool": key})
+            return result
+        except AuthRequiredError as exc:
+            logger.info(
+                "MCP tool requires auth", extra={"tool": key, "auth_message": exc.message}
+            )
+            return mcp_types.CallToolResult(
+                content=[
+                    mcp_types.TextContent(
+                        type="text",
+                        text=exc.message,
+                    )
+                ],
+                structuredContent=exc.structured_content,
+                isError=True,
+                _meta={
+                    "mcp/www_authenticate": [exc.www_authenticate],
+                },
+            )
+        except (NotFoundError, ToolError):
+            raise
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.error(
+                "MCP tool failed", extra={"tool": key, "error": str(exc)}, exc_info=True
+            )
+            return mcp_types.CallToolResult(
+                content=[mcp_types.TextContent(type="text", text=str(exc))],
+                isError=True,
+            )

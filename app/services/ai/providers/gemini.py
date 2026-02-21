@@ -7,18 +7,18 @@ supporting both text and vision (image) inputs.
 
 import json
 import re
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 
 from app.core.logging import get_logger
 from app.services.ai.base import (
+    AIMessage,
     AIProvider,
     AIProviderConfig,
-    AIMessage,
+    AIProviderError,
     AIRole,
     VisionInput,
-    AIProviderError,
 )
 
 logger = get_logger(__name__)
@@ -29,9 +29,7 @@ class GeminiProvider(AIProvider):
     Google Gemini AI provider with vision support.
 
     Supports models like:
-    - gemini-2.0-flash (recommended for vision tasks)
-    - gemini-1.5-pro
-    - gemini-1.5-flash
+    - gemini-3-flash-preview (recommended for all tasks including vision)
     """
 
     # Gemini API base URL
@@ -81,12 +79,14 @@ class GeminiProvider(AIProvider):
 
             # Add vision input only to user messages
             if vision_input and msg.role == AIRole.USER:
-                parts.append({
-                    "inline_data": {
-                        "mime_type": vision_input.mime_type,
-                        "data": vision_input.image_base64,
+                parts.append(
+                    {
+                        "inline_data": {
+                            "mime_type": vision_input.mime_type,
+                            "data": vision_input.image_base64,
+                        }
                     }
-                })
+                )
 
             if parts:
                 contents.append({"role": role, "parts": parts})

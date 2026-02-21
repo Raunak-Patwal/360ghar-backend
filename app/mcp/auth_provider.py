@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 from typing import Optional, Sequence
 
-import fastmcp
 from fastmcp.server.auth import AccessToken, RemoteAuthProvider, TokenVerifier
 
 from app.core.config import settings
@@ -215,16 +214,12 @@ class SupabaseAuthProvider(RemoteAuthProvider):
 
 def configure_fastmcp_auth() -> None:
     """
-    Configure the global FastMCP `server_auth` setting so that any FastMCP
-    server created in this process automatically uses SupabaseAuthProvider
-    for HTTP auth.
+    Log that auth is configured.
 
-    This is designed to be called exactly once on startup.
+    In FastMCP 3.0+, the global ``server_auth`` setting was removed.
+    Auth is handled via HTTP middleware (BearerAuthBackend) registered
+    on each MCP server's ``http_app()`` in ``factory.py``.
+
+    This function is kept as a no-op startup hook for compatibility.
     """
-    if fastmcp.settings.server_auth is None:
-        fastmcp.settings.server_auth = "app.mcp.auth_provider.SupabaseAuthProvider"
-        logger.info("FastMCP auth configured", extra={"provider": "SupabaseAuthProvider"})
-    else:
-        logger.debug(
-            "FastMCP auth already configured", extra={"provider": fastmcp.settings.server_auth}
-        )
+    logger.info("FastMCP auth configured via HTTP middleware (BearerAuthBackend)")

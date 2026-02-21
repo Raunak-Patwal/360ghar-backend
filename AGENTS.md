@@ -102,3 +102,10 @@ app/
 - Follow existing patterns in the relevant Cursor rules (`.cursor/rules/`)
 - Do not introduce new dependencies without rationale
 - Never commit secrets; use `.env` and `app.core.config.settings`
+
+## Dependency & Documentation Policy
+
+- Always research and use the latest stable versions of dependencies — do not rely on cached or outdated knowledge
+- Before implementing any 3rd party integration, look up the current official documentation using web search or documentation tools (e.g., Context7 MCP)
+- Verify that new dependencies are compatible with Python 3.10+, FastAPI, SQLAlchemy 2.x, and Pydantic v2
+- Check changelogs and migration guides when upgrading dependencies to avoid breaking changes

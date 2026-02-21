@@ -120,6 +120,14 @@ async def get_properties(
 - Use `Optional[]` for nullable fields, avoid `Union[]`
 - Validation with `@field_validator` decorators
 
+## Dependency & Documentation Policy
+
+- **Always use latest stable versions**: When adding or upgrading dependencies, research the latest stable release. Never pin to outdated versions based on cached knowledge.
+- **Research before integrating**: Before implementing any 3rd party integration (APIs, SDKs, libraries), look up the current official documentation. Do not rely on training data alone — docs change frequently.
+- **Use Context7 MCP or web search**: Use the `context7` MCP tools (`resolve-library-id` + `query-docs`) or `WebSearch`/`WebFetch` to retrieve up-to-date documentation and code examples for any library or service being used.
+- **Verify compatibility**: Confirm that new dependencies are compatible with the project's Python 3.10+ requirement and existing stack (FastAPI, SQLAlchemy 2.x async, Pydantic v2).
+- **Check changelogs for breaking changes**: When upgrading a dependency, review its changelog/migration guide to avoid breaking changes.
+
 ## Database Models
 
 **Core entities**: User, Property, Agent, Booking, Visit, UserSwipe, Amenity

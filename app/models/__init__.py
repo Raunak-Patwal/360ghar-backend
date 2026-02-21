@@ -13,6 +13,7 @@ from .pm_finance import RentCharge, RentPayment, Expense
 from .pm_maintenance import MaintenanceRequest
 from .pm_inspections import InspectionChecklist
 from .tours import Tour, Scene, Hotspot, TourAnalyticsEvent
+from .ai_conversations import AIConversation, AIConversationMessage
 from .enums import *
 
 __all__ = [
@@ -56,4 +57,8 @@ __all__ = [
     "Scene",
     "Hotspot",
     "TourAnalyticsEvent",
+
+    # AI Conversations
+    "AIConversation",
+    "AIConversationMessage",
 ]

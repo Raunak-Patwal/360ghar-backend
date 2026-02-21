@@ -34,6 +34,8 @@ from app.api.api_v1.endpoints import (
     public,
     ai,
     custom_domains,
+    # AI Agent
+    agent_chat,
 )
 
 api_router = APIRouter()
@@ -87,3 +89,6 @@ api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 
 # 360 Virtual Tours - Custom Domains
 api_router.include_router(custom_domains.router, prefix="/custom-domains", tags=["custom-domains"])
+
+# AI Agent
+api_router.include_router(agent_chat.router, prefix="/agent", tags=["ai-agent"])
