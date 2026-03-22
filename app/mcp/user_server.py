@@ -348,7 +348,7 @@ async def owner_properties_create(
             return MCPResponse.success({
                 "message": "Property created successfully",
                 "property": serialize_property_basic(prop),
-            }).dict()
+            }).model_dump()
     except ValueError as e:
         return invalid_input_response(str(e))
     except AuthRequiredError:
@@ -399,7 +399,7 @@ async def owner_properties_get(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You do not have access to this property"
-                ).dict()
+                ).model_dump()
 
             prop = result["property"]
             active_lease = result.get("active_lease")
@@ -413,7 +413,7 @@ async def owner_properties_get(
             return MCPResponse.success({
                 "property": property_data,
                 "active_lease": lease_data,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -469,7 +469,7 @@ async def owner_properties_update(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You do not have access to this property"
-                ).dict()
+                ).model_dump()
 
             # Apply updates
             if title is not None:
@@ -496,7 +496,7 @@ async def owner_properties_update(
             return MCPResponse.success({
                 "message": "Property updated successfully",
                 "property": serialize_property_basic(prop),
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -545,7 +545,7 @@ async def owner_properties_toggle_availability(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You do not have access to this property"
-                ).dict()
+                ).model_dump()
 
             prop.is_available = is_available
             await db.flush()
@@ -556,7 +556,7 @@ async def owner_properties_toggle_availability(
                 "message": f"Property marked as {status}",
                 "property_id": property_id,
                 "is_available": is_available,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -998,7 +998,7 @@ async def bookings_create(
                 return MCPResponse.failure(
                     MCPErrorCode.BOOKING_CONFLICT,
                     availability.get("reason", "Property not available for these dates")
-                ).dict()
+                ).model_dump()
 
             # Create booking
             booking_data = BookingCreate(
@@ -1015,7 +1015,7 @@ async def bookings_create(
             return MCPResponse.success({
                 "message": "Booking created successfully",
                 "booking": serialize_booking(booking),
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1077,7 +1077,7 @@ async def bookings_list(
                 "page": page,
                 "limit": limit,
                 "bookings": items,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1121,7 +1121,7 @@ async def bookings_get(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You can only view your own bookings"
-                ).dict()
+                ).model_dump()
 
             # Get property details
             from sqlalchemy import select
@@ -1135,7 +1135,7 @@ async def bookings_get(
             return MCPResponse.success({
                 "booking": serialize_booking(booking),
                 "property": property_data,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1182,14 +1182,14 @@ async def bookings_cancel(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You can only cancel your own bookings"
-                ).dict()
+                ).model_dump()
 
             # Check if can be cancelled
             if booking.booking_status in ["cancelled", "completed", "checked_out"]:
                 return MCPResponse.failure(
                     MCPErrorCode.OPERATION_FAILED,
                     f"Booking cannot be cancelled (status: {booking.booking_status})"
-                ).dict()
+                ).model_dump()
 
             success = await booking_svc.cancel_booking(db, booking_id, reason)
             await db.commit()
@@ -1198,7 +1198,7 @@ async def bookings_cancel(
                 return MCPResponse.success({
                     "message": "Booking cancelled successfully",
                     "booking_id": booking_id,
-                }).dict()
+                }).model_dump()
             else:
                 return internal_error_response("Failed to cancel booking")
     except AuthRequiredError:
@@ -1240,7 +1240,7 @@ async def bookings_check_availability(
                 "available": result.get("available", False),
                 "reason": result.get("reason"),
                 "max_occupancy": result.get("max_occupancy"),
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1286,11 +1286,11 @@ async def bookings_get_pricing(
                 return MCPResponse.failure(
                     MCPErrorCode.INVALID_INPUT,
                     pricing["error"]
-                ).dict()
+                ).model_dump()
 
             return MCPResponse.success({
                 "pricing": pricing,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1357,7 +1357,7 @@ async def user_system_status() -> Dict[str, Any]:
                     "get_pricing": True,
                 },
             },
-        }).dict()
+        }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:

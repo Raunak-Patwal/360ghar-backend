@@ -9,6 +9,7 @@ All servers share the same OAuth authentication infrastructure.
 """
 
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
@@ -17,7 +18,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 
 from app.api.api_v1.api import api_router
-from app.api.api_v1.endpoints.oauth import oauth_wellknown_router, oauth_mcp_router
+from app.api.api_v1.endpoints.oauth import oauth_mcp_router, oauth_wellknown_router
 from app.api.api_v1.endpoints.websocket import router as ws_router
 from app.api.share import router as share_router
 from app.core.cache import initialize_cache, shutdown_cache
@@ -25,16 +26,16 @@ from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import BaseAPIException
 from app.core.logging import get_logger
-from app.middleware.security import (
-    RequestIDMiddleware,
-    SecurityHeadersMiddleware,
-    RequestLoggingMiddleware,
-)
-from app.middleware.trailing_slash import StripTrailingSlashMiddleware
+from app.mcp.admin_server import admin_mcp
 from app.mcp.auth_provider import SupabaseTokenVerifier, configure_fastmcp_auth, get_public_base_url
 from app.mcp.chatgpt import register_chatgpt_widgets
 from app.mcp.user_server import user_mcp
-from app.mcp.admin_server import admin_mcp
+from app.middleware.security import (
+    RequestIDMiddleware,
+    RequestLoggingMiddleware,
+    SecurityHeadersMiddleware,
+)
+from app.middleware.trailing_slash import StripTrailingSlashMiddleware
 
 logger = get_logger(__name__)
 
@@ -114,6 +115,16 @@ def create_app(testing: bool = False) -> FastAPI:
 
                     if not testing:
                         try:
+                            from app.services.blog_auto_publish_scheduler import (
+                                start_auto_blog_publish_scheduler,
+                            )
+
+                            start_auto_blog_publish_scheduler(app)
+                        except Exception as sched_blog_e:
+                            logger.error("Failed to start auto blog publish scheduler: %s", sched_blog_e)
+
+                    if not testing:
+                        try:
                             from app.services.notification_scheduler import (
                                 start_notification_scheduler,
                             )
@@ -131,6 +142,7 @@ def create_app(testing: bool = False) -> FastAPI:
                             start_vector_sync_scheduler(app)
                         except Exception as sched_vec_e:
                             logger.error("Failed to start vector sync scheduler: %s", sched_vec_e)
+
                 except Exception as exc:
                     logger.error("Application startup failed: %s", exc)
 

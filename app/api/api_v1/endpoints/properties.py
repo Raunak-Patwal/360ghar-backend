@@ -5,7 +5,13 @@ from app.core.database import get_db
 from app.core.logging import get_logger
 from app.api.api_v1.dependencies.auth import get_current_active_user, get_current_user_optional
 from app.schemas.user import User as UserSchema
-from app.models.enums import PropertyType, PropertyPurpose, UserRole
+from app.models.enums import (
+    ListingGenderPreference,
+    ListingSharingType,
+    PropertyType,
+    PropertyPurpose,
+    UserRole,
+)
 from app.schemas.property import (
     PropertyCreate, PropertyUpdate, Property, PropertyFilter,
     PropertyInterest, UnifiedPropertyFilter, UnifiedPropertyResponse, SortBy
@@ -61,6 +67,8 @@ def build_property_filters(
     # Additional filters
     amenities: Optional[List[str]] = Query(None),
     features: Optional[List[str]] = Query(None),
+    gender_preference: Optional[ListingGenderPreference] = Query(None),
+    sharing_type: Optional[ListingSharingType] = Query(None),
     parking_spaces_min: Optional[int] = Query(None, ge=0),
     floor_number_min: Optional[int] = Query(None, ge=0),
     floor_number_max: Optional[int] = Query(None, le=100),
@@ -99,6 +107,8 @@ def build_property_filters(
         pincode=pincode,
         amenities=amenities,
         features=features,
+        gender_preference=gender_preference,
+        sharing_type=sharing_type,
         parking_spaces_min=parking_spaces_min,
         floor_number_min=floor_number_min,
         floor_number_max=floor_number_max,

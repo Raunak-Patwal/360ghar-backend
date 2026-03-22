@@ -1,111 +1,50 @@
-# Repository Guidelines
+# 360Ghar Backend Operating Contract
 
-This repository contains the 360 Ghar unified real estate platform backend, serving three integrated modules: 360 Ghar Core (buy/rent marketplace), 360 Stays (short-stay bookings), and Property Management (landlord/manager tools).
+This repository uses repo-local docs as the source of truth for contributors and agents. The goal is to keep architecture, contribution rules, and test expectations explicit and lightly enforced.
 
-## Build, Test, and Development Commands
+## Operating Docs
+- [Architecture Contract](docs/architecture-contract.md)
+- [Contribution Contract](docs/contribution-contract.md)
+- [Testing Contract](docs/testing-contract.md)
+- [Terminology And Ownership](docs/terminology-and-ownership.md)
+- [Machine Contract Inventory](docs/repo-contract.json)
 
-### Setup
+## Build And Validation
 ```bash
-# Install uv if not already installed
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install dependencies and run
 docker-compose up -d db redis
+python3 run.py
+pytest tests/ -v
+python3 scripts/validate_docs_contracts.py
 ```
 
-### Running the API
-```bash
-python run.py
-# or hot reload:
-fastapi dev app/main.py --host 0.0.0.0 --port 8000
-```
+> **Note:** Dev dependencies (pytest, ruff, mypy) are in the `dev` optional group. Install with `pip install ".[dev]"` or `uv sync --extra dev`.
 
-### Running Tests
-```bash
-pytest tests/ -v                              # all tests
-pytest tests/test_user_service.py -v         # specific file
-pytest tests/ -k "user" -v                   # by keyword
-pytest tests/test_file.py::test_func -v      # single test
-pytest tests/ --cov=app --cov-report=html    # with coverage
-pytest tests/ -n auto                         # parallel
-```
+## Layering Rules
+- HTTP endpoints in `app/api/api_v1/endpoints/` validate input, enforce auth through dependencies, and delegate business logic to `app/services/`.
+- REST route composition lives in `app/api/api_v1/api.py`; app wiring, middleware, lifespan, and MCP mounts live in `app/factory.py`.
+- Business rules belong in `app/services/`. Reuse service functions from REST, MCP, and AI-agent surfaces instead of re-implementing them.
+- Persistence models live in `app/models/`; request and response shapes live in `app/schemas/`.
+- MCP servers and ChatGPT-specific tool wrappers live in `app/mcp/`. They may format tool responses, but authorization and state changes should still flow through shared services where possible.
+- AI-agent orchestration lives in `app/services/ai_agent/`. Tool registration and model streaming belong there, but tool behavior should still call shared service-layer code.
+- Cross-cutting infrastructure belongs in `app/core/`, `app/middleware/`, and `app/vector/`.
 
-### Data Population
-```bash
-python populate_data/load_comprehensive_data.py        # full dataset
-python populate_data/load_comprehensive_data.py --quick  # reduced data
-python populate_data/clear_all_data.py                 # clear data
-```
+## Contributor Requirements
+- New REST endpoint modules must be routed through `app/api/api_v1/api.py`, covered by tests, and registered in `docs/repo-contract.json`.
+- New service modules must follow existing naming conventions, keep I/O async when touching the database, and be registered in `docs/repo-contract.json`.
+- New MCP tools, widget bindings, or AI-agent tool bridges must update the architecture and terminology docs when they add a new public surface or execution pattern.
+- New background jobs or schedulers must be wired through `app/factory.py` startup and documented in the architecture contract.
+- Do not add new dependencies without checking current upstream documentation and compatibility with Python 3.10+, FastAPI, SQLAlchemy 2.x, and Pydantic v2.
 
-## Coding Style & Conventions
+## When To Update Docs
+- Any new public endpoint or router family
+- Any new service module or new nested service package
+- Any new MCP tool, widget bundle, or AI-agent tool bridge
+- Any new scheduler, background processing flow, or startup job
+- Any new top-level runtime directory under `app/`, `tests/`, or `docs/`
 
-### General
-- Python 3.10+, FastAPI, SQLAlchemy 2.x, Pydantic v2
-- PEP 8 with 4-space indentation, full type hints everywhere
-- **snake_case** for modules/functions/variables; **PascalCase** for classes
-
-### Imports (sorted alphabetically)
-```python
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List
-
-from app.core.database import get_db
-from app.schemas import UserSchema
-from app.services import UserService
-```
-
-### Error Handling
-- Use custom exceptions from `app/core/exceptions.py` (e.g., `UserNotFoundException`)
-- Global exception handlers in `app/main.py` return structured errors with codes
-- Never expose sensitive data in error responses
-
-### Async Patterns
-- All database operations use `async/await`
-- Services inject `AsyncSession` via FastAPI dependencies
-- Transaction context: `async with db.begin()` for atomic operations
-
-### API Structure
-- Endpoints in `app/api/api_v1/endpoints/*.py`
-- Wire via router in `app/api/api_v1/api.py`
-- Keep business logic in `app/services/`
-
-### Response Models
-- Pydantic schemas in `app/schemas/` with `Config.from_attributes = True`
-- Use `Optional[]` for nullable fields, avoid `Union[]`
-- Request models validate with `@field_validator`
-
-### Database
-- Async SQLAlchemy models in `app/models/`
-- PostGIS for geospatial queries, full-text search with `__ts_vector__`
-- Use repositories in `app/repositories/` for complex queries
-
-### Security
-- Supabase JWT authentication via `get_current_user` dependency (clients authenticate directly with Supabase)
-- Phone as primary identifier, role-based access (user/agent/admin)
-- Backend no longer exposes `/api/v1/auth/*` user-session endpoints; backend only verifies bearer access tokens and authorizes business routes
-- Rate limiting: 100 req/min global
-
-## Project Structure
-```
-app/
-  api/api_v1/endpoints/  # REST endpoints
-  services/              # async business logic
-  models/                # SQLAlchemy models
-  schemas/               # Pydantic schemas
-  core/                  # config, auth, db, exceptions
-  middleware/            # rate limit, security headers
-```
-
-## Agent-Specific Instructions
-- Keep changes minimal and localized to the module being modified
-- Follow existing patterns in the relevant Cursor rules (`.cursor/rules/`)
-- Do not introduce new dependencies without rationale
-- Never commit secrets; use `.env` and `app.core.config.settings`
-
-## Dependency & Documentation Policy
-
-- Always research and use the latest stable versions of dependencies — do not rely on cached or outdated knowledge
-- Before implementing any 3rd party integration, look up the current official documentation using web search or documentation tools (e.g., Context7 MCP)
-- Verify that new dependencies are compatible with Python 3.10+, FastAPI, SQLAlchemy 2.x, and Pydantic v2
-- Check changelogs and migration guides when upgrading dependencies to avoid breaking changes
+## Documentation Drift Checklist
+- New public endpoint
+- New service domain
+- New MCP tool or widget
+- New background or scheduler flow
+- If any item changed, update the relevant doc in `docs/` and `docs/repo-contract.json`

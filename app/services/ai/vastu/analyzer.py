@@ -5,10 +5,10 @@ This module provides the main analysis function that uses the AI provider abstra
 to analyze floor plan images for Vastu Shastra compliance.
 """
 
-from datetime import datetime
 from typing import Optional
 
 from app.core.logging import get_logger
+from app.core.utils import utc_now_iso
 from app.services.ai import (
     get_ai_provider,
     AIProviderType,
@@ -65,7 +65,7 @@ async def analyze_vastu(
         VastuAnalyzeResponse with structured analysis and markdown report
     """
     provider_name = request.provider or "gemini"
-    analyzed_at = datetime.utcnow().isoformat()
+    analyzed_at = utc_now_iso()
 
     try:
         # Get the appropriate AI provider

@@ -1,5 +1,4 @@
 import yaml
-from datetime import datetime
 
 from dotenv import load_dotenv
 from fastapi import Request, HTTPException, status
@@ -8,8 +7,8 @@ from sqlalchemy import text
 
 from app.factory import create_app
 from app.core.config import settings
-from app.core.exceptions import BaseAPIException
 from app.core.logging import get_logger, setup_logging
+from app.core.utils import utc_now_iso
 import sentry_sdk
 import sentry_sdk.integrations.fastapi
 import sentry_sdk.integrations.sqlalchemy
@@ -89,7 +88,7 @@ async def health_check():
                 if settings.ENVIRONMENT != "production"
                 else {}
             ),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now_iso(),
             "version": "2.0.0",
         }
     except Exception as e:
@@ -131,32 +130,6 @@ async def get_openapi_yaml():
     )
 
 
-@app.exception_handler(BaseAPIException)
-async def api_exception_handler(request: Request, exc: BaseAPIException):
-    """Handle custom API exceptions"""
-    logger.warning(f"API exception: {exc.detail} - {request.method} {request.url.path}")
-    detail_content = exc.detail
-    # Ensure message is always a string for logs/clients.
-    if isinstance(detail_content, dict):
-        message = str(detail_content.get("message") or detail_content.get("detail") or detail_content)
-    else:
-        message = str(detail_content)
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "detail": detail_content,
-            "error": {
-                "message": message,
-                "type": exc.__class__.__name__,
-                "path": str(request.url),
-                "method": request.method,
-                "timestamp": datetime.utcnow().isoformat(),
-                **exc.extra
-            }
-        },
-        headers=exc.headers
-    )
-
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
     """Handle validation errors"""
@@ -170,7 +143,7 @@ async def value_error_handler(request: Request, exc: ValueError):
                 "type": "ValidationError",
                 "path": str(request.url),
                 "method": request.method,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": utc_now_iso()
             }
         }
     )
@@ -195,7 +168,7 @@ async def general_exception_handler(request: Request, exc: Exception):
                 "type": "InternalServerError",
                 "path": str(request.url),
                 "method": request.method,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": utc_now_iso()
             }
         }
     )

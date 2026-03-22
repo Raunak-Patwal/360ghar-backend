@@ -183,9 +183,8 @@ class TestGetUserAgent:
         # Disable auto-assign
         result = await get_user_agent(db_session, test_user.id, auto_assign=False)
 
-        # Depends on whether user already has agent
-        # Just checking it returns properly
-        assert result is None or result is not None
+        # User has no agent assigned and auto_assign=False, so result should be None
+        assert result is None
 
 
 class TestAssignAgentToUser:

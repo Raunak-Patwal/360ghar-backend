@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.api_v1.dependencies.auth import (
     get_current_active_user,
     get_current_admin,
-    get_current_agent,
 )
 from app.core.database import get_db
 from app.models.enums import UserRole

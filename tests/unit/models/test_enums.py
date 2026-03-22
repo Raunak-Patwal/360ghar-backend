@@ -30,7 +30,6 @@ from app.models.enums import (
     WorkOrderStatus,
     DocumentType,
     InspectionType,
-    MessageThreadType,
 )
 
 
@@ -49,10 +48,15 @@ class TestPropertyType:
         assert PropertyType.penthouse.value == "penthouse"
         assert PropertyType.studio.value == "studio"
         assert PropertyType.loft.value == "loft"
+        assert PropertyType.pg.value == "pg"
+        assert PropertyType.flatmate.value == "flatmate"
+        assert PropertyType.office.value == "office"
+        assert PropertyType.shop.value == "shop"
+        assert PropertyType.warehouse.value == "warehouse"
 
     def test_property_type_count(self):
         """Test correct number of property types."""
-        assert len(PropertyType) == 10
+        assert len(PropertyType) == 15
 
     def test_property_type_is_str_enum(self):
         """Test PropertyType inherits from str."""
@@ -331,16 +335,6 @@ class TestInspectionType:
         assert InspectionType.move_in.value == "move_in"
         assert InspectionType.move_out.value == "move_out"
         assert InspectionType.routine.value == "routine"
-
-
-class TestMessageThreadType:
-    """Tests for MessageThreadType enum."""
-
-    def test_all_message_thread_types(self):
-        """Test all message thread types are defined."""
-        assert MessageThreadType.lease.value == "lease"
-        assert MessageThreadType.maintenance.value == "maintenance"
-        assert MessageThreadType.general.value == "general"
 
 
 class TestEnumStringBehavior:

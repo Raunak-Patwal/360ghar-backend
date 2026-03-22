@@ -6,7 +6,6 @@ hotspot suggestions, and description generation using the Gemini AI provider.
 """
 import asyncio
 import base64
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
@@ -25,6 +24,7 @@ from tenacity import (
 
 from app.core.database import get_async_session_factory
 from app.core.logging import get_logger
+from app.core.utils import utc_now
 from app.core.websocket import manager as ws_manager
 from app.models.enums import HotspotType, TourStatus
 from app.models.tours import AIJob, Hotspot, Scene, Tour
@@ -296,10 +296,10 @@ async def update_job_status(
         job.retry_count = (job.retry_count or 0) + 1
 
     if status == "processing" and not job.started_at:
-        job.started_at = datetime.utcnow()
+        job.started_at = utc_now()
 
     if status in ("completed", "failed", "cancelled"):
-        job.completed_at = datetime.utcnow()
+        job.completed_at = utc_now()
 
     if result:
         job.result = result
@@ -390,7 +390,7 @@ async def cancel_ai_job(
         return False
 
     job.status = "cancelled"
-    job.completed_at = datetime.utcnow()
+    job.completed_at = utc_now()
     await db.commit()
 
     logger.info(f"AI job cancelled: {job_id}")

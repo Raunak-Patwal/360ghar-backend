@@ -1,6 +1,6 @@
 from pathlib import Path
-from typing import Optional
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -14,27 +14,27 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str
     SUPABASE_URL: str
-    SENTRY_DSN: str
+    SENTRY_DSN: str | None = None
     SUPABASE_PUBLISHABLE_KEY: str
     SUPABASE_SECRET_KEY: str
     # API Keys for middleware (comma-separated)
     VALID_API_KEYS: str = ""
 
     # External AI/Search integrations
-    PERPLEXITY_API_KEY: Optional[str] = None
+    PERPLEXITY_API_KEY: str | None = None
     PERPLEXITY_MODEL: str = "sonar"
 
     # Image search via SerpAPI (Google Images)
-    SERPAPI_API_KEY: Optional[str] = None
+    SERPAPI_API_KEY: str | None = None
     SERPAPI_SEARCH_ENDPOINT: str = "https://serpapi.com/search.json"
 
     # Gemini AI settings
-    GOOGLE_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-3-flash-preview"
     GEMINI_EMBED_MODEL: str = "text-embedding-004"
 
     # GLM (ZhipuAI) API settings for Vastu and other AI features
-    GLM_API_KEY: Optional[str] = None
+    GLM_API_KEY: str | None = None
     GLM_API_URL: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
     GLM_MODEL: str = "glm-4.6v-flash"
 
@@ -45,14 +45,14 @@ class Settings(BaseSettings):
     AI_AGENT_MODEL: str = "glm-4.7-flash"  # ZhipuAI GLM-4.7-Flash
     # Note: Base URL excludes /chat/completions as Pydantic AI adds it automatically
     AI_AGENT_API_BASE: str = "https://open.bigmodel.cn/api/paas/v4"  # ZhipuAI base URL
-    AI_AGENT_FALLBACK_MODEL: Optional[str] = None
+    AI_AGENT_FALLBACK_MODEL: str | None = None
     AI_AGENT_MAX_TOKENS: int = 64096
     AI_AGENT_TEMPERATURE: float = 0.7
     AI_AGENT_MAX_HISTORY: int = 50
 
     # Vector sync settings
     VECTOR_SYNC_ENABLED: bool = True
-    VECTOR_SYNC_CRON: Optional[str] = "0 9 * * *"  # once daily at 9:00 AM
+    VECTOR_SYNC_CRON: str | None = "0 9 * * *"  # once daily at 9:00 AM
     VECTOR_SYNC_INTERVAL_SECONDS: int = 300  # used when CRON not provided
     VECTOR_SYNC_BATCH_SIZE: int = 500
     VECTOR_SYNC_MAX_RETRIES: int = 3
@@ -78,10 +78,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Public base URL for OAuth/MCP (set when behind ngrok or reverse proxy)
-    PUBLIC_BASE_URL: Optional[str] = None  # e.g., https://xyz.ngrok-free.app
+    PUBLIC_BASE_URL: str | None = None  # e.g., https://xyz.ngrok-free.app
 
     # Public base URL for the frontend app (used for share preview redirects)
-    PUBLIC_APP_URL: Optional[str] = None  # e.g., https://360viewer.360ghar.com
+    PUBLIC_APP_URL: str | None = None  # e.g., https://360viewer.360ghar.com
 
     # Cache configuration
     CACHE_BACKEND: str = "memory"  # "memory" or "redis"
@@ -113,18 +113,33 @@ class Settings(BaseSettings):
     ENABLE_NOTIF_SCHEDULER: bool = False
     NOTIF_SCHED_TZ: str = "Asia/Kolkata"
 
+    # Automated blog publishing
+    AUTO_BLOG_ENABLED: bool = False
+    AUTO_BLOG_CRON: str = "0 20 * * *"
+    AUTO_BLOG_TIMEZONE: str = "Asia/Kolkata"
+    AUTO_BLOG_PUBLISHER_USER_ID: int | None = None
+    AUTO_BLOG_MAX_POSTS_PER_RUN: int = 3
+    AUTO_BLOG_MODEL: str = "sonar"
+
+    @field_validator("AUTO_BLOG_PUBLISHER_USER_ID", mode="before")
+    @classmethod
+    def _blank_auto_blog_publisher_user_id_is_none(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     # Email notifications (generic provider config)
-    EMAIL_SENDER_ADDRESS: Optional[str] = None
-    EMAIL_SENDER_NAME: Optional[str] = None
-    EMAIL_SMTP_HOST: Optional[str] = None
+    EMAIL_SENDER_ADDRESS: str | None = None
+    EMAIL_SENDER_NAME: str | None = None
+    EMAIL_SMTP_HOST: str | None = None
     EMAIL_SMTP_PORT: int = 587
-    EMAIL_SMTP_USERNAME: Optional[str] = None
-    EMAIL_SMTP_PASSWORD: Optional[str] = None
+    EMAIL_SMTP_USERNAME: str | None = None
+    EMAIL_SMTP_PASSWORD: str | None = None
 
     # SMS notifications (generic provider config)
-    SMS_PROVIDER_API_URL: Optional[str] = None
-    SMS_PROVIDER_API_KEY: Optional[str] = None
-    SMS_SENDER_ID: Optional[str] = None
+    SMS_PROVIDER_API_URL: str | None = None
+    SMS_PROVIDER_API_KEY: str | None = None
+    SMS_SENDER_ID: str | None = None
 
     # CORS settings
     CORS_ORIGINS: list = [

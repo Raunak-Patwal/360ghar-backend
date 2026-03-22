@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.logging import get_logger
+from app.core.utils import utc_now
 from app.models.enums import HotspotType, TourStatus, TourVisibility
 from app.models.tours import FloorPlan, Hotspot, Scene, Tour, TourAnalyticsEvent
 from app.schemas.tour import (
@@ -492,7 +493,7 @@ async def delete_tour(db: AsyncSession, tour_id: str, user_id: int) -> bool:
     tour = await get_tour(db, tour_id, user_id, include_scenes=False)
     _ensure_tour_ownership(tour, user_id, "delete")
 
-    tour.deleted_at = datetime.utcnow()
+    tour.deleted_at = utc_now()
     tour.status = TourStatus.archived
     await db.commit()
 
@@ -512,7 +513,7 @@ async def publish_tour(db: AsyncSession, tour_id: str, user_id: int) -> Tour:
         )
 
     tour.status = TourStatus.published
-    tour.published_at = datetime.utcnow()
+    tour.published_at = utc_now()
     tour.is_public = True
 
     await db.commit()
@@ -1142,8 +1143,6 @@ async def get_tour_heatmap(
     Returns:
         Dictionary with scene_ids as keys and lists of heatmap points
     """
-    from datetime import datetime
-
     # Query heatmap events
     conditions = [TourAnalyticsEvent.tour_id == tour_id, TourAnalyticsEvent.event_type == "heatmap"]
 
@@ -1152,12 +1151,12 @@ async def get_tour_heatmap(
 
     if start_date:
         conditions.append(
-            TourAnalyticsEvent.created_at >= datetime.combine(start_date, datetime.min.time())
+            TourAnalyticsEvent.created_at >= datetime.combine(start_date, time.min, tzinfo=timezone.utc)
         )
 
     if end_date:
         conditions.append(
-            TourAnalyticsEvent.created_at <= datetime.combine(end_date, datetime.max.time())
+            TourAnalyticsEvent.created_at <= datetime.combine(end_date, time.max, tzinfo=timezone.utc)
         )
 
     query = select(TourAnalyticsEvent).where(and_(*conditions))
@@ -1262,9 +1261,7 @@ async def get_dashboard_realtime_stats(
     user_id: int,
 ) -> dict:
     """Get realtime dashboard metrics for tours."""
-    from datetime import datetime, timedelta
-
-    now = datetime.utcnow()
+    now = utc_now()
     last_hour = now - timedelta(hours=1)
     active_window = now - timedelta(minutes=5)
 

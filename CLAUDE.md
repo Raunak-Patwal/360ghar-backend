@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Platform Overview
 
-360 Ghar is a unified real estate platform with three integrated modules:
+360 Ghar is a unified real estate platform with four integrated modules:
 
 - **360 Ghar Core**: Real estate marketplace for buying and renting properties with swipe-based discovery, property visits, and agent coordination (`/api/v1/properties`, `/swipes`, `/visits`, `/agents`)
 - **360 Stays**: Short-stay booking platform for hotels, vacation rentals, and temporary accommodations (`/api/v1/bookings`)
 - **Property Management**: Comprehensive property management system for landlords and property managers (`/api/v1/pm/*`)
+- **360 Virtual Tours**: Immersive 360° property tour platform with AI-powered hotspot generation and scene management (`/api/v1/tours`)
 
 ## Build and Development Commands
 
@@ -58,11 +59,13 @@ supabase db diff    # Check pending changes
 app/
 ├── api/api_v1/endpoints/   # REST endpoints (thin controllers)
 ├── services/               # Async business logic (main logic layer)
-├── repositories/           # Complex database queries
+│   └── ai/                 # AI service providers (vastu, gemini, glm)
+├── repositories/           # Complex database queries (PropertyRepository, BaseRepository)
 ├── models/                 # SQLAlchemy ORM models
 ├── schemas/                # Pydantic request/response validation
-├── core/                   # Config, auth, database, exceptions, logging
-└── middleware/             # Rate limiting, security headers
+├── mcp/                    # MCP servers (user_server, admin_server, chatgpt widgets)
+├── core/                   # Config, auth, database, exceptions, logging, websocket
+└── middleware/             # Rate limiting, security headers, trailing slash
 ```
 
 ### Key Patterns
@@ -109,6 +112,10 @@ async def get_properties(
 | Custom exceptions | `app/core/exceptions.py` |
 | Settings | `app/core/config.py` |
 | Migrations | `supabase/migrations/` |
+| Blog auto-publish | `app/services/blog_auto_publish.py`, `app/services/blog_auto_publish_scheduler.py` |
+| Notification dispatcher | `app/services/notification_dispatcher.py` |
+| Vastu AI analyzer | `app/services/ai/vastu/analyzer.py` |
+| AI agent chat | `app/services/agent.py` (agent chat endpoint) |
 
 ## Coding Conventions
 
@@ -130,21 +137,54 @@ async def get_properties(
 
 ## Database Models
 
-**Core entities**: User, Property, Agent, Booking, Visit, UserSwipe, Amenity
+**Core entities**: User, Property, Agent, AgentInteraction, Booking, Visit, UserSwipe, Amenity
 
-**Property Management entities**: Lease, RentalApplication, RentCharge, RentPayment, Expense, MaintenanceRequest, Document, Inspection
+**Blog entities**: BlogPost, BlogCategory, BlogTag, BlogPostCategory, BlogPostTag
+
+**360 Virtual Tour entities**: Tour, Scene, Hotspot, TourAnalyticsEvent, AIJob, MediaFile, FloorPlan, TourBranding, CustomDomain, VideoMetadata
+
+**Property Management entities**: Lease, RentalApplication, RentalApplicationForm, RentCharge, RentPayment, Expense, MaintenanceRequest, Document, InspectionChecklist
+
+**AI entities**: AIConversation, AIConversationMessage
 
 **Key relationships**:
-- User → Properties (as owner), Swipes, Visits, Bookings
+- User → Properties (as owner), Swipes, Visits, Bookings, Tours
 - Property → Images, Amenities (M2M via PropertyAmenity), Visits, Bookings
-- Agent → User (1:1), Visits
+- Agent → Users (1:many), Visits, AgentInteractions
 - Property (managed) → Leases, Tenants, Rent, Maintenance, Documents
 
 **Enums** (in `app/models/enums.py`):
-- PropertyType: house, apartment, builder_floor, room
+- PropertyType: house, apartment, builder_floor, room, villa, plot, condo, penthouse, studio, loft, pg, flatmate, office, shop, warehouse
 - PropertyPurpose: buy, rent, short_stay
 - BookingStatus: pending, confirmed, checked_in, checked_out, cancelled, completed
 - VisitStatus: scheduled, confirmed, completed, cancelled, rescheduled
+- LeaseStatus: draft, active, expired, terminated
+- MaintenanceCategory, MaintenanceUrgency, MaintenanceRequestStatus, WorkOrderStatus
+- TourStatus, SceneType, HotspotType, AIJobStatus
+- DocumentType, InspectionType, TenantStatus, ExpenseCategory
+- UserRole: user, agent, admin
+- AgentType, ExperienceLevel
+
+## Test Structure
+
+```
+tests/
+├── api/                    # Endpoint integration tests
+├── unit/
+│   ├── core/               # Auth, config unit tests
+│   ├── models/             # Model/enum tests
+│   ├── schemas/            # Schema validation tests
+│   ├── services/           # Service layer unit tests
+│   └── mcp/                # MCP server tests
+├── integration/            # Full-stack DB integration tests (PostGIS, FTS)
+├── e2e/                    # End-to-end flow tests
+├── pm/                     # Property management tests
+├── middleware/             # Middleware tests
+└── fixtures/               # Shared fixtures (auth, factories, mocks, data)
+```
+
+Run with coverage: `pytest tests/ --cov=app --cov-report=html`
+Dev dependencies (pytest, ruff, mypy) are in the `dev` optional group: `pip install ".[dev]"`
 
 ## Security
 

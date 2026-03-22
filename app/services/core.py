@@ -2,8 +2,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, desc, and_, or_
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 
+from app.core.exceptions import NotFoundException, ValidationException
+from app.core.utils import utc_now
 from app.models.core import BugReport, Page, AppVersion, FAQ
 from app.models.users import User
 from app.models.enums import BugStatus, PageFormat, BugType
@@ -14,7 +15,6 @@ from app.schemas.core import (
     AppVersionCheckRequest, AppVersionCheckResponse,
     FAQCreate, FAQUpdate, FAQResponse
 )
-from app.core.exceptions import NotFoundException, ValidationException
 
 class CoreService:
     def __init__(self, db: AsyncSession):
@@ -94,7 +94,7 @@ class CoreService:
 
         # If status is being changed to resolved, set resolved_at
         if update_dict.get('status') == BugStatus.resolved and bug_report.status != BugStatus.resolved:
-            update_dict['resolved_at'] = datetime.utcnow()
+            update_dict['resolved_at'] = utc_now()
 
         # Update the bug report
         query = (

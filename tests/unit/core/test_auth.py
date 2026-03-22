@@ -24,6 +24,7 @@ class TestGetSupabaseClients:
 
             assert mock_create.call_count == 1
             assert client_one is client_two
+            assert mock_create.call_args.kwargs["options"].httpx_client is not None
 
     def test_get_supabase_auth_client_requires_publishable_key(self):
         import app.core.auth as auth_module
@@ -47,6 +48,22 @@ class TestGetSupabaseClients:
 
             assert mock_create.call_count == 1
             assert client_one is client_two
+            assert mock_create.call_args.kwargs["options"].httpx_client is not None
+
+    def test_get_supabase_storage_client_creates_singleton(self):
+        with patch("app.core.auth.create_client") as mock_create:
+            mock_client = MagicMock()
+            mock_create.return_value = mock_client
+
+            import app.core.auth as auth_module
+
+            auth_module._supabase_storage_client = None
+            client_one = auth_module.get_supabase_storage_client()
+            client_two = auth_module.get_supabase_storage_client()
+
+            assert mock_create.call_count == 1
+            assert client_one is client_two
+            assert mock_create.call_args.kwargs["options"].httpx_client is not None
 
 
 class TestVerifySupabaseToken:

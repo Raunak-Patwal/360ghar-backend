@@ -1,16 +1,29 @@
 from typing import Any, Dict, Optional
 
 import httpx
-from supabase import Client, create_client
+from supabase import Client, ClientOptions, create_client
 
 from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+SUPABASE_AUTH_TIMEOUT = 10.0
+SUPABASE_DATA_TIMEOUT = 120.0
+SUPABASE_STORAGE_TIMEOUT = 20.0
+
 # Supabase client for auth only
-_supabase_client: Client = None
-_supabase_service_client: Client = None
+_supabase_client: Optional[Client] = None
+_supabase_service_client: Optional[Client] = None
+_supabase_storage_client: Optional[Client] = None
+
+
+def _build_supabase_http_client(timeout: float) -> httpx.Client:
+    return httpx.Client(timeout=timeout, follow_redirects=True, http2=True)
+
+
+def _build_client_options(timeout: float) -> ClientOptions:
+    return ClientOptions(httpx_client=_build_supabase_http_client(timeout))
 
 
 def get_supabase_auth_client() -> Client:
@@ -22,15 +35,36 @@ def get_supabase_auth_client() -> Client:
             raise ValueError(
                 "Missing Supabase publishable key. Set SUPABASE_PUBLISHABLE_KEY."
             )
-        _supabase_client = create_client(settings.SUPABASE_URL, key)
+        _supabase_client = create_client(
+            settings.SUPABASE_URL,
+            key,
+            options=_build_client_options(SUPABASE_AUTH_TIMEOUT),
+        )
     return _supabase_client
+
 
 def get_supabase_service_client() -> Client:
     """Get Supabase client using service role key for server-side DB ops"""
     global _supabase_service_client
     if _supabase_service_client is None:
-        _supabase_service_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
+        _supabase_service_client = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SECRET_KEY,
+            options=_build_client_options(SUPABASE_DATA_TIMEOUT),
+        )
     return _supabase_service_client
+
+
+def get_supabase_storage_client() -> Client:
+    """Get Supabase client configured for server-side storage operations."""
+    global _supabase_storage_client
+    if _supabase_storage_client is None:
+        _supabase_storage_client = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SECRET_KEY,
+            options=_build_client_options(SUPABASE_STORAGE_TIMEOUT),
+        )
+    return _supabase_storage_client
 
 
 async def verify_supabase_token(token: str) -> Optional[Dict[str, Any]]:

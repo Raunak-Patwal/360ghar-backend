@@ -38,11 +38,29 @@ class PropertyPopulator(BasePopulator):
         location = LOCATIONS[location_key]
         
         # Property types and their characteristics
-        property_types = [PropertyType.apartment, PropertyType.house, PropertyType.builder_floor, PropertyType.room]
-        purposes = [PropertyPurpose.buy, PropertyPurpose.rent, PropertyPurpose.short_stay]
+        property_types = [
+            PropertyType.apartment,
+            PropertyType.house,
+            PropertyType.builder_floor,
+            PropertyType.room,
+            PropertyType.villa,
+            PropertyType.plot,
+            PropertyType.pg,
+            PropertyType.flatmate,
+            PropertyType.office,
+            PropertyType.shop,
+            PropertyType.warehouse,
+        ]
         
         property_type = random.choice(property_types)
-        purpose = random.choice(purposes)
+        if property_type in {PropertyType.pg, PropertyType.flatmate}:
+            purpose = PropertyPurpose.rent
+        elif property_type in {PropertyType.office, PropertyType.shop, PropertyType.warehouse, PropertyType.plot}:
+            purpose = random.choice([PropertyPurpose.buy, PropertyPurpose.rent])
+        elif property_type == PropertyType.room:
+            purpose = random.choice([PropertyPurpose.rent, PropertyPurpose.short_stay])
+        else:
+            purpose = random.choice([PropertyPurpose.buy, PropertyPurpose.rent, PropertyPurpose.short_stay])
         
         # Generate location within city bounds
         # Add some random offset to create variety around the city center
@@ -60,6 +78,14 @@ class PropertyPopulator(BasePopulator):
             area_sqft = random.randint(200, 400)
             bedrooms = 1
             bathrooms = 1
+        elif property_type == PropertyType.pg:
+            area_sqft = random.randint(180, 450)
+            bedrooms = 1
+            bathrooms = 1
+        elif property_type == PropertyType.flatmate:
+            area_sqft = random.randint(450, 1400)
+            bedrooms = random.randint(1, 3)
+            bathrooms = random.randint(1, max(1, bedrooms))
         elif property_type == PropertyType.apartment:
             area_sqft = random.randint(600, 2500)
             bedrooms = random.randint(1, 4)
@@ -68,6 +94,26 @@ class PropertyPopulator(BasePopulator):
             area_sqft = random.randint(1200, 3000)
             bedrooms = random.randint(2, 4)
             bathrooms = random.randint(2, 4)
+        elif property_type == PropertyType.villa:
+            area_sqft = random.randint(1800, 5000)
+            bedrooms = random.randint(3, 6)
+            bathrooms = random.randint(3, 6)
+        elif property_type == PropertyType.plot:
+            area_sqft = random.randint(1000, 6000)
+            bedrooms = None
+            bathrooms = None
+        elif property_type == PropertyType.office:
+            area_sqft = random.randint(500, 5000)
+            bedrooms = None
+            bathrooms = random.randint(1, 4)
+        elif property_type == PropertyType.shop:
+            area_sqft = random.randint(150, 1200)
+            bedrooms = None
+            bathrooms = random.randint(1, 2)
+        elif property_type == PropertyType.warehouse:
+            area_sqft = random.randint(1500, 20000)
+            bedrooms = None
+            bathrooms = random.randint(1, 2)
         else:  # house
             area_sqft = random.randint(1500, 5000)
             bedrooms = random.randint(2, 6)
@@ -82,11 +128,25 @@ class PropertyPopulator(BasePopulator):
             base_price = int(base_price * 1.2)
         elif property_type == PropertyType.room:
             base_price = int(base_price * 0.7)
+        elif property_type == PropertyType.pg:
+            base_price = int(base_price * 0.45)
+        elif property_type == PropertyType.flatmate:
+            base_price = int(base_price * 0.75)
+        elif property_type == PropertyType.plot:
+            base_price = int(base_price * 0.85)
+        elif property_type == PropertyType.warehouse:
+            base_price = int(base_price * 0.9)
         
         # Calculate other prices
         monthly_rent = int(base_price * 0.001) if purpose in [PropertyPurpose.rent, PropertyPurpose.short_stay] else None
         daily_rate = int(monthly_rent / 30) if purpose == PropertyPurpose.short_stay and monthly_rent else None
         security_deposit = int(monthly_rent * 2) if monthly_rent else None
+        listing_preferences = None
+        if property_type in {PropertyType.pg, PropertyType.flatmate}:
+            listing_preferences = {
+                "gender_preference": random.choice(["any", "male", "female"]),
+                "sharing_type": random.choice(["private_room", "shared_room"]),
+            }
         
         # We'll add amenities separately after property creation
         
@@ -94,27 +154,55 @@ class PropertyPopulator(BasePopulator):
         property_type_str = property_type.value.replace('_', ' ').title()
         purpose_str = purpose.value.replace('_', ' ').title()
         
-        titles = [
-            f"Beautiful {bedrooms}BHK {property_type_str}",
-            f"Spacious {bedrooms}BHK in {locality}",
-            f"Premium {property_type_str} for {purpose_str}",
-            f"Luxury {bedrooms}BHK with Modern Amenities",
-            f"Well-maintained {property_type_str} in Prime Location"
-        ]
+        if property_type == PropertyType.pg:
+            titles = [
+                f"Fully Managed PG in {locality}",
+                f"Comfortable PG Stay near {random.choice(location.landmarks)}",
+                f"Premium PG Accommodation for Professionals",
+            ]
+        elif property_type == PropertyType.flatmate:
+            titles = [
+                f"Flatmate Opening in {locality}",
+                f"Looking for Flatmate near {random.choice(location.landmarks)}",
+                f"Shared Apartment Flatmate Slot in {locality}",
+            ]
+        elif property_type in {PropertyType.office, PropertyType.shop, PropertyType.warehouse, PropertyType.plot}:
+            titles = [
+                f"Premium {property_type_str} in {locality}",
+                f"{property_type_str} Opportunity near {random.choice(location.landmarks)}",
+                f"Prime {property_type_str} for {purpose_str}",
+            ]
+        else:
+            bedroom_label = f"{bedrooms}BHK" if bedrooms else property_type_str
+            titles = [
+                f"Beautiful {bedroom_label} {property_type_str}",
+                f"Spacious {bedroom_label} in {locality}",
+                f"Premium {property_type_str} for {purpose_str}",
+                f"Luxury {bedroom_label} with Modern Amenities",
+                f"Well-maintained {property_type_str} in Prime Location",
+            ]
         title = random.choice(titles)
         
         # Generate description
+        detail_lines = [
+            f"- Prime location in {locality}",
+            f"- {area_sqft} sq ft carpet area",
+        ]
+        if bedrooms:
+            detail_lines.append(f"- {bedrooms} spacious bedrooms")
+        if bathrooms:
+            detail_lines.append(f"- {bathrooms} modern bathrooms")
+        detail_lines.append(
+            f"- {'Parking available' if random.choice([True, False]) else 'Street parking'}"
+        )
+
         description = f"""
 {title} located in the heart of {locality}, {location.name}. 
 
-This well-designed {property_type.value.replace('_', ' ')} offers {area_sqft} sq ft of living space with {bedrooms} bedrooms and {bathrooms} bathrooms. Perfect for {purpose.value.replace('_', ' ')}.
+This well-designed {property_type.value.replace('_', ' ')} offers {area_sqft} sq ft of space{' with ' + str(bedrooms) + ' bedrooms' if bedrooms else ''}{' and ' + str(bathrooms) + ' bathrooms' if bathrooms else ''}. Perfect for {purpose.value.replace('_', ' ')}.
 
 Key Features:
-- Prime location in {locality}
-- {area_sqft} sq ft carpet area
-- {bedrooms} spacious bedrooms
-- {bathrooms} modern bathrooms
-- {'Parking available' if random.choice([True, False]) else 'Street parking'}
+{chr(10).join(detail_lines)}
 
 Modern amenities available for a comfortable living experience.
 
@@ -131,6 +219,16 @@ Modern amenities available for a comfortable living experience.
             features.append("24/7 Security")
         if purpose == PropertyPurpose.short_stay:
             features.extend(["WiFi", "AC", "Kitchen"])
+        if property_type == PropertyType.pg:
+            features.extend(["WiFi", "Housekeeping", "Meals Included"])
+        if property_type == PropertyType.flatmate:
+            features.extend(["Shared Kitchen", "Furnished", "WiFi"])
+        if property_type == PropertyType.office:
+            features.extend(["Power Backup", "Reception Area"])
+        if property_type == PropertyType.shop:
+            features.extend(["Main Road Facing", "Display Frontage"])
+        if property_type == PropertyType.warehouse:
+            features.extend(["Loading Bay", "High Ceiling"])
         
         # Create WKT location string for PostGIS
         location_wkt = f'SRID=4326;POINT({longitude} {latitude})'
@@ -174,9 +272,14 @@ Modern amenities available for a comfortable living experience.
             "floor_number": random.randint(1, 20),
             "total_floors": random.randint(5, 25),
             "age_of_property": random.randint(0, 20),
+            "listing_preferences": listing_preferences,
             
             # Short stay specific
-            "max_occupancy": bedrooms * 2 if purpose == PropertyPurpose.short_stay else None,
+            "max_occupancy": (
+                random.randint(1, 4)
+                if property_type in {PropertyType.pg, PropertyType.flatmate}
+                else (bedrooms * 2 if purpose == PropertyPurpose.short_stay and bedrooms else None)
+            ),
             "minimum_stay_days": random.randint(1, 30) if purpose == PropertyPurpose.short_stay else 1,
             
             # Features
@@ -191,8 +294,26 @@ Modern amenities available for a comfortable living experience.
             "available_from": datetime.now(timezone.utc),
             
             # SEO and tags
-            "tags": [property_type.value, purpose.value, locality, f"{bedrooms}bhk"],
-            "search_keywords": f"{property_type.value} {purpose.value} {locality} {bedrooms}bhk {location.name}",
+            "tags": [
+                property_type.value,
+                purpose.value,
+                locality,
+                *( [f"{bedrooms}bhk"] if bedrooms else [] ),
+                *( [listing_preferences["gender_preference"]] if listing_preferences else [] ),
+            ],
+            "search_keywords": " ".join(
+                part
+                for part in [
+                    property_type.value,
+                    purpose.value,
+                    locality,
+                    f"{bedrooms}bhk" if bedrooms else None,
+                    location.name,
+                    listing_preferences["gender_preference"] if listing_preferences else None,
+                    listing_preferences["sharing_type"] if listing_preferences else None,
+                ]
+                if part
+            ),
             
             # Owner/Builder info
             "owner_name": f"Owner {index + 1}",

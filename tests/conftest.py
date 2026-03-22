@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from app.core.database import Base
+from app.core.utils import utc_now_iso
 from app.factory import create_app
 
 # Import all models to ensure they're registered with SQLAlchemy
@@ -160,7 +161,6 @@ async def test_app(db_session: AsyncSession):
     """
     from app.core.database import get_db
     from app.core.config import settings
-    from datetime import datetime
 
     app = create_app(testing=True)
 
@@ -179,7 +179,7 @@ async def test_app(db_session: AsyncSession):
         return {
             "status": "healthy",
             "database": "connected",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now_iso(),
             "version": "2.0.0",
         }
 

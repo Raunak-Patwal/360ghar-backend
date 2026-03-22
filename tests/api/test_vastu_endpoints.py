@@ -5,13 +5,13 @@ These tests verify the vastu-related API endpoints work correctly.
 They mock the service layer to isolate endpoint testing.
 """
 
-from datetime import datetime
 from io import BytesIO
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 
+from app.core.utils import utc_now_iso
 from app.services.ai.vastu import (
     VastuAnalyzeResponse,
     VastuAnalysisResult,
@@ -60,7 +60,7 @@ def create_mock_vastu_response(
             warning_count=0,
             critical_warnings=False,
             provider_used="gemini",
-            analyzed_at=datetime.utcnow().isoformat(),
+            analyzed_at=utc_now_iso(),
         )
     else:
         return VastuAnalyzeResponse(
@@ -72,7 +72,7 @@ def create_mock_vastu_response(
             warning_count=0,
             critical_warnings=False,
             provider_used="gemini",
-            analyzed_at=datetime.utcnow().isoformat(),
+            analyzed_at=utc_now_iso(),
         )
 
 

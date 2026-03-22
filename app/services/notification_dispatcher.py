@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
+from app.core.utils import utc_now_iso
 from app.models.users import User as UserModel
 from app.services.email import send_email
 from app.services.notification_config import (
@@ -107,7 +107,7 @@ async def dispatch_notification_to_user(
         "type_key": cfg.key,
         "title": title,
         "body": body,
-        "sent_at": datetime.utcnow().isoformat(),
+        "sent_at": utc_now_iso(),
         "channels": {},
     }
 

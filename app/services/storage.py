@@ -13,7 +13,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_supabase_service_client
+from app.core.auth import get_supabase_storage_client
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.tours import MediaFile
@@ -37,7 +37,7 @@ class StorageService:
 
     def __init__(self):
         # Server-side storage operations should use the service role key.
-        self.supabase = get_supabase_service_client()
+        self.supabase = get_supabase_storage_client()
         self.bucket_name = settings.SUPABASE_STORAGE_BUCKET
 
         self._valid_image_types = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}

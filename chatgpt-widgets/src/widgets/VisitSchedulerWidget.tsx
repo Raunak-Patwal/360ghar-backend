@@ -7,6 +7,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { useToolOutput, useTheme, useCallTool, useSendMessage, useRequestClose } from '../utils/bridge';
+import { formatDateOnlyForApi, localInputToServerTimestamp, parseServerTimestamp } from '../utils/datetime';
 import { themeColors } from '../utils/theme';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
@@ -38,7 +39,7 @@ interface SchedulerOutput {
 }
 
 function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = parseServerTimestamp(dateStr) ?? new Date(dateStr);
   return date.toLocaleDateString('en-IN', {
     weekday: 'long',
     year: 'numeric',
@@ -48,7 +49,7 @@ function formatDate(dateStr: string): string {
 }
 
 function formatTime(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = parseServerTimestamp(dateStr) ?? new Date(dateStr);
   return date.toLocaleTimeString('en-IN', {
     hour: '2-digit',
     minute: '2-digit',
@@ -73,7 +74,7 @@ function VisitSchedulerWidget() {
   // Set minimum date to tomorrow
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const minDate = tomorrow.toISOString().split('T')[0];
+  const minDate = formatDateOnlyForApi(tomorrow) ?? '';
 
   // Available time slots
   const timeSlots = [
@@ -219,7 +220,11 @@ function VisitSchedulerWidget() {
     setError(null);
 
     try {
-      const scheduledDate = `${selectedDate}T${selectedTime}:00`;
+      const scheduledDate = localInputToServerTimestamp(`${selectedDate}T${selectedTime}`);
+      if (!scheduledDate) {
+        setError('Please select a valid date and time');
+        return;
+      }
       const result = await callTool('visits.schedule', {
         property_id: property.id,
         scheduled_date: scheduledDate,

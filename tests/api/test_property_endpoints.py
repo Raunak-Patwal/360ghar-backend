@@ -11,7 +11,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
-from app.models.enums import PropertyType, PropertyPurpose, PropertyStatus
+from app.models.enums import (
+    ListingGenderPreference,
+    ListingSharingType,
+    PropertyPurpose,
+    PropertyStatus,
+    PropertyType,
+)
 from app.schemas.property import Property
 
 
@@ -44,6 +50,7 @@ def create_mock_property(
         bathrooms=2,
         balconies=1,
         parking_spaces=1,
+        listing_preferences=None,
         status=PropertyStatus.available,
         is_available=True,
         view_count=0,
@@ -95,6 +102,24 @@ class TestCreateProperty:
             assert response.status_code == 200
             data = response.json()
             assert data["title"] == "Test Property"
+
+    @pytest.mark.asyncio
+    async def test_create_pg_property_rejects_non_rent_purpose(
+        self,
+        authenticated_client: AsyncClient,
+    ):
+        """Test PG body validation rejects non-rent purposes."""
+        response = await authenticated_client.post(
+            "/api/v1/properties/",
+            json={
+                "title": "Invalid PG Listing",
+                "property_type": "pg",
+                "purpose": "buy",
+                "base_price": 18000,
+            },
+        )
+
+        assert response.status_code == 422
 
     @pytest.mark.asyncio
     async def test_create_property_unauthenticated(self, client: AsyncClient):
@@ -201,6 +226,33 @@ class TestListProperties:
             assert response.status_code == 200
             filters = mock_list.await_args.args[1]
             assert filters.property_ids == [1, 2, 5]
+
+    @pytest.mark.asyncio
+    async def test_list_properties_with_listing_preference_filters(
+        self,
+        client: AsyncClient,
+    ):
+        """Test property listing parses specialized listing filters."""
+        with patch(
+            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            new_callable=AsyncMock,
+        ) as mock_list:
+            mock_list.return_value = {"items": [], "total": 0, "total_pages": 0}
+
+            response = await client.get(
+                "/api/v1/properties",
+                params=[
+                    ("property_type", "flatmate"),
+                    ("gender_preference", "female"),
+                    ("sharing_type", "shared_room"),
+                ],
+            )
+
+            assert response.status_code == 200
+            filters = mock_list.await_args.args[1]
+            assert filters.property_type == [PropertyType.flatmate]
+            assert filters.gender_preference == ListingGenderPreference.female
+            assert filters.sharing_type == ListingSharingType.shared_room
 
 
 class TestGetProperty:

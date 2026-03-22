@@ -7,10 +7,28 @@ from app.models.enums import (
     PropertyPurpose,
     PropertyStatus,
     ImageCategory,
+    ListingGenderPreference,
+    ListingSharingType,
 )
 from app.utils.validators import ValidationUtils
 from app.schemas.amenity import PropertyAmenityResponse
 from enum import Enum
+
+
+PG_FLATMATE_TYPES = {PropertyType.pg, PropertyType.flatmate}
+
+
+def _validate_listing_contract(property_type: PropertyType, purpose: PropertyPurpose) -> None:
+    if property_type in PG_FLATMATE_TYPES and purpose != PropertyPurpose.rent:
+        raise ValueError("PG and flatmate listings must use purpose 'rent'")
+
+
+class ListingPreferences(BaseModel):
+    gender_preference: Optional[ListingGenderPreference] = None
+    sharing_type: Optional[ListingSharingType] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class PropertyImageBase(BaseModel):
     image_url: str
@@ -53,6 +71,7 @@ class PropertyBase(BaseModel):
     bathrooms: Optional[int] = None
     balconies: Optional[int] = None
     parking_spaces: Optional[int] = None
+    listing_preferences: Optional[ListingPreferences] = None
     video_urls: Optional[List[str]] = None
     google_street_view_url: Optional[str] = None
     floor_plan_url: Optional[str] = None
@@ -134,17 +153,21 @@ class PropertyCreate(PropertyBase):
     def validate_coordinates(self):
         if self.latitude is not None and self.longitude is not None:
             ValidationUtils.validate_coordinates(self.latitude, self.longitude)
+        _validate_listing_contract(self.property_type, self.purpose)
         return self
     
 
 class PropertyUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    property_type: Optional[PropertyType] = None
+    purpose: Optional[PropertyPurpose] = None
     base_price: Optional[float] = None
     status: Optional[PropertyStatus] = None
     is_available: Optional[bool] = None
     amenity_ids: Optional[List[int]] = None
     features: Optional[List[str]] = None
+    listing_preferences: Optional[ListingPreferences] = None
     calendar_data: Optional[Dict[str, Any]] = None
     main_image_url: Optional[str] = None
     virtual_tour_url: Optional[str] = None
@@ -191,6 +214,7 @@ class PropertyInDB(PropertyBase):
     max_occupancy: Optional[int] = None
     minimum_stay_days: Optional[int] = None
     features: Optional[List[str]] = None
+    listing_preferences: Optional[ListingPreferences] = None
     main_image_url: Optional[str] = None
     virtual_tour_url: Optional[str] = None
     is_available: bool
@@ -246,6 +270,8 @@ class PropertyFilter(BaseModel):
     city: Optional[str] = None
     locality: Optional[str] = None
     amenity_ids: Optional[List[int]] = None
+    gender_preference: Optional[ListingGenderPreference] = None
+    sharing_type: Optional[ListingSharingType] = None
     max_distance_km: Optional[int] = 5
     available_from: Optional[str] = None
     
@@ -301,6 +327,8 @@ class UnifiedPropertyFilter(BaseModel):
     pincode: Optional[str] = None
     amenities: Optional[List[str]] = None
     features: Optional[List[str]] = None
+    gender_preference: Optional[ListingGenderPreference] = None
+    sharing_type: Optional[ListingSharingType] = None
     
     available_from: Optional[str] = None
     check_in_date: Optional[str] = None

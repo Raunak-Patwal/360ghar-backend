@@ -8,7 +8,7 @@ from typing import Dict, Set, Any, Optional
 import asyncio
 import json
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
 from app.core.logging import get_logger
@@ -51,20 +51,22 @@ class ConnectionManager:
             self.user_connections[user_id].add(websocket)
         logger.debug(f"WebSocket connected for user {user_id}")
 
-    def disconnect_job(self, websocket: WebSocket, job_id: str) -> None:
+    async def disconnect_job(self, websocket: WebSocket, job_id: str) -> None:
         """Disconnect a websocket from job updates."""
-        if job_id in self.job_connections:
-            self.job_connections[job_id].discard(websocket)
-            if not self.job_connections[job_id]:
-                del self.job_connections[job_id]
+        async with self._lock:
+            if job_id in self.job_connections:
+                self.job_connections[job_id].discard(websocket)
+                if not self.job_connections[job_id]:
+                    del self.job_connections[job_id]
         logger.debug(f"WebSocket disconnected from job {job_id}")
 
-    def disconnect_user(self, websocket: WebSocket, user_id: int) -> None:
+    async def disconnect_user(self, websocket: WebSocket, user_id: int) -> None:
         """Disconnect a websocket from user updates."""
-        if user_id in self.user_connections:
-            self.user_connections[user_id].discard(websocket)
-            if not self.user_connections[user_id]:
-                del self.user_connections[user_id]
+        async with self._lock:
+            if user_id in self.user_connections:
+                self.user_connections[user_id].discard(websocket)
+                if not self.user_connections[user_id]:
+                    del self.user_connections[user_id]
         logger.debug(f"WebSocket disconnected from user {user_id}")
 
     async def send_job_update(
@@ -102,7 +104,7 @@ class ConnectionManager:
 
         # Clean up dead connections
         for ws in dead_connections:
-            self.disconnect_job(ws, job_id)
+            await self.disconnect_job(ws, job_id)
 
     async def send_user_notification(
         self,
@@ -136,7 +138,7 @@ class ConnectionManager:
                 dead_connections.append(websocket)
 
         for ws in dead_connections:
-            self.disconnect_user(ws, user_id)
+            await self.disconnect_user(ws, user_id)
 
     async def broadcast_job_completion(
         self,

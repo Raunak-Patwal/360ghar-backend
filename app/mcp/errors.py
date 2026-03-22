@@ -78,9 +78,9 @@ class MCPResponse(BaseModel):
             error=MCPError(code=code, message=message, details=details)
         )
     
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:
-        """Override dict to exclude None values."""
-        d = super().dict(*args, **kwargs)
+    def model_dump(self, *args, **kwargs) -> Dict[str, Any]:
+        """Override model_dump to exclude None values."""
+        d = super().model_dump(*args, **kwargs)
         return {k: v for k, v in d.items() if v is not None}
 
 
@@ -89,7 +89,7 @@ def unauthorized_response(message: str = "Authentication required") -> Dict[str,
     return MCPResponse.failure(
         code=MCPErrorCode.UNAUTHORIZED,
         message=message
-    ).dict()
+    ).model_dump()
 
 
 def invalid_input_response(
@@ -101,7 +101,7 @@ def invalid_input_response(
         code=MCPErrorCode.INVALID_INPUT,
         message=message,
         details=details
-    ).dict()
+    ).model_dump()
 
 
 def not_found_response(
@@ -116,7 +116,7 @@ def not_found_response(
     return MCPResponse.failure(
         code=MCPErrorCode.NOT_FOUND,
         message=message
-    ).dict()
+    ).model_dump()
 
 
 def internal_error_response(message: str = "Internal server error") -> Dict[str, Any]:
@@ -124,4 +124,4 @@ def internal_error_response(message: str = "Internal server error") -> Dict[str,
     return MCPResponse.failure(
         code=MCPErrorCode.INTERNAL_ERROR,
         message=message
-    ).dict()
+    ).model_dump()

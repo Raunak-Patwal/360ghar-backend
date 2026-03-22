@@ -115,10 +115,36 @@ class PropertySearchAdvancedInput(PropertySearchInput):
     @classmethod
     def validate_property_type(cls, v):
         """Validate property type enum."""
-        valid_types = ['apartment', 'villa', 'house', 'office', 'shop', 'land', 'other']
-        if v is not None and v.lower() not in valid_types:
+        alias_map = {
+            'land': 'plot',
+            'plots': 'plot',
+            'office-space': 'office',
+            'independent-house': 'house',
+            'flat': 'apartment',
+        }
+        valid_types = [
+            'house',
+            'apartment',
+            'builder_floor',
+            'room',
+            'villa',
+            'plot',
+            'condo',
+            'penthouse',
+            'studio',
+            'loft',
+            'pg',
+            'flatmate',
+            'office',
+            'shop',
+            'warehouse',
+        ]
+        if v is None:
+            return None
+        normalized = alias_map.get(v.lower(), v.lower())
+        if normalized not in valid_types:
             raise ValueError(f'property_type must be one of: {", ".join(valid_types)}')
-        return v.lower() if v else None
+        return normalized
     
     @field_validator('listing_type')
     @classmethod

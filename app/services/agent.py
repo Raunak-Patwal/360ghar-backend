@@ -1,9 +1,13 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import timedelta
 from typing import Optional, List, Dict, Any
+
+from app.core.logging import get_logger
+from app.core.utils import utc_now
 from app.models.agents import Agent, AgentInteraction
-from app.models.users import User
 from app.models.properties import Visit
+from app.models.users import User
 from app.schemas.agent import (
     Agent as AgentSchema,
     AgentCreate,
@@ -14,15 +18,13 @@ from app.schemas.agent import (
     AgentWorkload,
     AgentSystemStats
 )
-from datetime import datetime, timedelta
-from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 async def get_daily_interactions(db: AsyncSession, agent_id: int) -> int:
     """Get the count of interactions for an agent today."""
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
     stmt = (
         select(func.count(AgentInteraction.id))
         .where(AgentInteraction.agent_id == agent_id)
@@ -34,7 +36,7 @@ async def get_daily_interactions(db: AsyncSession, agent_id: int) -> int:
 
 async def get_weekly_interactions(db: AsyncSession, agent_id: int) -> int:
     """Get the count of interactions for an agent in the last 7 days."""
-    week_start = datetime.utcnow() - timedelta(days=7)
+    week_start = utc_now() - timedelta(days=7)
     stmt = (
         select(func.count(AgentInteraction.id))
         .where(AgentInteraction.agent_id == agent_id)
@@ -251,7 +253,7 @@ async def assign_agent_to_user(db: AsyncSession, user_id: int, agent_id: Optiona
             return AgentAssignment(
                 user_id=user_id,
                 agent=agent_schema,
-                assigned_at=datetime.utcnow(),
+                assigned_at=utc_now(),
                 assignment_reason="already_assigned"
             )
     
@@ -295,7 +297,7 @@ async def assign_agent_to_user(db: AsyncSession, user_id: int, agent_id: Optiona
     return AgentAssignment(
         user_id=user_id,
         agent=agent_schema,
-        assigned_at=datetime.utcnow(),
+        assigned_at=utc_now(),
         assignment_reason="auto_assigned" if not agent_id else "manual_assigned"
     )
 
@@ -337,12 +339,6 @@ async def get_agent_with_stats(db: AsyncSession, agent_id: int) -> Optional[Agen
         stats=stats
     )
 
-async def get_agents_by_specialization(db: AsyncSession, specialization: str) -> List[AgentSchema]:
-    """Get agents that specialize in a specific area - simplified to return all active agents"""
-    stmt = select(Agent).where(Agent.is_active == True)
-    result = await db.execute(stmt)
-    agents = result.scalars().all()
-    return [AgentSchema.model_validate(agent.__dict__) for agent in agents]
 
 async def get_agents_by_type(db: AsyncSession, agent_type: str) -> List[AgentSchema]:
     """Get agents by type (general, specialist, senior)"""

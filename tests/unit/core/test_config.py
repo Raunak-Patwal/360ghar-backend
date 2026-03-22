@@ -175,3 +175,52 @@ class TestSettings:
 
             settings = config.Settings()
             assert settings.SUPABASE_CLIENT_KEY == "sb_publishable_key"
+
+    def test_auto_blog_defaults(self):
+        """Test automated blog publishing defaults."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://localhost/db",
+                "SUPABASE_URL": "https://test.supabase.co",
+                "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test",
+                "SUPABASE_SECRET_KEY": "test_secret",
+                "SENTRY_DSN": "https://test@sentry.io/123",
+            },
+            clear=False,
+        ):
+            from importlib import reload
+            from app.core import config
+
+            reload(config)
+
+            settings = config.Settings()
+
+            assert settings.AUTO_BLOG_ENABLED is False
+            assert settings.AUTO_BLOG_CRON == "0 20 * * *"
+            assert settings.AUTO_BLOG_TIMEZONE == "Asia/Kolkata"
+            assert settings.AUTO_BLOG_PUBLISHER_USER_ID is None
+            assert settings.AUTO_BLOG_MAX_POSTS_PER_RUN == 3
+            assert settings.AUTO_BLOG_MODEL == "sonar"
+
+    def test_auto_blog_publisher_user_id_blank_string_is_treated_as_none(self):
+        """Test AUTO_BLOG_PUBLISHER_USER_ID accepts blank env values from .env.example."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://localhost/db",
+                "SUPABASE_URL": "https://test.supabase.co",
+                "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test",
+                "SUPABASE_SECRET_KEY": "test_secret",
+                "AUTO_BLOG_ENABLED": "false",
+                "AUTO_BLOG_PUBLISHER_USER_ID": "",
+            },
+            clear=False,
+        ):
+            from importlib import reload
+            from app.core import config
+
+            reload(config)
+
+            settings = config.Settings()
+            assert settings.AUTO_BLOG_PUBLISHER_USER_ID is None

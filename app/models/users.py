@@ -13,20 +13,20 @@ class User(Base):
     email: Mapped[Optional[str]] = mapped_column(String, index=True, nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String, unique=True, index=True, nullable=True)
     full_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    date_of_birth: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    date_of_birth: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     profile_image_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # RBAC role for the user: 'user' | 'agent' | 'admin'
     role: Mapped[str] = mapped_column(String(20), default='user')
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    preferences: Mapped[Optional[dict]] = mapped_column(JSON, default={})
+    preferences: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
     current_latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     current_longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    notification_settings: Mapped[Optional[dict]] = mapped_column(JSON, default={})
-    privacy_settings: Mapped[Optional[dict]] = mapped_column(JSON, default={})
+    notification_settings: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    privacy_settings: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
     agent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("agents.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, onupdate=func.now(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     
     # Relationships
     agent: Mapped[Optional["Agent"]] = relationship(back_populates="users")
@@ -55,7 +55,7 @@ class UserSearchHistory(Base):
     user_location_lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     search_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     session_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class UserSwipe(Base):
@@ -68,8 +68,8 @@ class UserSwipe(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"))
     is_liked: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, onupdate=func.now(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     
     user: Mapped["User"] = relationship(back_populates="swipes")
     property: Mapped["Property"] = relationship(back_populates="swipes")

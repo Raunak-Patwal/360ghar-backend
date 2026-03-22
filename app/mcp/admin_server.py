@@ -26,6 +26,7 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.core.logging import get_logger
+from app.core.utils import make_tz_aware, utc_now, utc_now_iso
 from app.models.enums import UserRole
 from app.mcp.errors import (
     MCPErrorCode,
@@ -126,7 +127,7 @@ async def agent_properties_list(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.schemas.user import User as UserSchema
             from app.services.pm_properties import list_managed_properties
@@ -147,7 +148,7 @@ async def agent_properties_list(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     str(e)
-                ).dict()
+                ).model_dump()
 
             items = [serialize_property_basic(p) for p in properties]
 
@@ -156,7 +157,7 @@ async def agent_properties_list(
                 "page": page,
                 "limit": limit,
                 "items": items,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -194,7 +195,7 @@ async def agent_properties_get(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.schemas.user import User as UserSchema
             from app.services.pm_properties import get_managed_property_detail
@@ -213,7 +214,7 @@ async def agent_properties_get(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You do not have access to this property"
-                ).dict()
+                ).model_dump()
 
             prop = result["property"]
             active_lease = result.get("active_lease")
@@ -242,7 +243,7 @@ async def agent_properties_get(
                 "owner": owner_data,
                 "active_lease": lease_data,
                 "tenant": tenant_data,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -314,7 +315,7 @@ async def agent_properties_create_for_owner(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.schemas.user import User as UserSchema
             from app.schemas.property import PropertyCreate
@@ -355,12 +356,12 @@ async def agent_properties_create_for_owner(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     str(e)
-                ).dict()
+                ).model_dump()
 
             return MCPResponse.success({
                 "message": "Property created successfully",
                 "property": serialize_property_basic(prop),
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -402,7 +403,7 @@ async def agent_properties_verify(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.schemas.user import User as UserSchema
             from app.services.pm_authz import assert_can_access_property
@@ -419,7 +420,7 @@ async def agent_properties_verify(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You do not have access to this property"
-                ).dict()
+                ).model_dump()
 
             prop.is_verified = is_verified
             if verification_notes:
@@ -427,7 +428,7 @@ async def agent_properties_verify(
                 features = prop.features or {}
                 features["verification_notes"] = verification_notes
                 features["verified_by"] = user.id
-                features["verified_at"] = datetime.utcnow().isoformat()
+                features["verified_at"] = utc_now_iso()
                 prop.features = features
 
             await db.flush()
@@ -438,7 +439,7 @@ async def agent_properties_verify(
                 "message": f"Property marked as {status}",
                 "property_id": property_id,
                 "is_verified": is_verified,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -476,7 +477,7 @@ async def agent_leases_list(
         limit: Items per page
     """
     try:
-        from sqlalchemy import select
+        from sqlalchemy import select, func
         from app.models.pm_leases import Lease
         from app.models.properties import Property
         from app.models.enums import LeaseStatus
@@ -496,7 +497,7 @@ async def agent_leases_list(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.services.pm_authz import get_accessible_owner_ids
 
@@ -513,7 +514,7 @@ async def agent_leases_list(
                         return MCPResponse.failure(
                             MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                             "You do not have access to this owner's leases"
-                        ).dict()
+                        ).model_dump()
                     stmt = stmt.where(Lease.owner_id.in_(accessible_owners))
 
             if owner_id:
@@ -527,6 +528,10 @@ async def agent_leases_list(
                 except ValueError:
                     return invalid_input_response(f"Invalid status: {status}")
 
+            # Count total before applying pagination
+            count_stmt = select(func.count()).select_from(stmt.subquery())
+            total = (await db.execute(count_stmt)).scalar() or 0
+
             offset = (page - 1) * limit
             stmt = stmt.order_by(Lease.created_at.desc()).offset(offset).limit(limit)
 
@@ -536,11 +541,11 @@ async def agent_leases_list(
             items = [serialize_lease(l) for l in leases]
 
             return MCPResponse.success({
-                "total": len(items),
+                "total": total,
                 "page": page,
                 "limit": limit,
                 "leases": items,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -587,8 +592,8 @@ async def agent_leases_create(
         from app.models.enums import LeaseStatus
 
         try:
-            start = datetime.fromisoformat(start_date)
-            end = datetime.fromisoformat(end_date)
+            start = datetime.fromisoformat(start_date).date()
+            end = datetime.fromisoformat(end_date).date()
         except ValueError:
             return invalid_input_response("Dates must be in ISO-8601 format")
 
@@ -608,7 +613,7 @@ async def agent_leases_create(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.schemas.user import User as UserSchema
             from app.services.pm_authz import assert_can_access_property
@@ -626,7 +631,7 @@ async def agent_leases_create(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You do not have access to this property"
-                ).dict()
+                ).model_dump()
 
             # Verify tenant exists
             from app.services.user import get_user_by_id
@@ -657,7 +662,7 @@ async def agent_leases_create(
             return MCPResponse.success({
                 "message": "Lease created successfully",
                 "lease": serialize_lease(lease),
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -689,10 +694,10 @@ async def agent_leases_terminate(
     try:
         from app.models.enums import LeaseStatus
 
-        term_date = datetime.utcnow()
+        term_date = utc_now().date()
         if termination_date:
             try:
-                term_date = datetime.fromisoformat(termination_date)
+                term_date = datetime.fromisoformat(termination_date).date()
             except ValueError:
                 return invalid_input_response("termination_date must be in ISO-8601 format")
 
@@ -709,7 +714,7 @@ async def agent_leases_terminate(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.schemas.user import User as UserSchema
             from app.services.pm_authz import assert_can_access_lease
@@ -726,13 +731,13 @@ async def agent_leases_terminate(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You do not have access to this lease"
-                ).dict()
+                ).model_dump()
 
             if lease.status != LeaseStatus.active:
                 return MCPResponse.failure(
                     MCPErrorCode.OPERATION_FAILED,
                     f"Lease cannot be terminated (status: {lease.status.value})"
-                ).dict()
+                ).model_dump()
 
             lease.status = LeaseStatus.terminated
             lease.end_date = term_date
@@ -745,7 +750,7 @@ async def agent_leases_terminate(
                 "message": "Lease terminated successfully",
                 "lease_id": lease_id,
                 "termination_date": term_date.isoformat(),
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -802,7 +807,7 @@ async def agent_rent_list_due(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.services.pm_authz import get_accessible_owner_ids
 
@@ -825,7 +830,7 @@ async def agent_rent_list_due(
             leases = result.scalars().all()
 
             # Calculate due amounts for each lease
-            today = datetime.utcnow().date()
+            today = utc_now().date()
             due_items = []
 
             for lease in leases:
@@ -865,7 +870,7 @@ async def agent_rent_list_due(
                 "page": page,
                 "limit": limit,
                 "items": paginated,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -903,8 +908,10 @@ async def agent_rent_record_payment(
         from app.models.pm_finance import RentPayment
 
         try:
-            pay_date = datetime.fromisoformat(payment_date)
+            pay_date = make_tz_aware(datetime.fromisoformat(payment_date))
         except ValueError:
+            return invalid_input_response("payment_date must be in ISO-8601 format")
+        if pay_date is None:
             return invalid_input_response("payment_date must be in ISO-8601 format")
 
         valid_methods = ['cash', 'bank_transfer', 'upi', 'cheque', 'online', 'other']
@@ -924,7 +931,7 @@ async def agent_rent_record_payment(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.schemas.user import User as UserSchema
             from app.services.pm_authz import assert_can_access_lease
@@ -941,7 +948,7 @@ async def agent_rent_record_payment(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You do not have access to this lease"
-                ).dict()
+                ).model_dump()
 
             # Create payment record
             payment = RentPayment(
@@ -969,7 +976,7 @@ async def agent_rent_record_payment(
                     "payment_method": payment.payment_method,
                     "status": payment.status,
                 },
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1027,7 +1034,7 @@ async def agent_maintenance_list(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.services.pm_authz import get_accessible_owner_ids
 
@@ -1075,7 +1082,7 @@ async def agent_maintenance_list(
                 "page": page,
                 "limit": limit,
                 "requests": items,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1137,7 +1144,7 @@ async def agent_maintenance_update_status(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             # Get the request with property for auth check
             stmt = select(MaintenanceRequest).where(MaintenanceRequest.id == request_id)
@@ -1161,16 +1168,18 @@ async def agent_maintenance_update_status(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "You do not have access to this property's maintenance requests"
-                ).dict()
+                ).model_dump()
 
             # Update the request
             if notes:
                 existing = getattr(request, "completion_notes", None) or ""
-                stamp = datetime.utcnow().isoformat()
+                stamp = utc_now_iso()
                 request.completion_notes = f"{existing}\n[{stamp}] {notes}".strip()
             if scheduled_date:
                 try:
-                    request.scheduled_for = datetime.fromisoformat(scheduled_date.replace("Z", "+00:00"))
+                    request.scheduled_for = make_tz_aware(
+                        datetime.fromisoformat(scheduled_date.replace("Z", "+00:00"))
+                    )
                 except ValueError:
                     return invalid_input_response("scheduled_date must be in ISO-8601 format")
             if estimated_cost is not None:
@@ -1193,7 +1202,7 @@ async def agent_maintenance_update_status(
                 request.request_status = MaintenanceRequestStatus.resolved
                 request.work_order_status = WorkOrderStatus.completed
                 if request.completed_at is None:
-                    request.completed_at = datetime.utcnow()
+                    request.completed_at = utc_now()
             elif status_norm == "cancelled":
                 request.request_status = MaintenanceRequestStatus.closed
                 request.work_order_status = WorkOrderStatus.cancelled
@@ -1204,7 +1213,7 @@ async def agent_maintenance_update_status(
             return MCPResponse.success({
                 "message": "Maintenance request updated successfully",
                 "request": serialize_maintenance_request(request),
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1257,7 +1266,7 @@ async def agent_bookings_list_all(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.services import booking as booking_svc
 
@@ -1288,7 +1297,7 @@ async def agent_bookings_list_all(
                 "page": page,
                 "limit": limit,
                 "bookings": items,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1334,7 +1343,7 @@ async def agent_bookings_update_status(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.services import booking as booking_svc
 
@@ -1354,7 +1363,7 @@ async def agent_bookings_update_status(
             return MCPResponse.success({
                 "message": f"Booking status updated to {status}",
                 "booking": serialize_booking(updated) if updated else None,
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1404,7 +1413,7 @@ async def agent_dashboard_overview(
                 return MCPResponse.failure(
                     MCPErrorCode.INSUFFICIENT_PERMISSIONS,
                     "This endpoint is for agents and admins only"
-                ).dict()
+                ).model_dump()
 
             from app.services.pm_authz import get_accessible_owner_ids
 
@@ -1448,7 +1457,7 @@ async def agent_dashboard_overview(
             open_maintenance = maint_result.scalar() or 0
 
             # Count upcoming bookings
-            today = datetime.utcnow()
+            today = utc_now()
             booking_stmt = (
                 select(func.count(Booking.id))
                 .join(Property, Booking.property_id == Property.id)
@@ -1480,7 +1489,7 @@ async def agent_dashboard_overview(
                 },
                 "user_role": user_role.value,
                 "scope": "owner" if owner_id else ("agent" if user_role == UserRole.agent else "all"),
-            }).dict()
+            }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:
@@ -1558,7 +1567,7 @@ async def admin_system_status() -> Dict[str, Any]:
                     "overview": True,
                 },
             },
-        }).dict()
+        }).model_dump()
     except AuthRequiredError:
         raise
     except Exception as e:

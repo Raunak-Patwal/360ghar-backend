@@ -132,7 +132,7 @@ async def websocket_job_updates(
     except Exception as e:
         logger.error(f"WebSocket error for job {job_id}: {e}")
     finally:
-        manager.disconnect_job(websocket, job_id)
+        await manager.disconnect_job(websocket, job_id)
 
 
 @router.websocket("/ws/user")
@@ -199,7 +199,7 @@ async def websocket_user_updates(
     except Exception as e:
         logger.error(f"WebSocket error for user {user_id}: {e}")
     finally:
-        manager.disconnect_user(websocket, user_id)
+        await manager.disconnect_user(websocket, user_id)
 
 
 @router.websocket("/ws/tours/{tour_id}")
@@ -257,4 +257,4 @@ async def websocket_tour_updates(
     except Exception as e:
         logger.error(f"WebSocket error for tour {tour_id}: {e}")
     finally:
-        manager.disconnect_job(websocket, connection_key)
+        await manager.disconnect_job(websocket, connection_key)

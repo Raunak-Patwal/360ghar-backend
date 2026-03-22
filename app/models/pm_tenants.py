@@ -35,9 +35,9 @@ class RentalApplicationForm(Base):
     questions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime, onupdate=func.now(), nullable=True
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
 
     owner: Mapped["User"] = relationship("User", foreign_keys=[owner_id])
@@ -80,15 +80,15 @@ class RentalApplication(Base):
     application_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     emergency_contacts: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
-    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    decision_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     decided_by_user_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime, onupdate=func.now(), nullable=True
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
 
     form: Mapped["RentalApplicationForm"] = relationship(

@@ -34,7 +34,7 @@ class InspectionChecklist(Base):
     )
 
     conducted_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    conducted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    conducted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     rooms_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     overall_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -45,12 +45,12 @@ class InspectionChecklist(Base):
     owner_signature_document_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
     )
-    signed_by_tenant_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    signed_by_owner_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    signed_by_tenant_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    signed_by_owner_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime, onupdate=func.now(), nullable=True
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
 
     property: Mapped["Property"] = relationship(

@@ -70,14 +70,14 @@ class MaintenanceRequest(Base):
     priority: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     estimated_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     actual_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    scheduled_for: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    scheduled_for: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     completion_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime, onupdate=func.now(), nullable=True
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
 
     property: Mapped["Property"] = relationship(

@@ -7,8 +7,8 @@ from typing import Optional, List
 from datetime import datetime
 from app.core.database import Base
 from app.models.enums import (
-    PropertyType, PropertyPurpose, PropertyStatus, BookingStatus, PaymentStatus,
-    VisitStatus, AgentType, ExperienceLevel, BugType, BugSeverity, BugStatus, PageFormat, ImageCategory,
+    PropertyType, PropertyPurpose, PropertyStatus,
+    VisitStatus, ImageCategory,
     ManagedPropertyStatus,
 )
 from geoalchemy2 import Geography
@@ -95,6 +95,7 @@ class Property(Base):
 
     # Features
     features: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    listing_preferences: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     main_image_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     virtual_tour_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     google_street_view_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -124,13 +125,13 @@ class Property(Base):
     current_tenant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
-    available_from: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    available_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     calendar_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     view_count: Mapped[int] = mapped_column(Integer, default=0)
     like_count: Mapped[int] = mapped_column(Integer, default=0)
     interest_count: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, onupdate=func.now(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     # Relationships
     owner: Mapped["User"] = relationship(
@@ -169,8 +170,8 @@ class PropertyImage(Base):
     image_category: Mapped[ImageCategory] = mapped_column(SQLEnum(ImageCategory, name='image_category'), default=ImageCategory.others)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     is_main_image: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, onupdate=func.now(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     property: Mapped["Property"] = relationship(back_populates="images")
 
@@ -182,8 +183,8 @@ class Amenity(Base):
     icon: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     category: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # e.g., "safety", "recreation", "convenience"
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, onupdate=func.now(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     # Relationships
     property_amenities: Mapped[List["PropertyAmenity"]] = relationship(back_populates="amenity", cascade="all, delete-orphan")
@@ -197,7 +198,7 @@ class PropertyAmenity(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"))
     amenity_id: Mapped[int] = mapped_column(ForeignKey("amenities.id", ondelete="CASCADE"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     property: Mapped["Property"] = relationship(back_populates="property_amenities")
@@ -210,19 +211,19 @@ class Visit(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"))
     agent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("agents.id"), nullable=True)
-    scheduled_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    actual_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    scheduled_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    actual_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[VisitStatus] = mapped_column(SQLEnum(VisitStatus, name='visit_status'), default=VisitStatus.scheduled)
     special_requirements: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     visit_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     visitor_feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     interest_level: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     follow_up_required: Mapped[bool] = mapped_column(Boolean, default=False)
-    follow_up_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    follow_up_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cancellation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    rescheduled_from: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, onupdate=func.now(), nullable=True)
+    rescheduled_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="visits")
     property: Mapped["Property"] = relationship(back_populates="visits")

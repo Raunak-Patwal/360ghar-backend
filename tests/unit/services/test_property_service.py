@@ -7,10 +7,17 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.properties import Property
-from app.models.enums import PropertyType, PropertyPurpose, PropertyStatus
+from app.models.enums import (
+    ListingGenderPreference,
+    ListingSharingType,
+    PropertyPurpose,
+    PropertyStatus,
+    PropertyType,
+)
 
 
 class TestCreateProperty:
@@ -67,6 +74,19 @@ class TestCreateProperty:
                     assert result.title == "New Test Property"
                     assert result.owner_id == test_user.id
                     assert result.property_type == PropertyType.apartment
+
+    @pytest.mark.asyncio
+    async def test_create_property_rejects_pg_with_non_rent_purpose(self):
+        """Test PG listings are restricted to rent purpose."""
+        from app.schemas.property import PropertyCreate
+
+        with pytest.raises(ValidationError):
+            PropertyCreate(
+                title="Invalid PG",
+                property_type=PropertyType.pg,
+                purpose=PropertyPurpose.buy,
+                base_price=Decimal("18000"),
+            )
 
 
 class TestGetProperty:
@@ -137,6 +157,26 @@ class TestUpdateProperty:
 
                             assert result is not None
                             assert result.title == "Updated Title"
+
+    @pytest.mark.asyncio
+    async def test_update_property_rejects_pg_with_non_rent_purpose(
+        self,
+        db_session: AsyncSession,
+        test_property,
+        test_user,
+    ):
+        """Test updates cannot move PG listings outside the rent purpose."""
+        from app.core.exceptions import BadRequestException
+        from app.services.property import update_property
+        from app.schemas.property import PropertyUpdate
+
+        update_data = PropertyUpdate(
+            property_type=PropertyType.pg,
+            purpose=PropertyPurpose.buy,
+        )
+
+        with pytest.raises(BadRequestException):
+            await update_property(db_session, test_property.id, update_data, test_user)
 
     @pytest.mark.asyncio
     async def test_update_property_not_found(
@@ -267,6 +307,60 @@ class TestPropertyFiltering:
         assert "items" in result
         for prop in result["items"]:
             assert prop.property_type == PropertyType.apartment
+
+    @pytest.mark.asyncio
+    async def test_filter_by_gender_preference(
+        self,
+        db_session: AsyncSession,
+        test_special_listing_properties,
+        test_user,
+    ):
+        """Test filtering specialized listings by gender preference."""
+        from app.services.property import get_unified_properties_optimized
+        from app.schemas.property import UnifiedPropertyFilter
+
+        filters = UnifiedPropertyFilter(
+            gender_preference=ListingGenderPreference.female,
+        )
+
+        result = await get_unified_properties_optimized(
+            db_session, filters, user_id=test_user.id, page=1, limit=10
+        )
+
+        assert "items" in result
+        assert any(prop.property_type == PropertyType.pg for prop in result["items"])
+        for prop in result["items"]:
+            assert prop.listing_preferences is not None
+            assert prop.listing_preferences.gender_preference == ListingGenderPreference.female
+
+    @pytest.mark.asyncio
+    async def test_filter_by_sharing_type(
+        self,
+        db_session: AsyncSession,
+        test_special_listing_properties,
+        test_user,
+    ):
+        """Test filtering specialized listings by sharing type."""
+        from app.services.property import get_unified_properties_optimized
+        from app.schemas.property import UnifiedPropertyFilter
+
+        filters = UnifiedPropertyFilter(
+            property_type=[PropertyType.flatmate],
+            sharing_type=ListingSharingType.private_room,
+        )
+
+        result = await get_unified_properties_optimized(
+            db_session, filters, user_id=test_user.id, page=1, limit=10
+        )
+
+        assert "items" in result
+        assert len(result["items"]) == 1
+        assert result["items"][0].property_type == PropertyType.flatmate
+        assert result["items"][0].listing_preferences is not None
+        assert (
+            result["items"][0].listing_preferences.sharing_type
+            == ListingSharingType.private_room
+        )
 
 
 class TestPropertyViewCount:

@@ -19,7 +19,7 @@ class AgentInteraction(Base):
     response: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     response_time_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     user_satisfaction: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1-5
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     agent: Mapped["Agent"] = relationship(back_populates="interactions")
@@ -41,8 +41,8 @@ class Agent(Base):
     working_hours: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     total_users_assigned: Mapped[int] = mapped_column(Integer, default=0)
     user_satisfaction_rating: Mapped[float] = mapped_column(Float, default=0.0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, onupdate=func.now(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     
     users: Mapped[List["User"]] = relationship(back_populates="agent")
     visits: Mapped[List["Visit"]] = relationship(back_populates="agent")

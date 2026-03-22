@@ -1,16 +1,16 @@
 from typing import Optional, List
-from fastapi import Request, HTTPException, status, Header
+from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 import hashlib
 import hmac
-import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
+
 from app.core.config import settings
 from app.core.cache import get_cache_manager
 from app.core.logging import get_logger
+from app.core.utils import make_tz_aware, utc_now
 
 logger = get_logger(__name__)
 
@@ -181,8 +181,10 @@ class RequestSignatureValidator:
         
         # Check timestamp age
         try:
-            request_time = datetime.fromisoformat(timestamp)
-            if (datetime.utcnow() - request_time).total_seconds() > max_age_seconds:
+            request_time = make_tz_aware(datetime.fromisoformat(timestamp))
+            if request_time is None:
+                return False
+            if (utc_now() - request_time).total_seconds() > max_age_seconds:
                 logger.warning("Request timestamp too old")
                 return False
         except ValueError:

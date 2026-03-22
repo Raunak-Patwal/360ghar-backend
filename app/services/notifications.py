@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Literal, Any, Tuple
 import os
 import asyncio
-from datetime import datetime
 
 import httpx
 
 from app.core.config import settings
 from app.core.auth import get_supabase_service_client
 from app.core.logging import get_logger
+from app.core.utils import utc_now_iso
 from app.services.notification_config import (
     NOTIFICATION_TYPES,
     NotificationChannel,
@@ -170,7 +170,7 @@ async def register_device_token(
 ) -> Dict[str, Any]:
     """Upsert a device token in Supabase device_tokens."""
     supa = _supa()
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = utc_now_iso()
     existing = supa.table("device_tokens").select("id").eq("token", token).execute()
     if existing.data:
         supa.table("device_tokens").update(
@@ -203,7 +203,7 @@ async def register_device_token(
 async def unregister_device_token(*, token: str) -> Dict[str, Any]:
     """Deactivate a device token in Supabase device_tokens."""
     supa = _supa()
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = utc_now_iso()
     supa.table("device_tokens").update(
         {
             "is_active": False,
@@ -309,7 +309,7 @@ async def send_to_token(
                 "device_token_id": (dev.data[0]["id"] if dev.data else None),
                 "status": "sent",
                 "fcm_message_id": resp.get("name"),
-                "sent_at": datetime.utcnow().isoformat(),
+                "sent_at": utc_now_iso(),
             }
         ).execute()
         return {"ok": True, "fcm": resp}
@@ -379,7 +379,7 @@ async def send_to_user(
                     "device_token_id": tk_id,
                     "status": "sent",
                     "fcm_message_id": resp.get("name"),
-                    "sent_at": datetime.utcnow().isoformat(),
+                    "sent_at": utc_now_iso(),
                 }
             ).execute()
         except Exception as e:  # broad to capture HTTP errors
@@ -438,7 +438,7 @@ async def send_to_topic(
             "notification_id": notif["id"],
             "status": "sent",
             "fcm_message_id": resp.get("name"),
-            "sent_at": datetime.utcnow().isoformat(),
+            "sent_at": utc_now_iso(),
         }
     ).execute()
     return {"ok": True, "fcm": resp}
@@ -487,7 +487,7 @@ async def send_bulk(
                     "device_token_id": (dev.data[0]["id"] if dev.data else None),
                     "status": "sent",
                     "fcm_message_id": resp.get("name"),
-                    "sent_at": datetime.utcnow().isoformat(),
+                    "sent_at": utc_now_iso(),
                 }
             ).execute()
         except Exception as e:
@@ -558,6 +558,6 @@ async def mark_delivery_opened(
         return {"ok": False, "error": "forbidden"}
 
     supa.table("notification_deliveries").update(
-        {"status": "opened", "opened_at": datetime.utcnow().isoformat()}
+        {"status": "opened", "opened_at": utc_now_iso()}
     ).eq("id", delivery_id).execute()
     return {"ok": True}

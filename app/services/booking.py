@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import aliased
 from datetime import datetime, timedelta, timezone
 from app.models.bookings import Booking
@@ -312,7 +312,7 @@ async def get_all_bookings(
     bookings = result.scalars().all()
 
     # Count total with same filters
-    count_query = select(Booking)
+    count_query = select(func.count(Booking.id.distinct()))
     if filter_agent_id is not None:
         from app.models.properties import Property
         from app.models.users import User
@@ -324,12 +324,11 @@ async def get_all_bookings(
         count_query = count_query.where(Booking.property_id == property_id)
     if user_id:
         count_query = count_query.where(Booking.user_id == user_id)
-    count_result = await db.execute(count_query)
-    total = len(count_result.scalars().all())
+    total = (await db.execute(count_query)).scalar() or 0
 
     # Calculate counts for different statuses
     # Upcoming: check_in_date > now and status is confirmed/pending
-    upcoming_query = select(Booking)
+    upcoming_query = select(func.count(Booking.id.distinct()))
     if filter_agent_id is not None:
         from app.models.properties import Property
         from app.models.users import User
@@ -345,11 +344,10 @@ async def get_all_bookings(
             Booking.booking_status.in_(["confirmed", "pending"])
         )
     )
-    upcoming_result = await db.execute(upcoming_query)
-    upcoming = len(upcoming_result.scalars().all())
+    upcoming = (await db.execute(upcoming_query)).scalar() or 0
 
     # Completed: check_out_date < now and status is confirmed/completed
-    completed_query = select(Booking)
+    completed_query = select(func.count(Booking.id.distinct()))
     if filter_agent_id is not None:
         from app.models.properties import Property
         from app.models.users import User
@@ -365,11 +363,10 @@ async def get_all_bookings(
             Booking.booking_status.in_(["confirmed", "completed"])
         )
     )
-    completed_result = await db.execute(completed_query)
-    completed = len(completed_result.scalars().all())
+    completed = (await db.execute(completed_query)).scalar() or 0
 
     # Cancelled: status is cancelled
-    cancelled_query = select(Booking)
+    cancelled_query = select(func.count(Booking.id.distinct()))
     if filter_agent_id is not None:
         from app.models.properties import Property
         from app.models.users import User
@@ -380,8 +377,7 @@ async def get_all_bookings(
     if user_id:
         cancelled_query = cancelled_query.where(Booking.user_id == user_id)
     cancelled_query = cancelled_query.where(Booking.booking_status == "cancelled")
-    cancelled_result = await db.execute(cancelled_query)
-    cancelled = len(cancelled_result.scalars().all())
+    cancelled = (await db.execute(cancelled_query)).scalar() or 0
 
     return {
         "bookings": bookings,

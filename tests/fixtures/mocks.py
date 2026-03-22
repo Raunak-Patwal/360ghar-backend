@@ -109,8 +109,10 @@ def mock_supabase_storage():
 
     Returns a mock client that simulates successful file uploads.
     """
-    with patch("app.services.storage.get_supabase_service_client") as mock:
+    with patch("app.services.storage.get_supabase_storage_client") as mock:
+        mock_client = MagicMock()
         mock_storage = MagicMock()
+        mock_client.storage = mock_storage
 
         # Mock upload method
         mock_storage.from_.return_value.upload.return_value = MagicMock(
@@ -125,8 +127,8 @@ def mock_supabase_storage():
         # Mock delete method
         mock_storage.from_.return_value.remove.return_value = None
 
-        mock.return_value = mock_storage
-        yield mock_storage
+        mock.return_value = mock_client
+        yield mock_client
 
 
 # =============================================================================

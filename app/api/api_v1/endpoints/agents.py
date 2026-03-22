@@ -26,7 +26,6 @@ from app.services.agent import (
     get_user_agent,
     assign_agent_to_user,
     get_agent_with_stats,
-    get_agents_by_specialization,
     get_agents_by_type,
     update_agent_availability,
     get_workload_distribution,

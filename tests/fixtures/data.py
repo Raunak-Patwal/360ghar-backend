@@ -192,6 +192,81 @@ async def test_properties(db_session, test_user) -> List[Property]:
     return properties
 
 
+@pytest_asyncio.fixture
+async def test_special_listing_properties(db_session, test_user) -> List[Property]:
+    """
+    Create PG, flatmate, and commercial listings for taxonomy tests.
+
+    Returns:
+        List of specialized listings that exercise expanded property types.
+    """
+    properties = []
+
+    properties.append(
+        await PropertyFactory.create(
+            db_session,
+            owner=test_user,
+            title="Managed PG in Andheri",
+            property_type=PropertyType.pg,
+            purpose=PropertyPurpose.rent,
+            monthly_rent=Decimal("18000"),
+            city="Mumbai",
+            locality="Andheri",
+            latitude=19.1136,
+            longitude=72.8697,
+            bedrooms=1,
+            bathrooms=1,
+            max_occupancy=2,
+            listing_preferences={
+                "gender_preference": "female",
+                "sharing_type": "shared_room",
+            },
+        )
+    )
+
+    properties.append(
+        await PropertyFactory.create(
+            db_session,
+            owner=test_user,
+            title="Flatmate Wanted in Powai",
+            property_type=PropertyType.flatmate,
+            purpose=PropertyPurpose.rent,
+            monthly_rent=Decimal("22000"),
+            city="Mumbai",
+            locality="Powai",
+            latitude=19.1176,
+            longitude=72.9060,
+            bedrooms=2,
+            bathrooms=2,
+            max_occupancy=2,
+            listing_preferences={
+                "gender_preference": "male",
+                "sharing_type": "private_room",
+            },
+        )
+    )
+
+    properties.append(
+        await PropertyFactory.create(
+            db_session,
+            owner=test_user,
+            title="Retail Shop in Bandra",
+            property_type=PropertyType.shop,
+            purpose=PropertyPurpose.rent,
+            base_price=Decimal("125000"),
+            city="Mumbai",
+            locality="Bandra",
+            latitude=19.0544,
+            longitude=72.8406,
+            bedrooms=None,
+            bathrooms=1,
+            area_sqft=Decimal("350"),
+        )
+    )
+
+    return properties
+
+
 # =============================================================================
 # Booking Fixtures
 # =============================================================================

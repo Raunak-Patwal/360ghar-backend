@@ -62,9 +62,9 @@ class RentCharge(Base):
         nullable=False,
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime, onupdate=func.now(), nullable=True
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
 
     lease: Mapped["Lease"] = relationship("Lease", back_populates="rent_charges")
@@ -103,7 +103,7 @@ class RentPayment(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    paid_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     amount_paid: Mapped[float] = mapped_column(Float, nullable=False)
     payment_method: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reference: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -113,9 +113,9 @@ class RentPayment(Base):
         ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime, onupdate=func.now(), nullable=True
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
 
     charge: Mapped["RentCharge"] = relationship("RentCharge", back_populates="payments")
@@ -159,9 +159,9 @@ class Expense(Base):
     recurrence_rule: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     next_due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime, onupdate=func.now(), nullable=True
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
 
     property: Mapped["Property"] = relationship("Property", back_populates="expenses")

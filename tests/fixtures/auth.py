@@ -203,14 +203,9 @@ def user_auth_headers(test_user) -> Dict[str, str]:
 
 
 @pytest.fixture
-def auth_headers(test_user) -> Dict[str, str]:
+def auth_headers(user_auth_headers) -> Dict[str, str]:
     """Alias for user_auth_headers."""
-    token = create_test_jwt(
-        user_id=test_user.supabase_user_id,
-        phone=test_user.phone,
-        email=test_user.email,
-    )
-    return {"Authorization": f"Bearer {token}"}
+    return user_auth_headers
 
 
 @pytest.fixture

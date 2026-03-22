@@ -1,11 +1,8 @@
 from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
-from typing import Optional, Dict, Any, List, TYPE_CHECKING
+from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 from app.models.enums import PropertyPurpose, PropertyType
 from app.utils.validators import ValidationUtils
-
-if TYPE_CHECKING:
-    from app.schemas.agent import Agent
 
 class UserBase(BaseModel):
     email: Optional[EmailStr] = None
@@ -41,7 +38,6 @@ class UserUpdate(BaseModel):
     preferences: Optional[Dict[str, Any]] = None
     current_latitude: Optional[float] = None
     current_longitude: Optional[float] = None
-    preferred_locations: Optional[List[str]] = None
     notification_settings: Optional[Dict[str, bool]] = None
     privacy_settings: Optional[Dict[str, Any]] = None
 
@@ -103,7 +99,6 @@ class UserInDB(UserBase):
     preferences: Optional[Dict[str, Any]] = None
     current_latitude: Optional[float] = None
     current_longitude: Optional[float] = None
-    preferred_locations: Optional[List[str]] = None
     notification_settings: Optional[Dict[str, bool]] = None
     privacy_settings: Optional[Dict[str, Any]] = None
     agent_id: Optional[int] = None

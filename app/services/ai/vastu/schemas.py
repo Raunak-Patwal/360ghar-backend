@@ -4,10 +4,11 @@ Pydantic schemas for Vastu analysis.
 These schemas define the request/response structure for the Vastu checker API.
 """
 
-from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.utils import utc_now_iso
 
 
 class NorthDirection(str, Enum):
@@ -197,7 +198,7 @@ class VastuAnalyzeResponse(BaseModel):
     warning_count: int = Field(default=0, description="Number of warnings")
     critical_warnings: bool = Field(default=False, description="Whether any warning is critical")
     provider_used: str
-    analyzed_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    analyzed_at: str = Field(default_factory=utc_now_iso)
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -221,7 +222,7 @@ class VastuAnalyzeResponse(BaseModel):
                 },
                 "report_markdown": "# Vastu Analysis Report\n\n...",
                 "provider_used": "gemini",
-                "analyzed_at": "2025-12-30T10:00:00"
+                "analyzed_at": "2025-12-30T10:00:00+00:00"
             }
         }
     )

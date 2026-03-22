@@ -14,6 +14,11 @@ class PropertyType(str, Enum):
     penthouse = "penthouse"
     studio = "studio"
     loft = "loft"
+    pg = "pg"
+    flatmate = "flatmate"
+    office = "office"
+    shop = "shop"
+    warehouse = "warehouse"
 
 class PropertyPurpose(str, Enum):
     buy = "buy"
@@ -26,6 +31,17 @@ class PropertyStatus(str, Enum):
     rented = "rented"
     under_offer = "under_offer"
     maintenance = "maintenance"
+
+
+class ListingGenderPreference(str, Enum):
+    any = "any"
+    male = "male"
+    female = "female"
+
+
+class ListingSharingType(str, Enum):
+    private_room = "private_room"
+    shared_room = "shared_room"
 
 class BookingStatus(str, Enum):
     pending = "pending"
@@ -206,12 +222,6 @@ class InspectionType(str, Enum):
     move_in = "move_in"
     move_out = "move_out"
     routine = "routine"
-
-
-class MessageThreadType(str, Enum):
-    lease = "lease"
-    maintenance = "maintenance"
-    general = "general"
 
 
 # --------------------
