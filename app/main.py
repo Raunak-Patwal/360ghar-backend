@@ -1,3 +1,4 @@
+import logging
 import yaml
 
 from dotenv import load_dotenv
@@ -12,6 +13,7 @@ from app.core.utils import utc_now_iso
 import sentry_sdk
 import sentry_sdk.integrations.fastapi
 import sentry_sdk.integrations.sqlalchemy
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 
 load_dotenv()
@@ -20,22 +22,39 @@ load_dotenv()
 setup_logging()
 logger = get_logger(__name__)
 
+
+def _sentry_before_send(event, hint):
+    """Strip sensitive headers from Sentry event payloads."""
+    if "request" in event and "headers" in event["request"]:
+        headers = event["request"]["headers"]
+        if isinstance(headers, dict):
+            headers.pop("authorization", None)
+            headers.pop("x-api-key", None)
+    return event
+
+
 # Initialize Sentry
 if settings.SENTRY_DSN:
+    _is_dev = settings.ENVIRONMENT == "development"
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         environment=settings.ENVIRONMENT,
-        # Set sample rate for performance monitoring
-        traces_sample_rate=1.0 if settings.ENVIRONMENT == "development" else 0.1,
-        # Add data like request headers and IP for users,
-        # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+        # Free tier: keep traces low to stay within quota (100K/mo)
+        traces_sample_rate=(
+            settings.SENTRY_TRACES_SAMPLE_RATE
+            if settings.SENTRY_TRACES_SAMPLE_RATE is not None
+            else (0.5 if _is_dev else 0.05)
+        ),
         send_default_pii=True,
-        # Release tracking
-        release="360ghar-backend@2.0.0",
-        # FastAPI integration
+        release=f"360ghar-backend@{settings.APP_VERSION}",
+        before_send=_sentry_before_send,
         integrations=[
             sentry_sdk.integrations.fastapi.FastApiIntegration(),
             sentry_sdk.integrations.sqlalchemy.SqlalchemyIntegration(),
+            LoggingIntegration(
+                level=logging.WARNING,
+                event_level=None,
+            ),
         ],
     )
     logger.info("Sentry initialized", extra={"environment": settings.ENVIRONMENT})
@@ -50,7 +69,7 @@ app = create_app()
 async def root():
     return {
         "message": "360Ghar Real Estate Platform API",
-        "version": "2.0.0",
+        "version": settings.APP_VERSION,
         "docs": f"{settings.API_V1_STR}/docs",
         "status": "running",
     }
@@ -89,7 +108,7 @@ async def health_check():
                 else {}
             ),
             "timestamp": utc_now_iso(),
-            "version": "2.0.0",
+            "version": settings.APP_VERSION,
         }
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
@@ -152,7 +171,8 @@ async def value_error_handler(request: Request, exc: ValueError):
 async def general_exception_handler(request: Request, exc: Exception):
     """Handle unexpected exceptions"""
     logger.error(f"Unexpected error: {str(exc)} - {request.method} {request.url.path}", exc_info=True)
-    
+    sentry_sdk.capture_exception(exc)
+
     # Don't expose internal errors in production
     if settings.ENVIRONMENT == "production":
         message = "An unexpected error occurred"
@@ -172,3 +192,11 @@ async def general_exception_handler(request: Request, exc: Exception):
             }
         }
     )
+
+
+@app.get("/debug-sentry")
+async def trigger_sentry_error():
+    """Trigger a test error for Sentry verification (dev only)."""
+    if settings.ENVIRONMENT == "production":
+        raise HTTPException(status_code=404)
+    raise RuntimeError("Sentry test error - this is intentional")

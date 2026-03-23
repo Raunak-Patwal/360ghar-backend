@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from app.core.config import settings
 from app.mcp.apps_sdk import (
     AppsSDKFastMCP,
     AuthRequiredError,
@@ -1532,7 +1533,7 @@ async def admin_system_status() -> Dict[str, Any]:
 
         return MCPResponse.success({
             "status": "operational",
-            "version": "2.0.0",
+            "version": settings.APP_VERSION,
             "server": "admin",
             "auth": {
                 "status": auth_status,

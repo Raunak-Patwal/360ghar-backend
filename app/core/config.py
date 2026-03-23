@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     SUPABASE_URL: str
     SENTRY_DSN: str | None = None
+    SENTRY_TRACES_SAMPLE_RATE: float | None = None  # Free tier default: 0.5 dev, 0.05 prod
+    APP_VERSION: str = "2.0.0"
     SUPABASE_PUBLISHABLE_KEY: str
     SUPABASE_SECRET_KEY: str
     # API Keys for middleware (comma-separated)

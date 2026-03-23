@@ -151,7 +151,7 @@ def create_app(testing: bool = False) -> FastAPI:
                     extra={
                         "event": "startup",
                         "env": settings.ENVIRONMENT,
-                        "version": "2.0.0",
+                        "version": settings.APP_VERSION,
                         "mcp_servers": ["/mcp", "/mcp-admin"],
                     },
                 )
@@ -172,7 +172,7 @@ def create_app(testing: bool = False) -> FastAPI:
         redirect_slashes=False,
         title="360Ghar Real Estate Platform",
         description="Tinder-like real estate platform backend APIs with SQLAlchemy + Supabase Auth",
-        version="2.0.0",
+        version=settings.APP_VERSION,
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         docs_url=f"{settings.API_V1_STR}/docs",
         redoc_url=f"{settings.API_V1_STR}/redoc",

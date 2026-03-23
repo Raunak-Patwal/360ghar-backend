@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import DeclarativeBase
+import sentry_sdk
 from app.core.config import settings
 from app.core.logging import get_logger
 from fastapi import HTTPException
@@ -49,6 +50,10 @@ async def get_db() -> AsyncSession:
             raise
         except Exception as e:
             logger.error(f"Database session error: {e}")
+            sentry_sdk.set_context("database", {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            })
             await session.rollback()
             raise
         else:

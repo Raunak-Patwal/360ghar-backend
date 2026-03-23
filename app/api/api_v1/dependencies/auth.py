@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, Request, status
+import sentry_sdk
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import verify_supabase_token
@@ -75,6 +76,11 @@ async def get_current_user(
 
         db_user = await get_or_create_user_from_supabase(db, supabase_user_data)
         request.state.user_id = getattr(db_user, "id", None)
+        sentry_sdk.set_user({
+            "id": str(getattr(db_user, "id", None)),
+            "email": getattr(db_user, "email", None),
+            "username": getattr(db_user, "phone", None),
+        })
         logger.debug("User authenticated successfully", extra={"user_id": getattr(db_user, "id", None)})
         return db_user
     except HTTPException:
@@ -123,6 +129,11 @@ async def get_current_user_optional(
 
         db_user = await get_or_create_user_from_supabase(db, supabase_user_data)
         request.state.user_id = getattr(db_user, "id", None)
+        sentry_sdk.set_user({
+            "id": str(getattr(db_user, "id", None)),
+            "email": getattr(db_user, "email", None),
+            "username": getattr(db_user, "phone", None),
+        })
         return db_user
     except Exception:
         return None
