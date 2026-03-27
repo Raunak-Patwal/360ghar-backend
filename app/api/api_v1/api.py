@@ -36,6 +36,8 @@ from app.api.api_v1.endpoints import (
     custom_domains,
     # AI Agent
     agent_chat,
+    # Data Hub
+    data_hub,
 )
 
 api_router = APIRouter()
@@ -92,3 +94,6 @@ api_router.include_router(custom_domains.router, prefix="/custom-domains", tags=
 
 # AI Agent
 api_router.include_router(agent_chat.router, prefix="/agent", tags=["ai-agent"])
+
+# Data Hub
+api_router.include_router(data_hub.router, prefix="/data-hub", tags=["data-hub"])

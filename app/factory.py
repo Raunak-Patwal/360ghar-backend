@@ -143,6 +143,13 @@ def create_app(testing: bool = False) -> FastAPI:
                         except Exception as sched_vec_e:
                             logger.error("Failed to start vector sync scheduler: %s", sched_vec_e)
 
+                    if not testing:
+                        try:
+                            from app.services.data_hub_scheduler import start_data_hub_scheduler
+                            start_data_hub_scheduler(app)
+                        except Exception as sched_dh_e:
+                            logger.error("Failed to start data hub scheduler: %s", sched_dh_e)
+
                 except Exception as exc:
                     logger.error("Application startup failed: %s", exc)
 

@@ -123,6 +123,18 @@ class Settings(BaseSettings):
     AUTO_BLOG_MAX_POSTS_PER_RUN: int = 3
     AUTO_BLOG_MODEL: str = "sonar"
 
+    # Data Hub settings
+    DATA_HUB_ENABLED: bool = True
+    GOOGLE_PLACES_API_KEY: str | None = None
+    GOOGLE_PLACES_MAX_DAILY_CALLS: int = 1000
+    NEIGHBOURHOOD_SCORE_RADIUS_M: int = 1500
+    NEIGHBOURHOOD_SCORE_STALE_DAYS: int = 30
+    JAMABANDI_CACHE_TTL_DAYS: int = 7
+    # Haryana stamp duty rates (as percentages for display, not computation)
+    STAMP_DUTY_RATE_MALE: float = 7.0
+    STAMP_DUTY_RATE_FEMALE: float = 5.0
+    STAMP_DUTY_RATE_JOINT: float = 6.0
+
     @field_validator("AUTO_BLOG_PUBLISHER_USER_ID", mode="before")
     @classmethod
     def _blank_auto_blog_publisher_user_id_is_none(cls, value: object) -> object:
