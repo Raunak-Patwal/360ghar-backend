@@ -46,6 +46,11 @@ CHATGPT_REDIRECT_URIS = [
     "https://platform.openai.com/apps-manage/oauth",
 ]
 
+# ChatGPT dynamic redirect URI prefixes (new Apps SDK uses session-specific callback IDs)
+CHATGPT_REDIRECT_PREFIXES = [
+    "https://chatgpt.com/connector/oauth/",
+]
+
 
 # =============================================================================
 # Pydantic Schemas for OAuth
@@ -151,6 +156,11 @@ def is_redirect_uri_allowed_for_client(client: Dict[str, Any], redirect_uri: str
     """Validate redirect_uri against client policy with ChatGPT compatibility."""
     if redirect_uri in CHATGPT_REDIRECT_URIS:
         return True
+
+    # Support new ChatGPT Apps SDK dynamic callback URIs (session-specific IDs).
+    for prefix in CHATGPT_REDIRECT_PREFIXES:
+        if redirect_uri.startswith(prefix):
+            return True
 
     registered_uris = client.get("redirect_uris") or []
     if redirect_uri in registered_uris:
@@ -1015,13 +1025,17 @@ async def token_endpoint(
                 },
             )
 
-            return {
+            response = {
                 "access_token": access_token,
                 "token_type": "Bearer",
                 "expires_in": OAUTH_ACCESS_TOKEN_LIFETIME,
                 "refresh_token": refresh_tok,
                 "scope": auth_data["scope"],
             }
+            # Echo resource per RFC 8707 for audience binding
+            if auth_data.get("resource"):
+                response["resource"] = auth_data["resource"]
+            return response
 
         if grant_type == "refresh_token":
             if not refresh_token:
@@ -1096,13 +1110,17 @@ async def token_endpoint(
             )
             await oauth_token_store.revoke_refresh_token(refresh_token)
 
-            return {
+            response = {
                 "access_token": new_access_token,
                 "token_type": "Bearer",
                 "expires_in": OAUTH_ACCESS_TOKEN_LIFETIME,
                 "refresh_token": new_refresh_token,
                 "scope": refresh_data["scope"],
             }
+            # Echo resource per RFC 8707 for audience binding
+            if refresh_data.get("resource"):
+                response["resource"] = refresh_data["resource"]
+            return response
 
         raise HTTPException(
             status_code=400,
@@ -1279,6 +1297,12 @@ async def authorization_server_metadata(request: Request):
         "op_policy_uri": f"{base_url}/privacy",
         "op_tos_uri": f"{base_url}/terms",
     }
+
+
+@oauth_wellknown_router.get("/.well-known/oauth-authorization-server")
+async def authorization_server_metadata_root(request: Request):
+    """OAuth AS metadata at root path (without issuer suffix) for broad client compatibility."""
+    return await authorization_server_metadata(request)
 
 
 @oauth_wellknown_router.get("/.well-known/openid-configuration")

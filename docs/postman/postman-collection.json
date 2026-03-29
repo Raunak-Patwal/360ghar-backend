@@ -130,55 +130,6 @@
           "response": []
         },
         {
-          "name": "Get Visit Details",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{BASE_URL}}/api/v1/visits/{{test_visit_id}}",
-              "host": [
-                "{{BASE_URL}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "visits",
-                "{{test_visit_id}}"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Update Visit",
-          "request": {
-            "method": "PUT",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"scheduled_date\": \"{{futureDate}}\",\n  \"special_requirements\": \"Update: please ensure keys are available\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{BASE_URL}}/api/v1/visits/{{test_visit_id}}",
-              "host": [
-                "{{BASE_URL}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "visits",
-                "{{test_visit_id}}"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
           "name": "Health Check",
           "event": [
             {
@@ -455,12 +406,242 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Get Current User (Me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/me",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me"
+              ]
+            },
+            "description": "Alias for GET /users/profile."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Current User (Me)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/me",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Updated Name\",\n  \"email\": \"updated@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Alias for PUT /users/profile."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Notification Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/notification-settings",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "notification-settings"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Notification Settings",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/notification-settings",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "notification-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email_notifications\": true,\n  \"push_notifications\": true,\n  \"sms_notifications\": false,\n  \"visit_reminders\": true,\n  \"property_updates\": true,\n  \"promotional_emails\": false,\n  \"digest\": true,\n  \"categories\": {\n    \"promotions\": true,\n    \"onboarding\": true,\n    \"property_updates\": true,\n    \"digest\": true,\n    \"visit_reminders\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Notifications (Compat)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/notifications",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "notifications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"push_notifications\": true,\n  \"email_notifications\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Compatibility endpoint for stays app. Accepts partial notification settings."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Privacy Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/privacy-settings",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "privacy-settings"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Privacy Settings",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/privacy-settings",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "privacy-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_visibility\": \"public\",\n  \"location_sharing\": true,\n  \"contact_sharing\": true,\n  \"search_history_tracking\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Privacy (Compat)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/users/privacy",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "privacy"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_visibility\": \"public\",\n  \"location_sharing\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Compatibility endpoint for stays app."
+          },
+          "response": []
         }
       ]
     },
     {
       "name": "Properties",
       "item": [
+        {
+          "name": "Get My Properties",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/properties/me",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "me"
+              ]
+            },
+            "description": "List all properties owned by the current authenticated user."
+          },
+          "response": []
+        },
         {
           "name": "Create Property",
           "event": [
@@ -1432,6 +1613,37 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Complete Visit",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/visits/{{test_visit_id}}/complete",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "visits",
+                "{{test_visit_id}}",
+                "complete"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Visit completed successfully.\",\n  \"feedback\": \"Property matched description.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Mark a visit as completed. Admin/Agent only."
+          },
+          "response": []
         }
       ]
     },
@@ -2321,7 +2533,7 @@
           ]
         },
         {
-          "name": "Uploads",
+          "name": "Upload & Media",
           "item": [
             {
               "name": "Upload File",
@@ -2350,6 +2562,240 @@
                     ""
                   ]
                 }
+              },
+              "response": []
+            },
+            {
+              "name": "Upload Multiple Files (Batch)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/upload/batch",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "upload",
+                    "batch"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "files",
+                      "type": "file",
+                      "src": "",
+                      "description": "Multiple image/document files"
+                    },
+                    {
+                      "key": "folder",
+                      "value": "property_image",
+                      "type": "text",
+                      "description": "Storage folder type"
+                    },
+                    {
+                      "key": "tour_id",
+                      "value": "",
+                      "type": "text",
+                      "description": "Optional tour ID"
+                    },
+                    {
+                      "key": "visibility",
+                      "value": "public",
+                      "type": "text",
+                      "description": "public or private"
+                    }
+                  ]
+                },
+                "description": "Upload multiple files in a single request. Use multipart/form-data."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Presigned Upload URLs",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/upload/presigned",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "upload",
+                    "presigned"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"files\": [\n    {\n      \"filename\": \"photo.jpg\",\n      \"content_type\": \"image/jpeg\",\n      \"file_size\": 1048576,\n      \"folder_type\": \"property_image\",\n      \"property_id\": 1,\n      \"visibility\": \"public\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Generate presigned S3/Supabase URLs for direct client-side uploads."
+              },
+              "response": []
+            },
+            {
+              "name": "Confirm Presigned Upload",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/upload/confirm/{{test_upload_id}}",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "upload",
+                    "confirm",
+                    "{{test_upload_id}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Confirm that a presigned upload has completed. Pass the upload_id in the path."
+              },
+              "response": []
+            },
+            {
+              "name": "List Media Files",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/upload/media?page=1&page_size=20&folder=&visibility=&is_processed=",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "upload",
+                    "media"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "disabled": false
+                    },
+                    {
+                      "key": "page_size",
+                      "value": "20",
+                      "disabled": false
+                    },
+                    {
+                      "key": "folder",
+                      "value": "",
+                      "disabled": false
+                    },
+                    {
+                      "key": "visibility",
+                      "value": "",
+                      "disabled": false
+                    },
+                    {
+                      "key": "is_processed",
+                      "value": "",
+                      "disabled": false
+                    }
+                  ]
+                },
+                "description": "List media files owned by the current user."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Media File",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/upload/media/{{test_media_id}}",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "upload",
+                    "media",
+                    "{{test_media_id}}"
+                  ]
+                },
+                "description": "Get details of a single media file by ID."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Media File",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/upload/media/{{test_media_id}}",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "upload",
+                    "media",
+                    "{{test_media_id}}"
+                  ]
+                },
+                "description": "Soft-delete a media file. Returns 204 on success."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Media Metadata",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/v1/upload/media/{{test_media_id}}",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "upload",
+                    "media",
+                    "{{test_media_id}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"visibility\": \"public\",\n  \"is_processed\": true,\n  \"cdn_url\": \"\",\n  \"thumbnail_url\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Update metadata for a media file (visibility, CDN URL, processed status)."
               },
               "response": []
             }

@@ -37,6 +37,18 @@ MAX_RETRIES = 3
 MIN_WAIT_SECONDS = 2
 MAX_WAIT_SECONDS = 30
 
+# Limit concurrent background AI tasks to avoid starving PgBouncer connections.
+_AI_TASK_SEMAPHORE = asyncio.Semaphore(5)
+
+
+async def _run_with_semaphore(coro):
+    """Run a background AI coroutine under the concurrency semaphore."""
+    async with _AI_TASK_SEMAPHORE:
+        try:
+            await coro
+        except Exception:
+            logger.warning("Unhandled exception in background AI task", exc_info=True)
+
 
 def _create_retry_decorator():
     """Create a retry decorator for AI provider calls."""
@@ -418,7 +430,7 @@ async def analyze_scene(
     job = await create_ai_job(db, user_id, "analyze_scene", scene_id=scene_id)
 
     # Run analysis in background - pass only IDs, not ORM objects
-    asyncio.create_task(_run_scene_analysis(job.id, scene_id, scene.image_url))
+    asyncio.create_task(_run_with_semaphore(_run_scene_analysis(job.id, scene_id, scene.image_url)))
 
     return job
 
@@ -443,7 +455,7 @@ async def analyze_tour_scenes(
     job = await create_ai_job(db, user_id, "analyze_scenes", tour_id=tour_id)
 
     # Run analysis in background - pass only tour_id
-    asyncio.create_task(_run_tour_analysis(job.id, tour_id))
+    asyncio.create_task(_run_with_semaphore(_run_tour_analysis(job.id, tour_id)))
 
     return job
 
@@ -584,7 +596,7 @@ async def suggest_scene_hotspots(
     job = await create_ai_job(db, user_id, "suggest_hotspots", scene_id=scene_id)
 
     # Run suggestion in background - pass only IDs and required data
-    asyncio.create_task(_run_hotspot_suggestions(job.id, scene_id, scene.tour_id))
+    asyncio.create_task(_run_with_semaphore(_run_hotspot_suggestions(job.id, scene_id, scene.tour_id)))
 
     return job
 
@@ -609,7 +621,7 @@ async def suggest_tour_hotspots(
     job = await create_ai_job(db, user_id, "suggest_tour_hotspots", tour_id=tour_id)
 
     # Run suggestion in background - pass only tour_id
-    asyncio.create_task(_run_tour_hotspot_suggestions(job.id, tour_id))
+    asyncio.create_task(_run_with_semaphore(_run_tour_hotspot_suggestions(job.id, tour_id)))
 
     return job
 
@@ -780,7 +792,7 @@ async def generate_scene_description(
     job = await create_ai_job(db, user_id, "generate_description", scene_id=scene_id)
 
     # Run generation in background - pass only IDs and options
-    asyncio.create_task(_run_description_generation(job.id, scene_id, scene.image_url, options or {}))
+    asyncio.create_task(_run_with_semaphore(_run_description_generation(job.id, scene_id, scene.image_url, options or {})))
 
     return job
 
@@ -806,7 +818,7 @@ async def generate_tour_descriptions(
     job = await create_ai_job(db, user_id, "generate_descriptions", tour_id=tour_id)
 
     # Run generation in background - pass only tour_id
-    asyncio.create_task(_run_tour_description_generation(job.id, tour_id, options or {}))
+    asyncio.create_task(_run_with_semaphore(_run_tour_description_generation(job.id, tour_id, options or {})))
 
     return job
 
@@ -1117,7 +1129,7 @@ async def generate_tour(
 
     job = await create_ai_job(db, user_id, "generate_tour", tour_id=tour.id)
     asyncio.create_task(
-        _run_tour_generation(
+        _run_with_semaphore(_run_tour_generation(
             job.id,
             tour.id,
             user_id,
@@ -1128,7 +1140,7 @@ async def generate_tour(
                 "apply_to_scenes": data.apply_to_scenes,
                 "language": data.language,
             },
-        )
+        ))
     )
 
     return job, tour, scene_ids
@@ -1244,12 +1256,12 @@ async def optimize_tour(
     job = await create_ai_job(db, user_id, "optimize_tour", tour_id=tour_id)
 
     asyncio.create_task(
-        _run_tour_optimization(
+        _run_with_semaphore(_run_tour_optimization(
             job.id,
             tour.id,
             user_id,
             options or {},
-        )
+        ))
     )
     return job
 

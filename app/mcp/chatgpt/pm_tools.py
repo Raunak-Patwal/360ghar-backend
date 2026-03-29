@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.mcp.apps_sdk import AuthRequiredError, MCP_SECURITY_SCHEMES_MIXED, build_widget_tool_meta
+from app.mcp.chatgpt import get_widget_for_tool
 from app.mcp.chatgpt.response_formatter import (
     format_chatgpt_response,
     format_auth_required_response,
@@ -176,6 +177,8 @@ def _format_rent_summary(charges: List[Dict], totals: Dict) -> str:
     annotations={
         "title": "List Property Leases",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=LEASE_MANAGEMENT_META,
@@ -248,6 +251,7 @@ async def owner_leases_list(
                     },
                 },
                 content_summary=f"You have {len(serialized)} leases. {active_count} active with total monthly rent of ₹{total_rent:,.0f}.",
+                widget_uri=get_widget_for_tool("owner_leases_list"),
             )
 
     except AuthRequiredError:
@@ -257,6 +261,7 @@ async def owner_leases_list(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading your leases: {str(e)}",
+            widget_uri=get_widget_for_tool("owner_leases_list"),
         )
 
 
@@ -265,6 +270,8 @@ async def owner_leases_list(
     annotations={
         "title": "Get Lease Details",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=LEASE_MANAGEMENT_META,
@@ -306,6 +313,7 @@ async def owner_leases_get(
                     return format_chatgpt_response(
                         data={"error": True, "code": "NOT_FOUND", "lease_id": lease_id},
                         content_summary=f"Lease with ID {lease_id} was not found or you don't have access to it.",
+                        widget_uri=get_widget_for_tool("owner_leases_get"),
                     )
                 raise
 
@@ -314,6 +322,7 @@ async def owner_leases_get(
             return format_chatgpt_response(
                 data={"lease": lease_data},
                 content_summary=_format_lease_summary(lease_data),
+                widget_uri=get_widget_for_tool("owner_leases_get"),
             )
 
     except AuthRequiredError:
@@ -323,6 +332,7 @@ async def owner_leases_get(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading the lease: {str(e)}",
+            widget_uri=get_widget_for_tool("owner_leases_get"),
         )
 
 
@@ -332,6 +342,7 @@ async def owner_leases_get(
         "title": "Terminate Lease",
         "readOnlyHint": False,
         "destructiveHint": True,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta={
@@ -378,6 +389,7 @@ async def owner_leases_terminate(
                 return format_chatgpt_response(
                     data={"error": True, "code": "INVALID_DATE"},
                     content_summary="Invalid date format. Please use ISO 8601 format like '2025-03-15'.",
+                    widget_uri=get_widget_for_tool("owner_leases_terminate"),
                 )
 
             user_schema = UserSchema.model_validate(user)
@@ -396,6 +408,7 @@ async def owner_leases_terminate(
                     return format_chatgpt_response(
                         data={"error": True, "code": "NOT_FOUND"},
                         content_summary=f"Lease with ID {lease_id} was not found or you don't have permission to terminate it.",
+                        widget_uri=get_widget_for_tool("owner_leases_terminate"),
                     )
                 raise
 
@@ -407,6 +420,7 @@ async def owner_leases_terminate(
                     "termination_date": termination_date,
                 },
                 content_summary=f"Lease has been terminated effective {termination_date}.{' Reason: ' + reason if reason else ''}",
+                widget_uri=get_widget_for_tool("owner_leases_terminate"),
             )
 
     except AuthRequiredError:
@@ -416,6 +430,7 @@ async def owner_leases_terminate(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error terminating the lease: {str(e)}",
+            widget_uri=get_widget_for_tool("owner_leases_terminate"),
         )
 
 
@@ -429,6 +444,8 @@ async def owner_leases_terminate(
     annotations={
         "title": "View Rent Collection Status",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=RENT_COLLECTION_META,
@@ -507,6 +524,7 @@ async def owner_rent_status(
                     "limit": limit,
                 },
                 content_summary=_format_rent_summary(serialized, totals),
+                widget_uri=get_widget_for_tool("owner_rent_status"),
             )
 
     except AuthRequiredError:
@@ -516,6 +534,7 @@ async def owner_rent_status(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading rent status: {str(e)}",
+            widget_uri=get_widget_for_tool("owner_rent_status"),
         )
 
 
@@ -524,6 +543,8 @@ async def owner_rent_status(
     annotations={
         "title": "Record Rent Payment",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=RENT_COLLECTION_META,
@@ -574,6 +595,7 @@ async def owner_rent_record_payment(
                 return format_chatgpt_response(
                     data={"error": True, "code": "INVALID_DATE"},
                     content_summary="Invalid date format. Please use ISO 8601 format like '2025-02-15'.",
+                    widget_uri=get_widget_for_tool("owner_rent_record_payment"),
                 )
 
             # Validate payment method
@@ -584,6 +606,7 @@ async def owner_rent_record_payment(
                 return format_chatgpt_response(
                     data={"error": True, "code": "INVALID_METHOD", "valid_methods": valid_methods},
                     content_summary=f"Invalid payment method. Please use one of: {', '.join(valid_methods)}.",
+                    widget_uri=get_widget_for_tool("owner_rent_record_payment"),
                 )
 
             user_schema = UserSchema.model_validate(user)
@@ -605,6 +628,7 @@ async def owner_rent_record_payment(
                     return format_chatgpt_response(
                         data={"error": True, "code": "NOT_FOUND"},
                         content_summary=f"Rent charge with ID {rent_charge_id} was not found.",
+                        widget_uri=get_widget_for_tool("owner_rent_record_payment"),
                     )
                 raise
 
@@ -614,6 +638,7 @@ async def owner_rent_record_payment(
                     "payment": _serialize_rent_payment(payment),
                 },
                 content_summary=f"Payment of ₹{amount:,.0f} recorded successfully via {payment_method} on {payment_date}.",
+                widget_uri=get_widget_for_tool("owner_rent_record_payment"),
             )
 
     except AuthRequiredError:
@@ -623,6 +648,7 @@ async def owner_rent_record_payment(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error recording the payment: {str(e)}",
+            widget_uri=get_widget_for_tool("owner_rent_record_payment"),
         )
 
 
@@ -631,6 +657,8 @@ async def owner_rent_record_payment(
     annotations={
         "title": "View Payment History",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=RENT_COLLECTION_META,
@@ -696,6 +724,7 @@ async def owner_rent_history(
                     "limit": limit,
                 },
                 content_summary=f"Showing {len(serialized)} payments totaling ₹{total_collected:,.0f}.",
+                widget_uri=get_widget_for_tool("owner_rent_history"),
             )
 
     except AuthRequiredError:
@@ -705,6 +734,7 @@ async def owner_rent_history(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading payment history: {str(e)}",
+            widget_uri=get_widget_for_tool("owner_rent_history"),
         )
 
 
@@ -718,6 +748,8 @@ async def owner_rent_history(
     annotations={
         "title": "Property Owner Dashboard",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=OWNER_DASHBOARD_META,
@@ -766,6 +798,7 @@ async def owner_dashboard_overview() -> Dict[str, Any]:
             return format_chatgpt_response(
                 data={"dashboard": dashboard},
                 content_summary=summary,
+                widget_uri=get_widget_for_tool("owner_dashboard_overview"),
             )
 
     except AuthRequiredError:
@@ -775,6 +808,7 @@ async def owner_dashboard_overview() -> Dict[str, Any]:
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading your dashboard: {str(e)}",
+            widget_uri=get_widget_for_tool("owner_dashboard_overview"),
         )
 
 
@@ -783,6 +817,8 @@ async def owner_dashboard_overview() -> Dict[str, Any]:
     annotations={
         "title": "List Maintenance Requests",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=MAINTENANCE_META,
@@ -839,6 +875,7 @@ async def owner_maintenance_list(
                 return format_chatgpt_response(
                     data={"items": [], "total": 0, "stats": {}},
                     content_summary="You don't have any properties to show maintenance requests for.",
+                    widget_uri=get_widget_for_tool("owner_maintenance_list"),
                 )
 
             # Build maintenance query
@@ -906,6 +943,7 @@ async def owner_maintenance_list(
                     },
                 },
                 content_summary=f"Found {len(serialized)} maintenance requests. {open_count} open, {urgent_count} urgent.",
+                widget_uri=get_widget_for_tool("owner_maintenance_list"),
             )
 
     except AuthRequiredError:
@@ -915,6 +953,7 @@ async def owner_maintenance_list(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading maintenance requests: {str(e)}",
+            widget_uri=get_widget_for_tool("owner_maintenance_list"),
         )
 
 
@@ -923,6 +962,8 @@ async def owner_maintenance_list(
     annotations={
         "title": "Update Maintenance Request",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=MAINTENANCE_META,
@@ -980,6 +1021,7 @@ async def owner_maintenance_update(
                 return format_chatgpt_response(
                     data={"error": True, "code": "NOT_FOUND"},
                     content_summary=f"Maintenance request with ID {request_id} was not found.",
+                    widget_uri=get_widget_for_tool("owner_maintenance_update"),
                 )
 
             # Verify ownership
@@ -991,6 +1033,7 @@ async def owner_maintenance_update(
                 return format_chatgpt_response(
                     data={"error": True, "code": "FORBIDDEN"},
                     content_summary="You don't have permission to update this maintenance request.",
+                    widget_uri=get_widget_for_tool("owner_maintenance_update"),
                 )
 
             valid_statuses = ["open", "in_progress", "scheduled", "completed", "cancelled"]
@@ -1003,6 +1046,7 @@ async def owner_maintenance_update(
                         "valid_statuses": valid_statuses,
                     },
                     content_summary=f"Invalid status. Please use one of: {', '.join(valid_statuses)}.",
+                    widget_uri=get_widget_for_tool("owner_maintenance_update"),
                 )
 
             # Update optional fields
@@ -1049,6 +1093,7 @@ async def owner_maintenance_update(
                     "request": serialize_maintenance_request(request),
                 },
                 content_summary=f"Maintenance request updated to '{status_norm}'.",
+                widget_uri=get_widget_for_tool("owner_maintenance_update"),
             )
 
     except AuthRequiredError:
@@ -1058,6 +1103,7 @@ async def owner_maintenance_update(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error updating the maintenance request: {str(e)}",
+            widget_uri=get_widget_for_tool("owner_maintenance_update"),
         )
 
 
@@ -1071,6 +1117,8 @@ async def owner_maintenance_update(
     annotations={
         "title": "View My Rent Dues",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=TENANT_RENT_META,
@@ -1109,6 +1157,7 @@ async def tenant_rent_dues() -> Dict[str, Any]:
                 return format_chatgpt_response(
                     data={"charges": [], "total_due": 0},
                     content_summary="You don't have any active leases.",
+                    widget_uri=get_widget_for_tool("tenant_rent_dues"),
                 )
 
             # Get outstanding charges
@@ -1148,6 +1197,7 @@ async def tenant_rent_dues() -> Dict[str, Any]:
                     "overdue_count": overdue_count,
                 },
                 content_summary=summary,
+                widget_uri=get_widget_for_tool("tenant_rent_dues"),
             )
 
     except AuthRequiredError:
@@ -1157,4 +1207,5 @@ async def tenant_rent_dues() -> Dict[str, Any]:
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading your rent dues: {str(e)}",
+            widget_uri=get_widget_for_tool("tenant_rent_dues"),
         )

@@ -90,6 +90,8 @@ def _require_agent_or_admin(user) -> bool:
     annotations={
         "title": "List Managed Properties",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -171,6 +173,8 @@ async def agent_properties_list(
     annotations={
         "title": "Get Managed Property Details",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -257,6 +261,8 @@ async def agent_properties_get(
     annotations={
         "title": "Create Property For Owner",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -375,6 +381,8 @@ async def agent_properties_create_for_owner(
     annotations={
         "title": "Verify Property Listing",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -458,6 +466,8 @@ async def agent_properties_verify(
     annotations={
         "title": "List Leases",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -559,6 +569,8 @@ async def agent_leases_list(
     annotations={
         "title": "Create Lease",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -677,6 +689,7 @@ async def agent_leases_create(
         "title": "Terminate Lease",
         "readOnlyHint": False,
         "destructiveHint": True,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -769,6 +782,8 @@ async def agent_leases_terminate(
     annotations={
         "title": "List Overdue Rent",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -884,6 +899,8 @@ async def agent_rent_list_due(
     annotations={
         "title": "Record Rent Payment",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -995,6 +1012,8 @@ async def agent_rent_record_payment(
     annotations={
         "title": "List Maintenance Requests",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1096,6 +1115,8 @@ async def agent_maintenance_list(
     annotations={
         "title": "Update Maintenance Status",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1232,6 +1253,8 @@ async def agent_maintenance_update_status(
     annotations={
         "title": "List All Bookings",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1311,6 +1334,8 @@ async def agent_bookings_list_all(
     annotations={
         "title": "Update Booking Status",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1382,6 +1407,8 @@ async def agent_bookings_update_status(
     annotations={
         "title": "Agent Dashboard Overview",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1508,6 +1535,8 @@ async def agent_dashboard_overview(
     annotations={
         "title": "Admin System Status",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )

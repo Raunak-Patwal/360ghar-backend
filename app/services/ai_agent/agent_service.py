@@ -148,10 +148,11 @@ class PydanticAIAgentService:
     async def stream_response(
         self,
         user_message: str,
-        conversation_id: int,
+        conversation_id: int | None,
         conversation_history: list[dict[str, Any]],
         user: Any,
         db: AsyncSession,
+        user_role: str | None = None,
     ) -> AsyncIterator[str]:
         """
         Run the agent and yield SSE events.
@@ -159,24 +160,28 @@ class PydanticAIAgentService:
         Uses agent.iter() for node-by-node streaming so tool call events
         are interleaved with text chunks in real time.
 
+        Pass user_role="guest" with user=None for unauthenticated requests.
+        conversation_id=None is allowed for stateless (guest) sessions.
+
         Events emitted:
-            conversation_info  — once, at the start
+            conversation_info  — once, at the start (only when conversation_id is not None)
             text_chunk         — partial text from the model
             tool_call_start    — agent is invoking a tool
             tool_call_end      — tool returned a result
             done               — stream finished
             error              — something went wrong
         """
-        user_role = getattr(user, "role", "user")
-        agent = self._create_agent(user_role)
-        deps = AgentDeps(user=user, db=db, user_role=user_role)
+        role = user_role or getattr(user, "role", "user")
+        agent = self._create_agent(role)
+        deps = AgentDeps(user=user, db=db, user_role=role)
 
         # Build message history for context
         message_history = _build_message_history(conversation_history)
 
-        yield _sse_event("conversation_info", {
-            "conversation_id": conversation_id,
-        })
+        if conversation_id is not None:
+            yield _sse_event("conversation_info", {
+                "conversation_id": conversation_id,
+            })
 
         full_text = ""
         tool_calls_count = 0
@@ -271,11 +276,13 @@ class PydanticAIAgentService:
             })
 
         if not had_error:
-            yield _sse_event("done", {
-                "conversation_id": conversation_id,
+            done_data: dict[str, Any] = {
                 "tool_calls_count": tool_calls_count,
                 "response_text": full_text,
-            })
+            }
+            if conversation_id is not None:
+                done_data["conversation_id"] = conversation_id
+            yield _sse_event("done", done_data)
 
 
 def _summarize_result(content: Any, max_len: int = 100) -> str:

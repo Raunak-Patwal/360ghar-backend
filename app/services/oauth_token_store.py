@@ -26,18 +26,29 @@ class OAuthTokenStore:
     def __init__(self):
         self._redis_client = None
         self._in_memory_store: Dict[str, Dict[str, Any]] = {}
+        self._redis_initialized = False
         self.use_redis = False
-        
-        # Try to initialize Redis if available
+
+    def _ensure_redis(self) -> None:
+        """Lazily initialize Redis connection on first use.
+
+        Defers redis.ping() from import time to first actual storage
+        operation, so the application starts even if Redis is temporarily
+        unavailable.
+        """
+        if self._redis_initialized:
+            return
+
+        self._redis_initialized = True
         try:
             import redis
             self._redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
-            # Test connection
             self._redis_client.ping()
             self.use_redis = True
             logger.info("OAuth token store initialized with Redis backend")
         except Exception as e:
             logger.warning(f"Redis not available for OAuth token store, using in-memory storage: {e}")
+            self._redis_client = None
             self.use_redis = False
     
     def _make_key(self, prefix: str, identifier: str) -> str:
@@ -69,6 +80,7 @@ class OAuthTokenStore:
     ) -> bool:
         """Store authorization code"""
         try:
+            self._ensure_redis()
             auth_data = {
                 "user_id": user_id,
                 "client_id": client_id,
@@ -104,6 +116,7 @@ class OAuthTokenStore:
         """Retrieve and consume authorization code"""
         logger.debug("Retrieving auth code")
         try:
+            self._ensure_redis()
             if self.use_redis:
                 key = self._make_key("auth_code", code)
                 data = self._redis_client.get(key)
@@ -138,6 +151,7 @@ class OAuthTokenStore:
     async def delete_auth_code(self, code: str) -> bool:
         """Delete an authorization code (for explicit single-use enforcement)."""
         try:
+            self._ensure_redis()
             if self.use_redis:
                 key = self._make_key("auth_code", code)
                 self._redis_client.delete(key)
@@ -163,6 +177,7 @@ class OAuthTokenStore:
     ) -> bool:
         """Store OAuth access and refresh tokens"""
         try:
+            self._ensure_redis()
             access_token_data = {
                 "user_id": user_id,
                 "scope": scope,
@@ -243,6 +258,7 @@ class OAuthTokenStore:
         """Retrieve access token data"""
         logger.debug("Looking up access token")
         try:
+            self._ensure_redis()
             if self.use_redis:
                 key = self._make_key("access_token", access_token)
                 data = self._redis_client.get(key)
@@ -278,6 +294,7 @@ class OAuthTokenStore:
     async def get_refresh_token(self, refresh_token: str) -> Optional[Dict[str, Any]]:
         """Retrieve refresh token data"""
         try:
+            self._ensure_redis()
             if self.use_redis:
                 key = self._make_key("refresh_token", refresh_token)
                 data = self._redis_client.get(key)
@@ -308,6 +325,7 @@ class OAuthTokenStore:
     async def revoke_token(self, token: str) -> bool:
         """Revoke an access token"""
         try:
+            self._ensure_redis()
             if self.use_redis:
                 key = self._make_key("access_token", token)
                 self._redis_client.delete(key)
@@ -326,6 +344,7 @@ class OAuthTokenStore:
     async def delete_refresh_token(self, refresh_token: str) -> bool:
         """Delete a refresh token."""
         try:
+            self._ensure_redis()
             if self.use_redis:
                 key = self._make_key("refresh_token", refresh_token)
                 self._redis_client.delete(key)
@@ -389,6 +408,7 @@ class OAuthTokenStore:
     ) -> bool:
         """Store OAuth session data"""
         try:
+            self._ensure_redis()
             session_data = {
                 "client_id": client_id,
                 "redirect_uri": redirect_uri,
@@ -421,6 +441,7 @@ class OAuthTokenStore:
     async def get_oauth_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve OAuth session data"""
         try:
+            self._ensure_redis()
             if self.use_redis:
                 key = self._make_key("session", session_id)
                 data = self._redis_client.get(key)
@@ -451,6 +472,7 @@ class OAuthTokenStore:
     async def delete_session(self, session_id: str) -> bool:
         """Delete OAuth session"""
         try:
+            self._ensure_redis()
             if self.use_redis:
                 key = self._make_key("session", session_id)
                 self._redis_client.delete(key)
@@ -467,6 +489,7 @@ class OAuthTokenStore:
     
     def cleanup_expired(self):
         """Clean up expired tokens (for in-memory storage)"""
+        self._ensure_redis()
         if self.use_redis:
             # Redis handles expiration automatically
             return
@@ -506,6 +529,7 @@ class OAuthTokenStore:
             True if successful, False otherwise
         """
         try:
+            self._ensure_redis()
             client_data = {
                 **metadata,
                 "client_id": client_id,
@@ -548,6 +572,7 @@ class OAuthTokenStore:
             Client metadata dict if found and valid, None otherwise
         """
         try:
+            self._ensure_redis()
             client_data = None
             if self.use_redis:
                 key = self._make_key("client", client_id)
@@ -594,6 +619,7 @@ class OAuthTokenStore:
             True if successful, False otherwise
         """
         try:
+            self._ensure_redis()
             if self.use_redis:
                 key = self._make_key("client", client_id)
                 self._redis_client.delete(key)

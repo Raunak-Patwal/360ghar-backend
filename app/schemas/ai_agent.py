@@ -14,6 +14,12 @@ class AgentChatRequest(BaseModel):
     conversation_id: Optional[int] = None
 
 
+class GuestChatRequest(BaseModel):
+    """Request body for the public guest chat endpoint (no auth required)."""
+
+    message: str = Field(..., min_length=1, max_length=4000)
+
+
 class ConversationSummary(BaseModel):
     """Summary of a conversation for listing."""
 

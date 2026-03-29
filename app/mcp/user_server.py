@@ -115,6 +115,8 @@ def _require_auth(*, action: str, message: str, scope: str = "mcp:read mcp:write
     annotations={
         "title": "List My Properties",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=OWNER_DASHBOARD_META,
@@ -222,6 +224,8 @@ async def owner_properties_list(
     annotations={
         "title": "Create Property Listing",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -364,6 +368,8 @@ async def owner_properties_create(
     annotations={
         "title": "Get Property Details (Owner)",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -427,6 +433,8 @@ async def owner_properties_get(
     annotations={
         "title": "Update Property Listing",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -510,6 +518,8 @@ async def owner_properties_update(
     annotations={
         "title": "Toggle Property Availability",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -575,6 +585,8 @@ async def owner_properties_toggle_availability(
     annotations={
         "title": "View My Current Lease",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=LEASE_DETAILS_META,
@@ -648,6 +660,8 @@ async def tenant_lease_current() -> Dict[str, Any]:
     annotations={
         "title": "View My Rent Payment History",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=TENANT_RENT_WIDGET_META,
@@ -735,6 +749,8 @@ async def tenant_rent_history(
     annotations={
         "title": "Create Maintenance Request",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=MAINTENANCE_WIDGET_META,
@@ -854,6 +870,8 @@ async def tenant_maintenance_create(
     annotations={
         "title": "List My Maintenance Requests",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=MAINTENANCE_WIDGET_META,
@@ -951,6 +969,8 @@ async def tenant_maintenance_list(
     annotations={
         "title": "Create Booking",
         "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1029,6 +1049,8 @@ async def bookings_create(
     annotations={
         "title": "List My Bookings",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1091,6 +1113,8 @@ async def bookings_list(
     annotations={
         "title": "Get Booking Details",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1150,6 +1174,7 @@ async def bookings_get(
         "title": "Cancel Booking",
         "readOnlyHint": False,
         "destructiveHint": True,
+        "openWorldHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1214,6 +1239,8 @@ async def bookings_cancel(
     annotations={
         "title": "Check Booking Availability",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1254,6 +1281,8 @@ async def bookings_check_availability(
     annotations={
         "title": "Get Booking Pricing",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -1309,6 +1338,8 @@ async def bookings_get_pricing(
     annotations={
         "title": "System Status",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )

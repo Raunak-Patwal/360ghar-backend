@@ -286,13 +286,28 @@ For agent/admin applications:
 }
 ```
 
+### ChatGPT Apps SDK Compliance
+
+The MCP servers are fully compatible with the OpenAI Apps SDK for ChatGPT Apps:
+
+- **Widget MIME type**: Use `RESOURCE_MIME_TYPE` from `app/mcp/apps_sdk.py` (`text/html;profile=mcp-app`) when registering widget resources
+- **Tool annotations**: Every tool must include `readOnlyHint`, `openWorldHint`, and `destructiveHint` in its `annotations` dict
+- **Security schemes**: Every tool must include `securitySchemes` (use `MCP_SECURITY_SCHEMES_MIXED` or `MCP_SECURITY_SCHEMES_OAUTH2_ONLY`)
+- **Widget URI in responses**: Pass `widget_uri=get_widget_for_tool("tool_name")` to `format_chatgpt_response()` for widget-linked tools
+- **Auth challenges**: Use `raise_auth_required()` (not raw `AuthRequiredError`) to ensure the challenge includes `resource_metadata` URL
+- **Widget versioning**: Widget URIs include a content hash (`?v=...`) for cache busting, computed at registration time
+
 ### Key MCP Files
 
 | Purpose | Location |
 |---------|----------|
 | User MCP server | `app/mcp/user_server.py` |
 | Admin MCP server | `app/mcp/admin_server.py` |
+| Apps SDK helpers | `app/mcp/apps_sdk.py` |
+| ChatGPT tools | `app/mcp/chatgpt/` |
+| ChatGPT widgets | `chatgpt-widgets/` |
 | Shared utilities | `app/mcp/utils.py` |
 | Validation schemas | `app/mcp/validation.py` |
 | Auth provider | `app/mcp/auth_provider.py` |
+| OAuth endpoints | `app/api/api_v1/endpoints/oauth.py` |
 | Authorization | `app/services/pm_authz.py` |

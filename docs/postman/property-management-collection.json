@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "360ghar-property-management-collection",
     "name": "360Ghar Property Management (PM) API",
-    "description": "Postman collection for the **Property Management** flows built on top of the 360Ghar backend.\n\nBase Paths:\n- Property Management: `/api/v1/pm/*`\n- Public rental applications: `/api/v1/pm/public/*`\n- Authentication: direct Supabase Auth SDK; backend expects Bearer token\n\n## Quick Start\n1) Import this collection.\n2) Import `docs/postman/property-management-environment.json` (or use your existing env and add the variables).\n3) Set `BASE_URL` (example: `http://localhost:8000`).\n4) Set `access_token` from a Supabase session and run **00 - Setup & Token** to validate auth context.\n5) Follow the folders in order (properties \u2192 applications \u2192 lease \u2192 rent/expenses/maintenance/docs/inspections \u2192 reports).\n\n## Notes\n- MVP is **manual-first**: no payment gateway; rent payments are recorded manually (cash/transfer/check).\n- No vendor module: maintenance work orders are handled by Owner/RM.\n- Many endpoints have an optional `owner_id` scope for **agent/admin**. Owners should leave `owner_id` empty/disabled.\n- File upload requests (`/pm/documents/upload`) require selecting a local file in Postman.\n",
+    "description": "Postman collection for the **Property Management** flows built on top of the 360Ghar backend.\n\nBase Paths:\n- Property Management: `/api/v1/pm/*`\n- Public rental applications: `/api/v1/pm/public/*`\n- Authentication: direct Supabase Auth SDK; backend expects Bearer token\n\n## Quick Start\n1) Import this collection.\n2) Import `docs/postman/property-management-environment.json` (or use your existing env and add the variables).\n3) Set `BASE_URL` (example: `http://localhost:8000`).\n4) Set `access_token` from a Supabase session and run **00 - Setup & Token** to validate auth context.\n5) Follow the folders in order (properties → applications → lease → rent/expenses/maintenance/docs/inspections → reports).\n\n## Notes\n- MVP is **manual-first**: no payment gateway; rent payments are recorded manually (cash/transfer/check).\n- No vendor module: maintenance work orders are handled by Owner/RM.\n- Many endpoints have an optional `owner_id` scope for **agent/admin**. Owners should leave `owner_id` empty/disabled.\n- File upload requests (`/pm/documents/upload`) require selecting a local file in Postman.\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "360ghar"
   },
@@ -119,7 +119,7 @@
           "response": []
         },
         {
-          "name": "Dashboard Overview (Agent/Admin \u2192 owner_id)",
+          "name": "Dashboard Overview (Agent/Admin → owner_id)",
           "request": {
             "method": "GET",
             "header": [],
@@ -175,7 +175,7 @@
           "response": []
         },
         {
-          "name": "Recent Activity (Agent/Admin \u2192 owner_id)",
+          "name": "Recent Activity (Agent/Admin → owner_id)",
           "request": {
             "method": "GET",
             "header": [],
@@ -209,7 +209,7 @@
       ]
     },
     {
-      "name": "02 - RM Assignment (Owner \u2194 Agent)",
+      "name": "02 - RM Assignment (Owner ↔ Agent)",
       "description": "Relationship Manager assignment. Implementation reuses `users.agent_id` (no separate assignment table).",
       "item": [
         {
@@ -262,7 +262,7 @@
           "response": []
         },
         {
-          "name": "Assign RM (Admin \u2192 owner_user_id)",
+          "name": "Assign RM (Admin → owner_user_id)",
           "request": {
             "method": "POST",
             "header": [
@@ -320,7 +320,7 @@
           "response": []
         },
         {
-          "name": "List RM Assignments (Admin \u2192 owner_id optional)",
+          "name": "List RM Assignments (Admin → owner_id optional)",
           "request": {
             "method": "GET",
             "header": [],
@@ -460,7 +460,7 @@
           "response": []
         },
         {
-          "name": "Create Managed Property (Agent/Admin \u2192 owner_id)",
+          "name": "Create Managed Property (Agent/Admin → owner_id)",
           "request": {
             "method": "POST",
             "header": [
@@ -546,7 +546,7 @@
           "response": []
         },
         {
-          "name": "List Managed Properties (Agent/Admin \u2192 owner_id)",
+          "name": "List Managed Properties (Agent/Admin → owner_id)",
           "request": {
             "method": "GET",
             "header": [],
@@ -1084,7 +1084,7 @@
                 "upload-signed"
               ]
             },
-            "description": "Links an uploaded document (PDF) as the signed lease.\n\nRequires:\n- `pm_lease_id`\n- `pm_lease_document_id` (create via Documents \u2192 Upload Lease Agreement)"
+            "description": "Links an uploaded document (PDF) as the signed lease.\n\nRequires:\n- `pm_lease_id`\n- `pm_lease_document_id` (create via Documents → Upload Lease Agreement)"
           },
           "response": []
         },
@@ -1351,6 +1351,39 @@
                 }
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "Tenant Payment Intent",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/pm/rent/charges/{{pm_charge_id}}/tenant-payment-intent",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pm",
+                "rent",
+                "charges",
+                "{{pm_charge_id}}",
+                "tenant-payment-intent"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"charge_id\": \"{{pm_charge_id}}\",\n  \"amount_paid\": 15000,\n  \"payment_method\": \"upi\",\n  \"reference\": \"UPI-TXN-12345\",\n  \"notes\": \"Self-pay via UPI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Tenant initiates self-payment for a rent charge. Creates a payment record and marks the charge as partially/fully paid."
           },
           "response": []
         }
@@ -2063,7 +2096,7 @@
           "response": []
         },
         {
-          "name": "List Tenants (Agent \u2192 owner_id required)",
+          "name": "List Tenants (Agent → owner_id required)",
           "request": {
             "method": "GET",
             "header": [],

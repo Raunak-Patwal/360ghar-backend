@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.mcp.apps_sdk import AuthRequiredError, MCP_SECURITY_SCHEMES_MIXED, build_widget_tool_meta
+from app.mcp.chatgpt import get_widget_for_tool
 from app.mcp.chatgpt.response_formatter import (
     format_chatgpt_response,
     format_auth_required_response,
@@ -82,6 +83,8 @@ async def _get_optional_user(db):
     annotations={
         "title": "Search Properties",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=DISCOVERY_SEARCH_META,
@@ -205,6 +208,7 @@ async def discovery_search(
                 meta={
                     "search_center": {"latitude": latitude, "longitude": longitude} if latitude and longitude else None,
                 },
+                widget_uri=get_widget_for_tool("discovery_search"),
             )
 
     except Exception as e:
@@ -212,6 +216,7 @@ async def discovery_search(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error searching properties: {str(e)}",
+            widget_uri=get_widget_for_tool("discovery_search"),
         )
 
 
@@ -220,6 +225,8 @@ async def discovery_search(
     annotations={
         "title": "Get Property Details",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=PROPERTY_DETAILS_META,
@@ -260,6 +267,7 @@ async def discovery_property_get(
             return format_chatgpt_response(
                 data={"property": property_data},
                 content_summary=format_property_detail_summary(property_data),
+                widget_uri=get_widget_for_tool("discovery_property_get"),
             )
 
     except Exception as e:
@@ -268,10 +276,12 @@ async def discovery_property_get(
             return format_chatgpt_response(
                 data={"error": True, "code": "NOT_FOUND", "property_id": property_id},
                 content_summary=f"Property with ID {property_id} was not found.",
+                widget_uri=get_widget_for_tool("discovery_property_get"),
             )
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error retrieving the property: {str(e)}",
+            widget_uri=get_widget_for_tool("discovery_property_get"),
         )
 
 
@@ -280,6 +290,8 @@ async def discovery_property_get(
     annotations={
         "title": "Property Discovery Feed",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=DISCOVERY_FEED_META,
@@ -343,6 +355,7 @@ async def discovery_feed(
                     "is_personalized": user_id is not None,
                 },
                 content_summary=f"Here are {len(properties)} properties for you to discover. Swipe right to like or left to pass.",
+                widget_uri=get_widget_for_tool("discovery_feed"),
             )
 
     except Exception as e:
@@ -350,6 +363,7 @@ async def discovery_feed(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading the discovery feed: {str(e)}",
+            widget_uri=get_widget_for_tool("discovery_feed"),
         )
 
 
@@ -358,6 +372,8 @@ async def discovery_feed(
     annotations={
         "title": "List Property Amenities",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
@@ -386,6 +402,7 @@ async def discovery_amenities() -> Dict[str, Any]:
             return format_chatgpt_response(
                 data={"amenities": amenity_list, "count": len(amenity_list)},
                 content_summary=f"There are {len(amenity_list)} amenities available for filtering, including {', '.join([a['name'] for a in amenity_list[:5]])} and more.",
+                widget_uri=get_widget_for_tool("discovery_amenities"),
             )
 
     except Exception as e:
@@ -393,6 +410,7 @@ async def discovery_amenities() -> Dict[str, Any]:
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading amenities: {str(e)}",
+            widget_uri=get_widget_for_tool("discovery_amenities"),
         )
 
 
@@ -406,6 +424,8 @@ async def discovery_amenities() -> Dict[str, Any]:
     annotations={
         "title": "Like or Pass Property",
         "readOnlyHint": False,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=build_widget_tool_meta(
@@ -459,6 +479,7 @@ async def discovery_swipe(
                     "is_liked": is_liked,
                 },
                 content_summary=f"You {action} this property. {'It has been added to your shortlist.' if is_liked else ''}",
+                widget_uri=get_widget_for_tool("discovery_swipe"),
             )
 
     except AuthRequiredError:
@@ -468,6 +489,7 @@ async def discovery_swipe(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error recording your swipe: {str(e)}",
+            widget_uri=get_widget_for_tool("discovery_swipe"),
         )
 
 
@@ -476,6 +498,8 @@ async def discovery_swipe(
     annotations={
         "title": "View Shortlisted Properties",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=SHORTLIST_META,
@@ -543,6 +567,7 @@ async def discovery_shortlist(
                     "total_pages": total_pages,
                 },
                 content_summary=f"You have {total} properties in your shortlist. Showing {len(properties)} on this page.",
+                widget_uri=get_widget_for_tool("discovery_shortlist"),
             )
 
     except AuthRequiredError:
@@ -552,6 +577,7 @@ async def discovery_shortlist(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading your shortlist: {str(e)}",
+            widget_uri=get_widget_for_tool("discovery_shortlist"),
         )
 
 
@@ -560,6 +586,8 @@ async def discovery_shortlist(
     annotations={
         "title": "Get Property Recommendations",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=build_widget_tool_meta(
@@ -620,6 +648,7 @@ async def discovery_recommendations(
                     "personalized": True,
                 },
                 content_summary=f"Based on your preferences, here are {len(properties)} properties we think you'll love.",
+                widget_uri=get_widget_for_tool("discovery_recommendations"),
             )
 
     except AuthRequiredError:
@@ -629,4 +658,5 @@ async def discovery_recommendations(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error generating recommendations: {str(e)}",
+            widget_uri=get_widget_for_tool("discovery_recommendations"),
         )

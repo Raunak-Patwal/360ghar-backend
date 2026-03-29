@@ -1087,6 +1087,115 @@ async def admin_system_status(
 
 
 # ============================================================================
+# ============================================================================
+# GUEST TOOLS — Public property discovery (no auth required)
+# ============================================================================
+
+async def guest_property_search(
+    ctx: RunContext[AgentDeps],
+    query: Optional[str] = None,
+    city: Optional[str] = None,
+    locality: Optional[str] = None,
+    property_type: Optional[str] = None,
+    purpose: Optional[str] = None,
+    price_min: Optional[float] = None,
+    price_max: Optional[float] = None,
+    bedrooms_min: Optional[int] = None,
+    bedrooms_max: Optional[int] = None,
+    page: int = 1,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Search for properties with optional filters. No authentication required."""
+    from app.schemas.property import UnifiedPropertyFilter
+    from app.services.property import get_unified_properties_optimized
+
+    limit = min(max(1, limit), 50)
+    page = max(1, page)
+
+    filter_data: dict[str, Any] = {}
+    if query:
+        filter_data["search_query"] = query
+    if city:
+        filter_data["city"] = city
+    if locality:
+        filter_data["locality"] = locality
+    if property_type:
+        filter_data["property_type"] = property_type
+    if purpose:
+        filter_data["purpose"] = purpose
+    if price_min is not None:
+        filter_data["price_min"] = price_min
+    if price_max is not None:
+        filter_data["price_max"] = price_max
+    if bedrooms_min is not None:
+        filter_data["bedrooms_min"] = bedrooms_min
+    if bedrooms_max is not None:
+        filter_data["bedrooms_max"] = bedrooms_max
+
+    filters = UnifiedPropertyFilter(**filter_data)
+    result = await get_unified_properties_optimized(
+        ctx.deps.db,
+        filters=filters,
+        user_id=None,
+        page=page,
+        limit=limit,
+    )
+
+    properties = [serialize_property_basic(p) for p in result.get("items", [])]
+    return {
+        "properties": properties,
+        "total": result.get("total", 0),
+        "page": page,
+        "total_pages": result.get("total_pages", 0),
+    }
+
+
+async def guest_property_details(
+    ctx: RunContext[AgentDeps],
+    property_id: int,
+) -> dict[str, Any]:
+    """Get full details for a specific property. No authentication required."""
+    from app.services.property import get_property
+
+    property_obj = await get_property(ctx.deps.db, property_id)
+    return {"property": serialize_property_full(property_obj)}
+
+
+async def guest_property_recommendations(
+    ctx: RunContext[AgentDeps],
+    city: Optional[str] = None,
+    purpose: Optional[str] = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Get a list of recommended properties for discovery. No authentication required."""
+    from app.schemas.property import UnifiedPropertyFilter
+    from app.services.property import get_unified_properties_optimized
+
+    limit = min(max(1, limit), 20)
+
+    filter_data: dict[str, Any] = {}
+    if city:
+        filter_data["city"] = city
+    if purpose:
+        filter_data["purpose"] = purpose
+
+    filters = UnifiedPropertyFilter(**filter_data)
+    result = await get_unified_properties_optimized(
+        ctx.deps.db,
+        filters=filters,
+        user_id=None,
+        page=1,
+        limit=limit,
+    )
+
+    properties = [serialize_property_basic(p) for p in result.get("items", [])]
+    return {
+        "properties": properties,
+        "count": len(properties),
+    }
+
+
+# ============================================================================
 # Tool Registration
 # ============================================================================
 
@@ -1132,8 +1241,20 @@ ADMIN_TOOLS: list[tuple[str, Any, str]] = [
 ]
 
 
+GUEST_TOOLS: list[tuple[str, Any, str]] = [
+    ("guest_property_search", guest_property_search,
+     "Search properties by city, type, purpose, price, bedrooms, or text query"),
+    ("guest_property_details", guest_property_details,
+     "Get full details for a specific property by ID"),
+    ("guest_property_recommendations", guest_property_recommendations,
+     "Get a list of recommended properties to browse"),
+]
+
+
 def get_tools_for_role(role: str) -> list[tuple[str, Any, str]]:
     """Return the list of tools available for a given user role."""
+    if role == "guest":
+        return list(GUEST_TOOLS)
     tools = list(USER_TOOLS)
     if role in ("agent", "admin"):
         tools.extend(ADMIN_TOOLS)

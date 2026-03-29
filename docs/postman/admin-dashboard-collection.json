@@ -84,7 +84,7 @@
   ],
   "item": [
     {
-      "name": "\ud83d\udd10 Authentication",
+      "name": "🔐 Authentication",
       "item": [
         {
           "name": "Get Current User Profile (Supabase Token Required)",
@@ -194,10 +194,10 @@
       ]
     },
     {
-      "name": "\ud83d\udc65 User Management",
+      "name": "👥 User Management",
       "item": [
         {
-          "name": "\ud83d\udccb List Users (Admin/Agent)",
+          "name": "📋 List Users (Admin/Agent)",
           "request": {
             "method": "GET",
             "header": [],
@@ -242,7 +242,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc64 Get My Profile",
+          "name": "👤 Get My Profile",
           "request": {
             "method": "GET",
             "header": [],
@@ -264,7 +264,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc64 Get User Details",
+          "name": "👤 Get User Details",
           "request": {
             "method": "GET",
             "header": [],
@@ -286,7 +286,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update User",
+          "name": "✏️ Update User",
           "request": {
             "method": "PUT",
             "header": [
@@ -322,7 +322,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd17 Assign Agent to User (Admin Only)",
+          "name": "🔗 Assign Agent to User (Admin Only)",
           "request": {
             "method": "POST",
             "header": [
@@ -359,7 +359,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update My Profile",
+          "name": "✏️ Update My Profile",
           "request": {
             "method": "PUT",
             "header": [
@@ -395,7 +395,7 @@
           "response": []
         },
         {
-          "name": "\u2699\ufe0f Update Preferences",
+          "name": "⚙️ Update Preferences",
           "request": {
             "method": "PUT",
             "header": [
@@ -431,7 +431,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccd Update Location",
+          "name": "📍 Update Location",
           "request": {
             "method": "PUT",
             "header": [
@@ -467,7 +467,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd14 Get Notification Settings",
+          "name": "🔔 Get Notification Settings",
           "request": {
             "method": "GET",
             "header": [],
@@ -488,7 +488,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd14 Update Notification Settings",
+          "name": "🔔 Update Notification Settings",
           "request": {
             "method": "PUT",
             "header": [
@@ -523,7 +523,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd14 Update Notifications (Compat)",
+          "name": "🔔 Update Notifications (Compat)",
           "request": {
             "method": "PUT",
             "header": [
@@ -559,7 +559,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd12 Get Privacy Settings",
+          "name": "🔒 Get Privacy Settings",
           "request": {
             "method": "GET",
             "header": [],
@@ -580,7 +580,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd12 Update Privacy Settings",
+          "name": "🔒 Update Privacy Settings",
           "request": {
             "method": "PUT",
             "header": [
@@ -615,7 +615,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd12 Update Privacy (Compat)",
+          "name": "🔒 Update Privacy (Compat)",
           "request": {
             "method": "PUT",
             "header": [
@@ -653,10 +653,10 @@
       ]
     },
     {
-      "name": "\ud83c\udfe2 Agent Management",
+      "name": "🏢 Agent Management",
       "item": [
         {
-          "name": "\ud83d\udccb List All Agents (Admin)",
+          "name": "📋 List All Agents (Admin)",
           "request": {
             "method": "GET",
             "header": [],
@@ -693,7 +693,7 @@
           "response": []
         },
         {
-          "name": "\u2795 Create New Agent (Admin)",
+          "name": "➕ Create New Agent (Admin)",
           "event": [
             {
               "listen": "test",
@@ -702,7 +702,7 @@
                   "if (pm.response.code === 200) {",
                   "    const response = pm.response.json();",
                   "    pm.environment.set('new_agent_id', response.id);",
-                  "    console.log('\u2705 Created Agent ID:', response.id);",
+                  "    console.log('✅ Created Agent ID:', response.id);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -743,7 +743,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd04 Update Agent (Admin)",
+          "name": "🔄 Update Agent (Admin)",
           "request": {
             "method": "PUT",
             "header": [
@@ -778,7 +778,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udeab Deactivate Agent (Admin)",
+          "name": "🚫 Deactivate Agent (Admin)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -799,7 +799,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd04 Toggle Agent Availability (Admin)",
+          "name": "🔄 Toggle Agent Availability (Admin)",
           "request": {
             "method": "PATCH",
             "header": [],
@@ -829,7 +829,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc64 My Agent Profile (Agent)",
+          "name": "👤 My Agent Profile (Agent)",
           "request": {
             "method": "GET",
             "header": [],
@@ -851,7 +851,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcca System Workload (Admin)",
+          "name": "📊 System Workload (Admin)",
           "request": {
             "method": "GET",
             "header": [],
@@ -874,7 +874,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcc8 System Statistics (Admin)",
+          "name": "📈 System Statistics (Admin)",
           "request": {
             "method": "GET",
             "header": [],
@@ -897,7 +897,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc64 Get My Agent",
+          "name": "👤 Get My Agent",
           "request": {
             "method": "GET",
             "header": [],
@@ -919,7 +919,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd17 Assign Agent to Me",
+          "name": "🔗 Assign Agent to Me",
           "request": {
             "method": "POST",
             "header": [],
@@ -949,7 +949,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb Get Available Agents",
+          "name": "📋 Get Available Agents",
           "request": {
             "method": "GET",
             "header": [],
@@ -995,7 +995,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb Get Agents by Type",
+          "name": "📋 Get Agents by Type",
           "request": {
             "method": "GET",
             "header": [],
@@ -1030,7 +1030,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb Get Agents by Specialization",
+          "name": "📋 Get Agents by Specialization",
           "request": {
             "method": "GET",
             "header": [],
@@ -1065,7 +1065,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc64 Get Agent Details",
+          "name": "👤 Get Agent Details",
           "request": {
             "method": "GET",
             "header": [],
@@ -1086,7 +1086,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcca Get Agent Statistics",
+          "name": "📊 Get Agent Statistics",
           "request": {
             "method": "GET",
             "header": [],
@@ -1109,7 +1109,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcc5 Get Agent Visit History",
+          "name": "📅 Get Agent Visit History",
           "request": {
             "method": "GET",
             "header": [],
@@ -1146,10 +1146,10 @@
       ]
     },
     {
-      "name": "\ud83c\udfe0 Property Management",
+      "name": "🏠 Property Management",
       "item": [
         {
-          "name": "\ud83d\udd0d Search Properties",
+          "name": "🔍 Search Properties",
           "request": {
             "method": "GET",
             "header": [],
@@ -1327,7 +1327,7 @@
           "response": []
         },
         {
-          "name": "\ud83c\udfe0 Get Property Details",
+          "name": "🏠 Get Property Details",
           "request": {
             "method": "GET",
             "header": [],
@@ -1348,7 +1348,7 @@
           "response": []
         },
         {
-          "name": "\u2795 Create Property",
+          "name": "➕ Create Property",
           "event": [
             {
               "listen": "test",
@@ -1357,7 +1357,7 @@
                   "if (pm.response.code === 200) {",
                   "    const response = pm.response.json();",
                   "    pm.environment.set('new_property_id', response.id);",
-                  "    console.log('\u2705 Created Property ID:', response.id);",
+                  "    console.log('✅ Created Property ID:', response.id);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -1406,7 +1406,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update Property",
+          "name": "✏️ Update Property",
           "request": {
             "method": "PUT",
             "header": [
@@ -1441,7 +1441,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\uddd1\ufe0f Delete Property",
+          "name": "🗑️ Delete Property",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -1463,7 +1463,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udca1 Get Recommendations",
+          "name": "💡 Get Recommendations",
           "request": {
             "method": "GET",
             "header": [],
@@ -1491,7 +1491,7 @@
           "response": []
         },
         {
-          "name": "\ud83e\udde0 Semantic Property Search",
+          "name": "🧠 Semantic Property Search",
           "request": {
             "method": "GET",
             "header": [],
@@ -1569,10 +1569,10 @@
       ]
     },
     {
-      "name": "\ud83d\udc46 Swipe Management",
+      "name": "👆 Swipe Management",
       "item": [
         {
-          "name": "\ud83d\udc4d Record Swipe",
+          "name": "👍 Record Swipe",
           "request": {
             "method": "POST",
             "header": [
@@ -1607,7 +1607,7 @@
           "response": []
         },
         {
-          "name": "\ud83e\uddfe Swipe History",
+          "name": "🧾 Swipe History",
           "request": {
             "method": "GET",
             "header": [],
@@ -1673,7 +1673,7 @@
           "response": []
         },
         {
-          "name": "\u21a9\ufe0f Undo Last Swipe",
+          "name": "↩️ Undo Last Swipe",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -1695,7 +1695,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd01 Toggle Swipe Like",
+          "name": "🔁 Toggle Swipe Like",
           "request": {
             "method": "PUT",
             "header": [],
@@ -1718,7 +1718,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcca Swipe Stats",
+          "name": "📊 Swipe Stats",
           "request": {
             "method": "GET",
             "header": [],
@@ -1742,10 +1742,10 @@
       ]
     },
     {
-      "name": "\ud83d\udc40 Visit Management",
+      "name": "👀 Visit Management",
       "item": [
         {
-          "name": "\ud83d\udcc5 Schedule Visit",
+          "name": "📅 Schedule Visit",
           "event": [
             {
               "listen": "test",
@@ -1754,7 +1754,7 @@
                   "if (pm.response.code === 200) {",
                   "    const response = pm.response.json();",
                   "    pm.environment.set('new_visit_id', response.id);",
-                  "    console.log('\u2705 Scheduled Visit ID:', response.id);",
+                  "    console.log('✅ Scheduled Visit ID:', response.id);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -1795,7 +1795,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb My Visits",
+          "name": "📋 My Visits",
           "request": {
             "method": "GET",
             "header": [],
@@ -1816,7 +1816,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb List All Visits (Admin/Agent)",
+          "name": "📋 List All Visits (Admin/Agent)",
           "request": {
             "method": "GET",
             "header": [],
@@ -1869,7 +1869,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc41\ufe0f Get Visit Details",
+          "name": "👁️ Get Visit Details",
           "request": {
             "method": "GET",
             "header": [],
@@ -1890,7 +1890,7 @@
           "response": []
         },
         {
-          "name": "\u2705 Complete Visit (Admin/Agent)",
+          "name": "✅ Complete Visit (Admin/Agent)",
           "request": {
             "method": "POST",
             "header": [
@@ -1927,7 +1927,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd04 Reschedule Visit",
+          "name": "🔄 Reschedule Visit",
           "request": {
             "method": "POST",
             "header": [
@@ -1963,7 +1963,7 @@
           "response": []
         },
         {
-          "name": "\u274c Cancel Visit",
+          "name": "❌ Cancel Visit",
           "request": {
             "method": "POST",
             "header": [
@@ -1999,7 +1999,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcc6 My Upcoming Visits",
+          "name": "📆 My Upcoming Visits",
           "request": {
             "method": "GET",
             "header": [],
@@ -2021,7 +2021,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcdc My Past Visits",
+          "name": "📜 My Past Visits",
           "request": {
             "method": "GET",
             "header": [],
@@ -2043,7 +2043,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update Visit",
+          "name": "✏️ Update Visit",
           "request": {
             "method": "PUT",
             "header": [
@@ -2080,10 +2080,10 @@
       ]
     },
     {
-      "name": "\ud83d\udcc5 Booking Management",
+      "name": "📅 Booking Management",
       "item": [
         {
-          "name": "\ud83d\udccb My Bookings",
+          "name": "📋 My Bookings",
           "request": {
             "method": "GET",
             "header": [],
@@ -2104,7 +2104,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb List All Bookings (Admin/Agent)",
+          "name": "📋 List All Bookings (Admin/Agent)",
           "request": {
             "method": "GET",
             "header": [],
@@ -2157,7 +2157,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc41\ufe0f Get Booking Details",
+          "name": "👁️ Get Booking Details",
           "request": {
             "method": "GET",
             "header": [],
@@ -2178,7 +2178,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcb3 Process Payment (Admin/Agent)",
+          "name": "💳 Process Payment (Admin/Agent)",
           "request": {
             "method": "POST",
             "header": [
@@ -2214,7 +2214,7 @@
           "response": []
         },
         {
-          "name": "\u2b50 Add Review (Admin/Agent)",
+          "name": "⭐ Add Review (Admin/Agent)",
           "request": {
             "method": "POST",
             "header": [
@@ -2250,7 +2250,7 @@
           "response": []
         },
         {
-          "name": "\u2795 Create Booking",
+          "name": "➕ Create Booking",
           "request": {
             "method": "POST",
             "header": [
@@ -2285,7 +2285,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update Booking",
+          "name": "✏️ Update Booking",
           "request": {
             "method": "PUT",
             "header": [
@@ -2320,7 +2320,7 @@
           "response": []
         },
         {
-          "name": "\u274c Cancel Booking",
+          "name": "❌ Cancel Booking",
           "request": {
             "method": "POST",
             "header": [
@@ -2356,7 +2356,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcc6 My Upcoming Bookings",
+          "name": "📆 My Upcoming Bookings",
           "request": {
             "method": "GET",
             "header": [],
@@ -2378,7 +2378,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcdc My Past Bookings",
+          "name": "📜 My Past Bookings",
           "request": {
             "method": "GET",
             "header": [],
@@ -2400,7 +2400,7 @@
           "response": []
         },
         {
-          "name": "\u2705 Check Availability (Public)",
+          "name": "✅ Check Availability (Public)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -2439,7 +2439,7 @@
           "response": []
         },
         {
-          "name": "\ud83e\uddee Calculate Pricing (Public)",
+          "name": "🧮 Calculate Pricing (Public)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -2480,10 +2480,10 @@
       ]
     },
     {
-      "name": "\ud83d\udd14 Notifications",
+      "name": "🔔 Notifications",
       "item": [
         {
-          "name": "\ud83d\udcf1 Register Device Token",
+          "name": "📱 Register Device Token",
           "request": {
             "auth": {
               "type": "noauth"
@@ -2522,7 +2522,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udce8 Send to Token (Admin)",
+          "name": "📨 Send to Token (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -2558,7 +2558,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc64 Send to User (Admin)",
+          "name": "👤 Send to User (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -2594,7 +2594,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udce3 Send to Topic (Admin)",
+          "name": "📣 Send to Topic (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -2630,7 +2630,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udce6 Send Bulk Tokens (Admin)",
+          "name": "📦 Send Bulk Tokens (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -2666,7 +2666,7 @@
           "response": []
         },
         {
-          "name": "\u2705 Mark Delivery Opened",
+          "name": "✅ Mark Delivery Opened",
           "request": {
             "method": "POST",
             "header": [],
@@ -2689,7 +2689,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udce8 Send Typed Notification (Admin)",
+          "name": "📨 Send Typed Notification (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -2726,7 +2726,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcdc List User Notifications (Admin)",
+          "name": "📜 List User Notifications (Admin)",
           "request": {
             "method": "GET",
             "header": [],
@@ -2759,7 +2759,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udce3 Marketing Broadcast (Admin)",
+          "name": "📣 Marketing Broadcast (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -2795,7 +2795,7 @@
           "response": []
         },
         {
-          "name": "\ud83c\udfaf Marketing Segment (Admin)",
+          "name": "🎯 Marketing Segment (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -2829,14 +2829,43 @@
             "description": "Admin-only: send to a filtered segment (role/agent_id/is_active)."
           },
           "response": []
+        },
+        {
+          "name": "Unregister Device Token",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/notifications/devices/unregister?token={{device_token}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "devices",
+                "unregister"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{device_token}}",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Unregister a push notification device token."
+          },
+          "response": []
         }
       ]
     },
     {
-      "name": "\ud83d\udc1b Bug Reports",
+      "name": "🐛 Bug Reports",
       "item": [
         {
-          "name": "\ud83d\udcdd Create Bug Report",
+          "name": "📝 Create Bug Report",
           "request": {
             "method": "POST",
             "header": [
@@ -2871,7 +2900,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcce Create Bug Report with Media",
+          "name": "📎 Create Bug Report with Media",
           "request": {
             "method": "POST",
             "header": [],
@@ -2928,7 +2957,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb List Bug Reports",
+          "name": "📋 List Bug Reports",
           "request": {
             "method": "GET",
             "header": [],
@@ -2971,7 +3000,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc41\ufe0f Get Bug Report Details",
+          "name": "👁️ Get Bug Report Details",
           "request": {
             "method": "GET",
             "header": [],
@@ -2992,7 +3021,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update Bug Report",
+          "name": "✏️ Update Bug Report",
           "request": {
             "method": "PUT",
             "header": [
@@ -3029,10 +3058,10 @@
       ]
     },
     {
-      "name": "\ud83d\udcc4 Pages Management",
+      "name": "📄 Pages Management",
       "item": [
         {
-          "name": "\ud83d\udcdd Create Page (Admin)",
+          "name": "📝 Create Page (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -3067,7 +3096,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb List Pages (Admin)",
+          "name": "📋 List Pages (Admin)",
           "request": {
             "method": "GET",
             "header": [],
@@ -3110,7 +3139,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc41\ufe0f Get Page Details (Admin)",
+          "name": "👁️ Get Page Details (Admin)",
           "request": {
             "method": "GET",
             "header": [],
@@ -3131,7 +3160,7 @@
           "response": []
         },
         {
-          "name": "\ud83c\udf10 Get Page Public",
+          "name": "🌐 Get Page Public",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3156,7 +3185,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update Page (Admin)",
+          "name": "✏️ Update Page (Admin)",
           "request": {
             "method": "PUT",
             "header": [
@@ -3191,7 +3220,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\uddd1\ufe0f Delete Page (Admin)",
+          "name": "🗑️ Delete Page (Admin)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -3214,10 +3243,10 @@
       ]
     },
     {
-      "name": "\u2753 FAQ Management",
+      "name": "❓ FAQ Management",
       "item": [
         {
-          "name": "\u2795 Create FAQ (Admin)",
+          "name": "➕ Create FAQ (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -3252,7 +3281,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb List FAQs (Admin)",
+          "name": "📋 List FAQs (Admin)",
           "request": {
             "method": "GET",
             "header": [],
@@ -3293,7 +3322,7 @@
           "response": []
         },
         {
-          "name": "\ud83c\udf10 List FAQs (Public)",
+          "name": "🌐 List FAQs (Public)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3332,7 +3361,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcc4 Get FAQ (Admin)",
+          "name": "📄 Get FAQ (Admin)",
           "request": {
             "method": "GET",
             "header": [],
@@ -3353,7 +3382,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update FAQ (Admin)",
+          "name": "✏️ Update FAQ (Admin)",
           "request": {
             "method": "PUT",
             "header": [
@@ -3388,7 +3417,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\uddd1\ufe0f Delete FAQ (Admin)",
+          "name": "🗑️ Delete FAQ (Admin)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -3411,10 +3440,10 @@
       ]
     },
     {
-      "name": "\ud83d\udcdd Blog Management",
+      "name": "📝 Blog Management",
       "item": [
         {
-          "name": "\u2795 Create Blog Post (Admin)",
+          "name": "➕ Create Blog Post (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -3449,7 +3478,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb List Blog Posts (Public)",
+          "name": "📋 List Blog Posts (Public)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3503,7 +3532,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcc4 Get Blog Post (Public)",
+          "name": "📄 Get Blog Post (Public)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3528,7 +3557,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update Blog Post (Admin)",
+          "name": "✏️ Update Blog Post (Admin)",
           "request": {
             "method": "PUT",
             "header": [
@@ -3564,7 +3593,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\uddd1\ufe0f Delete Blog Post (Admin)",
+          "name": "🗑️ Delete Blog Post (Admin)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -3586,7 +3615,7 @@
           "response": []
         },
         {
-          "name": "\ud83e\udde0 Generate Blog From Topic (Admin)",
+          "name": "🧠 Generate Blog From Topic (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -3621,7 +3650,7 @@
           "response": []
         },
         {
-          "name": "\ud83e\udde0 Generate Bulk Blogs (Admin)",
+          "name": "🧠 Generate Bulk Blogs (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -3656,7 +3685,7 @@
           "response": []
         },
         {
-          "name": "\u2795 Create Blog Category (Admin)",
+          "name": "➕ Create Blog Category (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -3691,7 +3720,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb List Blog Categories (Public)",
+          "name": "📋 List Blog Categories (Public)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3725,7 +3754,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcc4 Get Blog Category (Public)",
+          "name": "📄 Get Blog Category (Public)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3750,7 +3779,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update Blog Category (Admin)",
+          "name": "✏️ Update Blog Category (Admin)",
           "request": {
             "method": "PUT",
             "header": [
@@ -3786,7 +3815,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\uddd1\ufe0f Delete Blog Category (Admin)",
+          "name": "🗑️ Delete Blog Category (Admin)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -3808,7 +3837,7 @@
           "response": []
         },
         {
-          "name": "\u2795 Create Blog Tag (Admin)",
+          "name": "➕ Create Blog Tag (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -3843,7 +3872,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb List Blog Tags (Public)",
+          "name": "📋 List Blog Tags (Public)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3877,7 +3906,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcc4 Get Blog Tag (Public)",
+          "name": "📄 Get Blog Tag (Public)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3902,7 +3931,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update Blog Tag (Admin)",
+          "name": "✏️ Update Blog Tag (Admin)",
           "request": {
             "method": "PUT",
             "header": [
@@ -3938,7 +3967,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\uddd1\ufe0f Delete Blog Tag (Admin)",
+          "name": "🗑️ Delete Blog Tag (Admin)",
           "request": {
             "method": "DELETE",
             "header": [],
@@ -3962,10 +3991,156 @@
       ]
     },
     {
-      "name": "\ud83d\udcf1 App Versions",
+      "name": "🤖 AI Agent Chat",
       "item": [
         {
-          "name": "\u2795 Create App Version (Admin)",
+          "name": "Chat with AI Agent (SSE)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agent/chat",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agent",
+                "chat"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"What 2BHK properties are available in Gurgaon under \\u20b930,000/month?\",\n  \"conversation_id\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Stream a response from the AI real estate agent via Server-Sent Events (SSE). The response is streamed as text/event-stream. Set 'conversation_id' to continue an existing conversation, or omit/null to start a new one."
+          },
+          "response": []
+        },
+        {
+          "name": "List Conversations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agent/conversations?limit=20&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agent",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "List all AI chat conversations for the current user."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Conversation Messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agent/conversations/{{test_conversation_id}}/messages?limit=50",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agent",
+                "conversations",
+                "{{test_conversation_id}}",
+                "messages"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Get messages for a specific conversation."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agent/conversations/{{test_conversation_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agent",
+                "conversations",
+                "{{test_conversation_id}}"
+              ]
+            },
+            "description": "Delete a conversation and all its messages. Returns 204."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Agent Widget HTML",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/agent/widgets/{{test_widget_name}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "agent",
+                "widgets",
+                "{{test_widget_name}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Serve a widget HTML page by name. Used by ChatGPT Apps SDK to render rich UI."
+          },
+          "response": []
+        }
+      ],
+      "description": "AI real estate agent chat powered by pydantic-ai. Supports streaming via SSE, conversation history, and rich widget responses for ChatGPT integration."
+    },
+    {
+      "name": "📱 App Versions",
+      "item": [
+        {
+          "name": "➕ Create App Version (Admin)",
           "request": {
             "method": "POST",
             "header": [
@@ -4000,7 +4175,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udd0d Check for Updates (Public)",
+          "name": "🔍 Check for Updates (Public)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4038,7 +4213,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udccb List App Versions (Admin)",
+          "name": "📋 List App Versions (Admin)",
           "request": {
             "method": "GET",
             "header": [],
@@ -4087,7 +4262,7 @@
           "response": []
         },
         {
-          "name": "\u270f\ufe0f Update App Version (Admin)",
+          "name": "✏️ Update App Version (Admin)",
           "request": {
             "method": "PUT",
             "header": [
@@ -4124,10 +4299,10 @@
       ]
     },
     {
-      "name": "\ud83d\udee0\ufe0f Utilities",
+      "name": "🛠️ Utilities",
       "item": [
         {
-          "name": "\ud83d\udccb List Amenities",
+          "name": "📋 List Amenities",
           "request": {
             "method": "GET",
             "header": [],
@@ -4148,7 +4323,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udce4 Upload File",
+          "name": "📤 Upload File",
           "request": {
             "method": "POST",
             "header": [],
@@ -4178,14 +4353,330 @@
             "description": "Upload files (images, documents) - returns public URL"
           },
           "response": []
+        },
+        {
+          "name": "Upload Multiple Files (Batch)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/upload/batch",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "upload",
+                "batch"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "",
+                  "description": "Multiple image/document files"
+                },
+                {
+                  "key": "folder",
+                  "value": "property_image",
+                  "type": "text",
+                  "description": "Storage folder type"
+                },
+                {
+                  "key": "tour_id",
+                  "value": "",
+                  "type": "text",
+                  "description": "Optional tour ID"
+                },
+                {
+                  "key": "visibility",
+                  "value": "public",
+                  "type": "text",
+                  "description": "public or private"
+                }
+              ]
+            },
+            "description": "Upload multiple files in a single request. Use multipart/form-data."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Presigned Upload URLs",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/upload/presigned",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "upload",
+                "presigned"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"files\": [\n    {\n      \"filename\": \"photo.jpg\",\n      \"content_type\": \"image/jpeg\",\n      \"file_size\": 1048576,\n      \"folder_type\": \"property_image\",\n      \"property_id\": 1,\n      \"visibility\": \"public\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Generate presigned S3/Supabase URLs for direct client-side uploads."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Presigned Upload",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/upload/confirm/{{test_upload_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "upload",
+                "confirm",
+                "{{test_upload_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Confirm that a presigned upload has completed. Pass the upload_id in the path."
+          },
+          "response": []
+        },
+        {
+          "name": "List Media Files",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/upload/media?page=1&page_size=20&folder=&visibility=&is_processed=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "upload",
+                "media"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "folder",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "visibility",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "is_processed",
+                  "value": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "List media files owned by the current user."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Media File",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/upload/media/{{test_media_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "upload",
+                "media",
+                "{{test_media_id}}"
+              ]
+            },
+            "description": "Get details of a single media file by ID."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Media File",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/upload/media/{{test_media_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "upload",
+                "media",
+                "{{test_media_id}}"
+              ]
+            },
+            "description": "Soft-delete a media file. Returns 204 on success."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Media Metadata",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/upload/media/{{test_media_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "upload",
+                "media",
+                "{{test_media_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"visibility\": \"public\",\n  \"is_processed\": true,\n  \"cdn_url\": \"\",\n  \"thumbnail_url\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Update metadata for a media file (visibility, CDN URL, processed status)."
+          },
+          "response": []
         }
       ]
     },
     {
-      "name": "\ud83d\udcca System Health & Config",
+      "name": "🏛️ Vastu",
       "item": [
         {
-          "name": "\ud83d\udc93 Core Health Check",
+          "name": "Analyze Floor Plan (Vastu)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/vastu/analyze",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vastu",
+                "analyze"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": "",
+                  "description": "Floor plan image (PNG/JPG)"
+                },
+                {
+                  "key": "north_direction",
+                  "value": "north",
+                  "type": "text",
+                  "description": "Compass direction: north, south, east, west"
+                },
+                {
+                  "key": "notes",
+                  "value": "2 BHK apartment, main door faces east",
+                  "type": "text"
+                },
+                {
+                  "key": "provider",
+                  "value": "gemini",
+                  "type": "text",
+                  "description": "AI provider: gemini or glm"
+                }
+              ]
+            },
+            "description": "Analyze a floor plan image for Vastu compliance. Public endpoint, no auth required."
+          },
+          "response": []
+        },
+        {
+          "name": "Vastu Service Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/vastu/health",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vastu",
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Check Vastu AI service health status."
+          },
+          "response": []
+        }
+      ],
+      "description": "Vastu compliance analysis for floor plans using AI."
+    },
+    {
+      "name": "📊 System Health & Config",
+      "item": [
+        {
+          "name": "💓 Core Health Check",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4206,7 +4697,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udc93 General Health Check",
+          "name": "💓 General Health Check",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4227,7 +4718,7 @@
           "response": []
         },
         {
-          "name": "\u2699\ufe0f Get Config",
+          "name": "⚙️ Get Config",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4248,7 +4739,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcd6 API Documentation",
+          "name": "📖 API Documentation",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4271,7 +4762,7 @@
           "response": []
         },
         {
-          "name": "\ud83c\udfe0 API Root",
+          "name": "🏠 API Root",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4290,14 +4781,37 @@
             "description": "Public root endpoint with API version and status."
           },
           "response": []
+        },
+        {
+          "name": "Tour Share Page (HTML)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/share/tours/{{test_tour_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "share",
+                "tours",
+                "{{test_tour_id}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Renders an Open Graph / Twitter card HTML page for sharing a tour on social media. Redirects human visitors to the tour viewer."
+          },
+          "response": []
         }
       ]
     },
     {
-      "name": "\ud83d\udd17 MCP OAuth",
+      "name": "🔗 MCP OAuth",
       "item": [
         {
-          "name": "\ud83d\udd10 Authorization Endpoint",
+          "name": "🔐 Authorization Endpoint",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4355,7 +4869,7 @@
           "response": []
         },
         {
-          "name": "\ud83e\uddfe Consent Page",
+          "name": "🧾 Consent Page",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4384,7 +4898,7 @@
           "response": []
         },
         {
-          "name": "\u2705 Submit Consent",
+          "name": "✅ Submit Consent",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4437,7 +4951,7 @@
           "response": []
         },
         {
-          "name": "\ud83c\udf9f\ufe0f Token Endpoint",
+          "name": "🎟️ Token Endpoint",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4500,7 +5014,7 @@
           "response": []
         },
         {
-          "name": "\ud83d\udcc4 Authorization Server Metadata",
+          "name": "📄 Authorization Server Metadata",
           "request": {
             "auth": {
               "type": "noauth"
@@ -4522,8 +5036,318 @@
             "description": "RFC 8414 metadata for MCP OAuth issuer."
           },
           "response": []
+        },
+        {
+          "name": "Register OAuth Client (RFC 7591)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mcp/oauth/register",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mcp",
+                "oauth",
+                "register"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_name\": \"My MCP Client\",\n  \"redirect_uris\": [\n    \"https://myapp.example.com/oauth/callback\"\n  ],\n  \"client_uri\": \"https://myapp.example.com\",\n  \"grant_types\": [\n    \"authorization_code\"\n  ],\n  \"response_types\": [\n    \"code\"\n  ],\n  \"token_endpoint_auth_method\": \"none\",\n  \"scope\": \"mcp:read mcp:write\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "RFC 7591 Dynamic Client Registration. Returns client_id and client_secret."
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke Token (RFC 7009)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mcp/oauth/revoke",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mcp",
+                "oauth",
+                "revoke"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "text"
+                },
+                {
+                  "key": "token_type_hint",
+                  "value": "access_token",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{oauth_client_id}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "RFC 7009 token revocation endpoint."
+          },
+          "response": []
+        },
+        {
+          "name": "OAuth Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mcp/oauth/callback?code={{auth_code}}&state={{request_id}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mcp",
+                "oauth",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "{{auth_code}}",
+                  "disabled": false
+                },
+                {
+                  "key": "state",
+                  "value": "{{request_id}}",
+                  "disabled": false
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "OAuth 2.1 authorization callback. Normally handled by the client redirect."
+          },
+          "response": []
+        },
+        {
+          "name": "Protected Resource Metadata (RFC 9728)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/.well-known/oauth-protected-resource",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                ".well-known",
+                "oauth-protected-resource"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "OAuth 2.0 Protected Resource Metadata for the User MCP server."
+          },
+          "response": []
+        },
+        {
+          "name": "Protected Resource Metadata – MCP",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/.well-known/oauth-protected-resource/mcp",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                ".well-known",
+                "oauth-protected-resource",
+                "mcp"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "OAuth 2.0 Protected Resource Metadata for /mcp endpoint."
+          },
+          "response": []
+        },
+        {
+          "name": "Protected Resource Metadata – Admin MCP",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/.well-known/oauth-protected-resource/mcp-admin",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                ".well-known",
+                "oauth-protected-resource",
+                "mcp-admin"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "OAuth 2.0 Protected Resource Metadata for /mcp-admin endpoint."
+          },
+          "response": []
+        },
+        {
+          "name": "OpenID Connect Discovery",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/.well-known/openid-configuration",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                ".well-known",
+                "openid-configuration"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "OpenID Connect Discovery document."
+          },
+          "response": []
+        },
+        {
+          "name": "OpenID Connect Discovery (Issuer Path)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mcp/oauth/.well-known/openid-configuration",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mcp",
+                "oauth",
+                ".well-known",
+                "openid-configuration"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "OpenID Connect Discovery at the issuer path."
+          },
+          "response": []
         }
       ]
+    },
+    {
+      "name": "🔌 WebSocket",
+      "item": [
+        {
+          "name": "WS: AI Job Progress — ws://{{BASE_URL}}/ws/jobs/{job_id}?token=...",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/ws/jobs/{{test_ai_job_id}}?token={{access_token}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "ws",
+                "jobs",
+                "{{test_ai_job_id}}"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "WebSocket endpoint for real-time AI job progress updates.\n\n**Protocol:** WebSocket (ws:// or wss://)\n**Auth:** JWT token via ?token= query param\n**Messages:** JSON objects with {status, progress, result}\n\nUse a WebSocket client (not Postman HTTP) to connect. Example: wscat -c 'ws://localhost:8000/ws/jobs/123?token=YOUR_TOKEN'"
+          },
+          "response": []
+        },
+        {
+          "name": "WS: User Notifications — ws://{{BASE_URL}}/ws/user?token=...",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/ws/user?token={{access_token}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "ws",
+                "user"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "WebSocket endpoint for real-time user notifications.\n\n**Protocol:** WebSocket (ws:// or wss://)\n**Auth:** JWT token via ?token= query param\n**Messages:** JSON notification objects\n\nUse a WebSocket client. Example: wscat -c 'ws://localhost:8000/ws/user?token=YOUR_TOKEN'"
+          },
+          "response": []
+        },
+        {
+          "name": "WS: Tour Collaboration — ws://{{BASE_URL}}/ws/tours/{tour_id}?token=...",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/ws/tours/{{test_tour_id}}?token={{access_token}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "ws",
+                "tours",
+                "{{test_tour_id}}"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "WebSocket endpoint for real-time virtual tour collaboration.\n\n**Protocol:** WebSocket (ws:// or wss://)\n**Auth:** JWT token via ?token= query param\n**Messages:** JSON objects with scene/hotspot change events\n\nUse a WebSocket client. Example: wscat -c 'ws://localhost:8000/ws/tours/abc123?token=YOUR_TOKEN'"
+          },
+          "response": []
+        }
+      ],
+      "description": "WebSocket endpoints for real-time features. Note: These are HTTP GET entries for documentation only — use a WebSocket client to connect."
     }
   ],
   "variable": [

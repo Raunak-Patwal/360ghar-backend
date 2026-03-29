@@ -15,6 +15,7 @@ Widgets:
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -22,8 +23,12 @@ from fastmcp import FastMCP
 
 from app.core.logging import get_logger
 from app.core.config import settings
+from app.mcp.apps_sdk import RESOURCE_MIME_TYPE
 
 logger = get_logger(__name__)
+
+# Populated at registration time with versioned URIs keyed by tool name.
+_TOOL_WIDGET_URIS: Dict[str, str] = {}
 
 # Widget directory (where built HTML bundles are stored)
 # Located at project_root/chatgpt-widgets/dist/
@@ -32,13 +37,14 @@ WIDGET_DIR = Path(__file__).parent.parent.parent.parent / "chatgpt-widgets" / "d
 # Widget to tool mapping with metadata
 WIDGETS: Dict[str, Dict[str, Any]] = {
     "PropertySearchWidget": {
-        "tools": ["discovery_search"],
+        "tools": ["discovery_search", "guest_property_search", "guest_property_recommendations"],
         "title": "Property Search Results",
         "description": "Grid view of property search results with filtering",
     },
     "PropertyDetailsWidget": {
         "tools": [
             "discovery_property_get",
+            "guest_property_details",
             "owner_properties_get",
             "agent_properties_get",
         ],
@@ -126,7 +132,13 @@ def load_widget_html(widget_name: str) -> Optional[str]:
 
 
 def get_widget_for_tool(tool_name: str) -> Optional[str]:
-    """Get the widget URI for a tool."""
+    """Get the versioned widget URI for a tool.
+
+    Returns the content-hashed URI if widgets have been registered,
+    otherwise falls back to the un-versioned URI.
+    """
+    if tool_name in _TOOL_WIDGET_URIS:
+        return _TOOL_WIDGET_URIS[tool_name]
     for widget_name, config in WIDGETS.items():
         if tool_name in config["tools"]:
             return f"ui://widget/{widget_name.lower()}.html"
@@ -154,13 +166,17 @@ def register_chatgpt_widgets(mcp: FastMCP) -> None:
     for widget_name, config in WIDGETS.items():
         widget_html = load_widget_html(widget_name)
         if widget_html:
-            resource_uri = f"ui://widget/{widget_name.lower()}.html"
+            # Append content hash for cache busting when widgets change.
+            content_hash = hashlib.md5(widget_html.encode()).hexdigest()[:8]
+            resource_uri = f"ui://widget/{widget_name.lower()}.html?v={content_hash}"
 
             resource_meta = {
                 # --- MCP Apps standard (SEP-1865) keys ---
                 "ui": {
                     "resourceUri": resource_uri,
                     "visibility": "host",
+                    "domain": base_url,
+                    "prefersBorder": True,
                     "csp": {
                         "connectDomains": [
                             base_url,
@@ -171,20 +187,21 @@ def register_chatgpt_widgets(mcp: FastMCP) -> None:
                             "https://*.cloudinary.com",
                             "https://res.cloudinary.com",
                         ],
+                        "frameDomains": [],
                     },
                 },
-                # --- Backward-compatible aliases ---
+                # --- Backward-compatible OpenAI aliases ---
                 "ui/resourceUri": resource_uri,
                 "ui/visibility": "host",
                 "openai/widgetPrefersBorder": True,
-                "openai/widgetDomain": "https://chatgpt.com",
+                "openai/widgetDomain": base_url,
                 "openai/widgetDescription": config.get("description", ""),
                 "openai/widgetCSP": {
-                    "connect_domains": [
+                    "connectDomains": [
                         base_url,
                         "https://api.360ghar.com",
                     ],
-                    "resource_domains": [
+                    "resourceDomains": [
                         "https://images.360ghar.com",
                         "https://*.cloudinary.com",
                         "https://res.cloudinary.com",
@@ -202,11 +219,15 @@ def register_chatgpt_widgets(mcp: FastMCP) -> None:
 
             mcp.resource(
                 resource_uri,
-                mime_type="text/html",
+                mime_type=RESOURCE_MIME_TYPE,
                 name=config["title"],
                 description=config["description"],
                 meta=resource_meta,
             )(handler)
+
+            # Store versioned URIs so get_widget_for_tool() returns them.
+            for tool_name in config["tools"]:
+                _TOOL_WIDGET_URIS[tool_name] = resource_uri
 
             registered_count += 1
             logger.info(f"Registered ChatGPT widget: {widget_name} -> {resource_uri}")

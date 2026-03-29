@@ -19,6 +19,7 @@ def format_chatgpt_response(
     meta: Optional[Dict[str, Any]] = None,
     *,
     is_error: bool = False,
+    widget_uri: Optional[str] = None,
 ) -> AppsSDKToolResult:
     """Format tool response for ChatGPT App consumption.
 
@@ -28,10 +29,15 @@ def format_chatgpt_response(
         content_summary: Narrative text for the model to incorporate in responses.
         meta: Data only the widget sees (_meta). Use for large data like images,
               map coordinates, or sensitive info not needed by the model.
+        widget_uri: Optional widget resource URI to include in ``_meta.ui.resourceUri``
+              so the host knows which widget to render for this result.
 
     Returns:
         ToolResult with structuredContent, content, and optional result-level _meta.
     """
+    if widget_uri:
+        meta = meta or {}
+        meta.setdefault("ui", {})["resourceUri"] = widget_uri
     return AppsSDKToolResult(
         content=content_summary,
         structured_content=data,
@@ -50,6 +56,9 @@ def format_auth_required_response(
     Raises an AuthRequiredError which will be turned into a CallToolResult with
     `_meta["mcp/www_authenticate"]` to trigger the OAuth flow in ChatGPT's UI.
 
+    Uses ``raise_auth_required()`` to ensure the challenge includes the
+    ``resource_metadata`` URL that ChatGPT needs for OAuth endpoint discovery.
+
     Args:
         action: The action that requires authentication (e.g., "swipe", "schedule_visit")
         message: Optional custom message. Defaults to a standard prompt.
@@ -58,7 +67,7 @@ def format_auth_required_response(
     Returns:
         None (always raises).
     """
-    from app.mcp.apps_sdk import AuthRequiredError
+    from app.mcp.apps_sdk import raise_auth_required
 
     if message is None:
         message = (
@@ -66,16 +75,16 @@ def format_auth_required_response(
             "You can log in with your phone number."
         )
 
-    data = {
+    data: Dict[str, Any] = {
         "requires_auth": True,
         "action": action,
     }
     if context:
         data.update(context)
 
-    raise AuthRequiredError(
+    raise_auth_required(
         message=message,
-        www_authenticate='Bearer error="invalid_token"',
+        error_description=f"Authentication required to {action}",
         structured_content=data,
     )
 

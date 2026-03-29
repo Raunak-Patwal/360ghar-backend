@@ -408,3 +408,31 @@ export function useRequestClose() {
     // MCP Apps: no direct close equivalent
   }, []);
 }
+
+/**
+ * Request a display mode change (inline, fullscreen, PiP).
+ */
+export function useRequestDisplayMode() {
+  return useCallback(async (mode: 'inline' | 'fullscreen' | 'pip') => {
+    if (HOST === 'openai') {
+      await getBridge()?.requestDisplayMode?.({ mode });
+      return;
+    }
+    // MCP Apps: no direct equivalent yet
+    console.warn('[360Ghar Bridge] requestDisplayMode not available on this host');
+  }, []);
+}
+
+/**
+ * Open an external link (with optional return support on OpenAI hosts).
+ */
+export function useOpenExternal() {
+  return useCallback((href: string) => {
+    if (HOST === 'openai') {
+      getBridge()?.openExternal?.({ href });
+      return;
+    }
+    // Fallback: open in new tab
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }, []);
+}

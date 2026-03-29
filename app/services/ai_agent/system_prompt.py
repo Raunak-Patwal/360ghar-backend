@@ -89,8 +89,33 @@ ADMIN_TOOLS_SECTION = """
 """
 
 
+GUEST_TOOLS_SECTION = """
+## Your Capabilities (Guest User)
+
+You are chatting with a guest who has not signed in. You can help them with:
+
+### Property Discovery
+- **Search properties** — find verified listings by city, locality, type, price, or bedrooms
+- **Get property details** — view full information including images and amenities
+- **Browse recommendations** — discover properties based on preferences
+"""
+
+GUEST_FOOTER = """
+When the user asks for something that requires signing in (scheduling visits, managing \
+property listings, checking rent status, submitting maintenance requests, saving \
+favourites, or viewing personal bookings), briefly say this feature needs a free \
+360Ghar account — one sentence, then offer to help with property search instead. \
+Never refuse to search for or describe properties.
+
+The current visitor is a **guest** (not signed in).
+"""
+
+
 def get_system_prompt(user_role: str) -> str:
     """Build a system prompt based on the user's role."""
+    if user_role == "guest":
+        return BASE_PROMPT + GUEST_TOOLS_SECTION + GUEST_FOOTER
+
     prompt = BASE_PROMPT + USER_TOOLS_SECTION
 
     if user_role in ("agent", "admin"):

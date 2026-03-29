@@ -163,6 +163,186 @@
 			"value": "",
 			"enabled": true,
 			"type": "default"
+		},
+		{
+			"key": "test_media_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "test_upload_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "test_conversation_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "test_delivery_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "test_bug_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_user_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_agent_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "swipe_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_property_id",
+			"value": "1",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_visit_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_booking_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "test_widget_name",
+			"value": "property_search",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "device_token",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "oauth_client_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "oauth_redirect_uri",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "oauth_code_challenge",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "mcp_session_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "auth_code",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "search_query",
+			"value": "2 bhk apartment",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "property_search",
+			"value": "luxury apartment",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "notification_delivery_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "notification_user_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_blog_post_identifier",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_blog_category_identifier",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_blog_tag_identifier",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_page_name",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_faq_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_version_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "target_bug_id",
+			"value": "",
+			"enabled": true,
+			"type": "default"
+		},
+		{
+			"key": "bug_status",
+			"value": "",
+			"enabled": true,
+			"type": "default"
 		}
 	],
 	"_postman_variable_scope": "environment",

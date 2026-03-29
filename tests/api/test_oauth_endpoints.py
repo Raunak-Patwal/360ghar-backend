@@ -575,3 +575,283 @@ class TestOAuthRevokeEndpoint:
             assert response.status_code == 400
             data = response.json()
             assert data["error"] == "invalid_client"
+
+
+class TestChatGPTDynamicRedirectUri:
+    """Tests for dynamic ChatGPT redirect URI support."""
+
+    def test_dynamic_chatgpt_redirect_uri_accepted(self):
+        """Test that dynamic ChatGPT redirect URIs with session IDs are accepted."""
+        from app.api.api_v1.endpoints.oauth import is_redirect_uri_allowed_for_client
+
+        client_info = {
+            "client_id": "ghar360-mcp",
+            "is_first_party": True,
+            "redirect_uris": ["http://localhost:3000/callback"],
+        }
+
+        # Dynamic ChatGPT redirect URI with session-specific callback ID
+        assert is_redirect_uri_allowed_for_client(
+            client_info, "https://chatgpt.com/connector/oauth/abc123"
+        ) is True
+
+    def test_dynamic_chatgpt_redirect_uri_with_long_id(self):
+        """Test dynamic ChatGPT redirect URI with a longer session ID."""
+        from app.api.api_v1.endpoints.oauth import is_redirect_uri_allowed_for_client
+
+        client_info = {
+            "client_id": "test-client",
+            "redirect_uris": [],
+        }
+
+        assert is_redirect_uri_allowed_for_client(
+            client_info,
+            "https://chatgpt.com/connector/oauth/omc_conn_01jwh9fcy4evds87m6k9qd9jrg",
+        ) is True
+
+    def test_legacy_static_chatgpt_redirect_uris_still_work(self):
+        """Test that legacy static ChatGPT redirect URIs are still accepted."""
+        from app.api.api_v1.endpoints.oauth import is_redirect_uri_allowed_for_client
+
+        client_info = {
+            "client_id": "test-client",
+            "redirect_uris": [],
+        }
+
+        assert is_redirect_uri_allowed_for_client(
+            client_info,
+            "https://chatgpt.com/connector_platform_oauth_redirect",
+        ) is True
+        assert is_redirect_uri_allowed_for_client(
+            client_info,
+            "https://platform.openai.com/apps-manage/oauth",
+        ) is True
+
+    def test_random_uris_rejected(self):
+        """Test that arbitrary redirect URIs are rejected."""
+        from app.api.api_v1.endpoints.oauth import is_redirect_uri_allowed_for_client
+
+        client_info = {
+            "client_id": "test-client",
+            "redirect_uris": ["http://localhost:3000/callback"],
+        }
+
+        assert is_redirect_uri_allowed_for_client(
+            client_info, "https://evil.com/callback"
+        ) is False
+        assert is_redirect_uri_allowed_for_client(
+            client_info, "https://chatgpt.com/some-other-path"
+        ) is False
+        assert is_redirect_uri_allowed_for_client(
+            client_info, "http://attacker.com/connector/oauth/fake"
+        ) is False
+
+    def test_registered_redirect_uri_accepted(self):
+        """Test that explicitly registered redirect URIs are still accepted."""
+        from app.api.api_v1.endpoints.oauth import is_redirect_uri_allowed_for_client
+
+        client_info = {
+            "client_id": "test-client",
+            "redirect_uris": ["https://myapp.example.com/callback"],
+        }
+
+        assert is_redirect_uri_allowed_for_client(
+            client_info, "https://myapp.example.com/callback"
+        ) is True
+
+
+class TestTokenResponseResource:
+    """Tests for resource echoing in token responses (RFC 8707)."""
+
+    @pytest.mark.asyncio
+    async def test_token_response_includes_resource(self, client: AsyncClient):
+        """Test that resource is echoed in authorization_code token response."""
+        verifier, challenge = generate_pkce_pair()
+        resource_uri = "http://test/mcp"
+
+        with patch(
+            "app.api.api_v1.endpoints.oauth.oauth_token_store"
+        ) as mock_store:
+            mock_store.get_auth_code = AsyncMock(
+                return_value={
+                    "user_id": "1",
+                    "client_id": "ghar360-mcp",
+                    "redirect_uri": "http://localhost:3000/callback",
+                    "scope": "mcp:read mcp:write",
+                    "code_challenge": challenge,
+                    "code_challenge_method": "S256",
+                    "resource": resource_uri,
+                }
+            )
+            mock_store.store_oauth_tokens = AsyncMock()
+
+            response = await client.post(
+                "/api/v1/mcp/oauth/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "code": "test_auth_code",
+                    "client_id": "ghar360-mcp",
+                    "redirect_uri": "http://localhost:3000/callback",
+                    "code_verifier": verifier,
+                },
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["resource"] == resource_uri
+
+    @pytest.mark.asyncio
+    async def test_token_response_omits_resource_when_absent(self, client: AsyncClient):
+        """Test that resource is omitted when not present in auth data."""
+        verifier, challenge = generate_pkce_pair()
+
+        with patch(
+            "app.api.api_v1.endpoints.oauth.oauth_token_store"
+        ) as mock_store:
+            mock_store.get_auth_code = AsyncMock(
+                return_value={
+                    "user_id": "1",
+                    "client_id": "ghar360-mcp",
+                    "redirect_uri": "http://localhost:3000/callback",
+                    "scope": "mcp:read mcp:write",
+                    "code_challenge": challenge,
+                    "code_challenge_method": "S256",
+                }
+            )
+            mock_store.store_oauth_tokens = AsyncMock()
+
+            response = await client.post(
+                "/api/v1/mcp/oauth/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "code": "test_auth_code",
+                    "client_id": "ghar360-mcp",
+                    "redirect_uri": "http://localhost:3000/callback",
+                    "code_verifier": verifier,
+                },
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "resource" not in data
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_response_includes_resource(self, client: AsyncClient):
+        """Test that resource is echoed in refresh_token token response."""
+        resource_uri = "http://test/mcp"
+
+        with patch(
+            "app.api.api_v1.endpoints.oauth.oauth_token_store"
+        ) as mock_store:
+            mock_store.get_refresh_token = AsyncMock(
+                return_value={
+                    "user_id": "1",
+                    "scope": "mcp:read mcp:write",
+                    "resource": resource_uri,
+                }
+            )
+            mock_store.store_oauth_tokens = AsyncMock()
+            mock_store.revoke_refresh_token = AsyncMock()
+
+            response = await client.post(
+                "/api/v1/mcp/oauth/token",
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": "test_refresh_token",
+                    "client_id": "ghar360-mcp",
+                },
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["resource"] == resource_uri
+
+
+class TestWellKnownEndpoints:
+    """Tests for well-known OAuth discovery endpoint responses."""
+
+    @pytest.mark.asyncio
+    async def test_protected_resource_metadata_root(self, client: AsyncClient):
+        """Test /.well-known/oauth-protected-resource returns correct metadata."""
+        response = await client.get("/.well-known/oauth-protected-resource")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "resource" in data
+        assert "authorization_servers" in data
+        assert "scopes_supported" in data
+        assert "bearer_methods_supported" in data
+        assert "header" in data["bearer_methods_supported"]
+        # resource should point to /mcp
+        assert data["resource"].endswith("/mcp")
+
+    @pytest.mark.asyncio
+    async def test_protected_resource_metadata_mcp(self, client: AsyncClient):
+        """Test /.well-known/oauth-protected-resource/mcp returns correct metadata."""
+        response = await client.get("/.well-known/oauth-protected-resource/mcp")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "resource" in data
+        assert data["resource"].endswith("/mcp")
+        assert "authorization_servers" in data
+        assert len(data["authorization_servers"]) > 0
+        assert "scopes_supported" in data
+
+    @pytest.mark.asyncio
+    async def test_authorization_server_metadata_root(self, client: AsyncClient):
+        """Test /.well-known/oauth-authorization-server returns correct metadata."""
+        response = await client.get("/.well-known/oauth-authorization-server")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "issuer" in data
+        assert "authorization_endpoint" in data
+        assert "token_endpoint" in data
+        assert "code_challenge_methods_supported" in data
+        assert "S256" in data["code_challenge_methods_supported"]
+        assert "response_types_supported" in data
+        assert "code" in data["response_types_supported"]
+        assert "grant_types_supported" in data
+        assert "authorization_code" in data["grant_types_supported"]
+        assert "refresh_token" in data["grant_types_supported"]
+
+    @pytest.mark.asyncio
+    async def test_authorization_server_metadata_mcp_oauth(self, client: AsyncClient):
+        """Test /.well-known/oauth-authorization-server/mcp/oauth returns correct metadata."""
+        response = await client.get(
+            "/.well-known/oauth-authorization-server/mcp/oauth"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "issuer" in data
+        assert "authorization_endpoint" in data
+        assert "token_endpoint" in data
+        assert "revocation_endpoint" in data
+        assert "registration_endpoint" in data
+        assert "code_challenge_methods_supported" in data
+        assert "S256" in data["code_challenge_methods_supported"]
+        assert data.get("client_id_metadata_document_supported") is True
+
+    @pytest.mark.asyncio
+    async def test_root_and_mcp_oauth_metadata_are_consistent(self, client: AsyncClient):
+        """Test that root and /mcp/oauth AS metadata endpoints return same structure."""
+        root_response = await client.get("/.well-known/oauth-authorization-server")
+        mcp_response = await client.get(
+            "/.well-known/oauth-authorization-server/mcp/oauth"
+        )
+
+        assert root_response.status_code == 200
+        assert mcp_response.status_code == 200
+
+        root_data = root_response.json()
+        mcp_data = mcp_response.json()
+
+        # Both should have the same set of keys
+        assert set(root_data.keys()) == set(mcp_data.keys())
+
+        # Core fields should match (they delegate to the same handler)
+        assert root_data["issuer"] == mcp_data["issuer"]
+        assert root_data["authorization_endpoint"] == mcp_data["authorization_endpoint"]
+        assert root_data["token_endpoint"] == mcp_data["token_endpoint"]

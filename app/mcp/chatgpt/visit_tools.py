@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.mcp.apps_sdk import AuthRequiredError, MCP_SECURITY_SCHEMES_MIXED, build_widget_tool_meta
+from app.mcp.chatgpt import get_widget_for_tool
 from app.mcp.chatgpt.response_formatter import (
     format_chatgpt_response,
     format_auth_required_response,
@@ -81,6 +82,8 @@ def _serialize_visit(visit) -> Dict[str, Any]:
     annotations={
         "title": "Schedule Property Visit",
         "readOnlyHint": False,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=VISIT_SCHEDULER_META,
@@ -127,6 +130,7 @@ async def visits_schedule(
                 return format_chatgpt_response(
                     data={"error": True, "code": "INVALID_DATE", "message": str(e)},
                     content_summary="Invalid date format. Please use ISO 8601 format like '2025-02-15T14:00:00'.",
+                    widget_uri=get_widget_for_tool("visits_schedule"),
                 )
 
             # Check if date is in the future
@@ -135,6 +139,7 @@ async def visits_schedule(
                 return format_chatgpt_response(
                     data={"error": True, "code": "PAST_DATE"},
                     content_summary="The scheduled date must be in the future. Please choose a future date and time.",
+                    widget_uri=get_widget_for_tool("visits_schedule"),
                 )
 
             # Verify property exists
@@ -144,6 +149,7 @@ async def visits_schedule(
                 return format_chatgpt_response(
                     data={"error": True, "code": "NOT_FOUND", "property_id": property_id},
                     content_summary=f"Property with ID {property_id} was not found.",
+                    widget_uri=get_widget_for_tool("visits_schedule"),
                 )
 
             # Create visit
@@ -160,6 +166,7 @@ async def visits_schedule(
             return format_chatgpt_response(
                 data={"visit": visit_dict},
                 content_summary=format_visit_summary(visit_dict),
+                widget_uri=get_widget_for_tool("visits_schedule"),
             )
 
     except AuthRequiredError:
@@ -169,6 +176,7 @@ async def visits_schedule(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error scheduling the visit: {str(e)}",
+            widget_uri=get_widget_for_tool("visits_schedule"),
         )
 
 
@@ -177,6 +185,8 @@ async def visits_schedule(
     annotations={
         "title": "List My Visits",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=VISIT_LIST_META,
@@ -249,6 +259,7 @@ async def visits_list(
                     "counts": counts,
                 },
                 content_summary=format_visits_list_summary(visits, counts),
+                widget_uri=get_widget_for_tool("visits_list"),
             )
 
     except AuthRequiredError:
@@ -258,6 +269,7 @@ async def visits_list(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading your visits: {str(e)}",
+            widget_uri=get_widget_for_tool("visits_list"),
         )
 
 
@@ -266,6 +278,8 @@ async def visits_list(
     annotations={
         "title": "Get Visit Details",
         "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
     meta=VISIT_LIST_META,
@@ -304,6 +318,7 @@ async def visits_get(
                 return format_chatgpt_response(
                     data={"error": True, "code": "NOT_FOUND", "visit_id": visit_id},
                     content_summary=f"Visit with ID {visit_id} was not found.",
+                    widget_uri=get_widget_for_tool("visits_get"),
                 )
 
             # Check ownership
@@ -311,6 +326,7 @@ async def visits_get(
                 return format_chatgpt_response(
                     data={"error": True, "code": "FORBIDDEN"},
                     content_summary="You don't have permission to view this visit.",
+                    widget_uri=get_widget_for_tool("visits_get"),
                 )
 
             visit_dict = _serialize_visit(visit)
@@ -318,6 +334,7 @@ async def visits_get(
             return format_chatgpt_response(
                 data={"visit": visit_dict},
                 content_summary=format_visit_summary(visit_dict),
+                widget_uri=get_widget_for_tool("visits_get"),
             )
 
     except AuthRequiredError:
@@ -327,6 +344,7 @@ async def visits_get(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error loading the visit: {str(e)}",
+            widget_uri=get_widget_for_tool("visits_get"),
         )
 
 
@@ -335,6 +353,7 @@ async def visits_get(
     annotations={
         "title": "Cancel Visit",
         "readOnlyHint": False,
+        "openWorldHint": False,
         "destructiveHint": True,
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
@@ -379,6 +398,7 @@ async def visits_cancel(
                 return format_chatgpt_response(
                     data={"error": True, "code": "NOT_FOUND", "visit_id": visit_id},
                     content_summary=f"Visit with ID {visit_id} was not found.",
+                    widget_uri=get_widget_for_tool("visits_cancel"),
                 )
 
             # Check ownership
@@ -386,6 +406,7 @@ async def visits_cancel(
                 return format_chatgpt_response(
                     data={"error": True, "code": "FORBIDDEN"},
                     content_summary="You don't have permission to cancel this visit.",
+                    widget_uri=get_widget_for_tool("visits_cancel"),
                 )
 
             # Check if already cancelled or completed
@@ -394,6 +415,7 @@ async def visits_cancel(
                 return format_chatgpt_response(
                     data={"error": True, "code": "INVALID_STATUS", "current_status": status},
                     content_summary=f"This visit has already been {status} and cannot be cancelled.",
+                    widget_uri=get_widget_for_tool("visits_cancel"),
                 )
 
             # Cancel visit
@@ -403,6 +425,7 @@ async def visits_cancel(
             return format_chatgpt_response(
                 data={"success": True, "visit_id": visit_id, "status": "cancelled"},
                 content_summary=f"Your visit has been cancelled.{' Reason: ' + reason if reason else ''}",
+                widget_uri=get_widget_for_tool("visits_cancel"),
             )
 
     except AuthRequiredError:
@@ -412,4 +435,5 @@ async def visits_cancel(
         return format_chatgpt_response(
             data={"error": True, "message": str(e)},
             content_summary=f"Sorry, there was an error cancelling the visit: {str(e)}",
+            widget_uri=get_widget_for_tool("visits_cancel"),
         )

@@ -27,6 +27,9 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+# Required MIME type for MCP App widget resources (per Apps SDK spec).
+RESOURCE_MIME_TYPE = "text/html;profile=mcp-app"
+
 MCP_SECURITY_SCHEMES_MIXED: list[dict[str, Any]] = [
     {"type": "noauth"},
     {"type": "oauth2", "scopes": ["mcp:read", "mcp:write"]},
@@ -209,6 +212,7 @@ def success_response(
     data: Dict[str, Any],
     summary: str,
     meta: Optional[Dict[str, Any]] = None,
+    widget_uri: Optional[str] = None,
 ) -> AppsSDKToolResult:
     """
     Create a successful ChatGPT Apps SDK compatible tool response.
@@ -217,10 +221,15 @@ def success_response(
         data: Structured JSON data for the model and widget.
         summary: Human-readable text summary for the model.
         meta: Optional result-level metadata (widget-only data).
+        widget_uri: Optional widget resource URI to include in ``_meta.ui.resourceUri``
+            so the host knows which widget to render for this result.
 
     Returns:
         AppsSDKToolResult with content, structuredContent, and optional _meta.
     """
+    if widget_uri:
+        meta = meta or {}
+        meta.setdefault("ui", {})["resourceUri"] = widget_uri
     return AppsSDKToolResult(
         content=summary,
         structured_content=data,

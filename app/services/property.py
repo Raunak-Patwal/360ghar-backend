@@ -693,7 +693,6 @@ async def get_unified_properties_optimized(
         
         logger.info(f"Found {len(properties)} properties out of {total_count} total")
         
-        from app.schemas.property import Property as PropertySchema
         property_list = [PropertySchema.model_validate(prop) for prop in properties]
         
         # Calculate total pages
@@ -743,7 +742,6 @@ async def get_property_recommendations(
         
         logger.info(f"Found {len(properties)} recommended properties for user {user_id}")
         
-        from app.schemas.property import Property as PropertySchema
         return [PropertySchema.model_validate(prop) for prop in properties]
     except Exception as e:
         logger.error(f"Failed to get recommendations for user {user_id}: {str(e)}", exc_info=True)

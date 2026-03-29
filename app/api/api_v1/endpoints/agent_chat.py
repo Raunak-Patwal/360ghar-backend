@@ -8,24 +8,84 @@ DELETE /agent/conversations/{id}       — Delete a conversation
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import json as _json
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.api_v1.dependencies.auth import get_current_active_user
 from app.core.database import get_db
 from app.core.logging import get_logger
+from app.middleware.rate_limit import EndpointRateLimiter
 from app.schemas.ai_agent import (
     AgentChatRequest,
     ConversationMessageOut,
     ConversationSummary,
+    GuestChatRequest,
 )
 from app.services.ai_agent import get_agent_service
 from app.services.ai_agent import conversation_store
 
+_public_chat_limiter = EndpointRateLimiter(calls=10, period=60)
+
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+async def _check_public_chat_rate_limit(request: Request) -> None:
+    """FastAPI dependency: rate-limits the public chat endpoint (10 req/60s per IP)."""
+    client_id = _public_chat_limiter.get_client_id(request)
+    allowed = await _public_chat_limiter.check_rate_limit(
+        client_id, "POST:/agent/chat-public"
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded. Please try again later.",
+            headers={"Retry-After": "60"},
+        )
+
+
+@router.post("/chat-public")
+async def agent_chat_public(
+    body: GuestChatRequest,
+    db: AsyncSession = Depends(get_db),
+    _rate_limit: None = Depends(_check_public_chat_rate_limit),
+) -> StreamingResponse:
+    """Stream an AI agent response for unauthenticated guests via SSE.
+
+    Only property search tools are available. No conversation persistence.
+    """
+    service = get_agent_service()
+
+    async def event_stream():
+        try:
+            async for event in service.stream_response(
+                user_message=body.message,
+                conversation_id=None,
+                conversation_history=[],
+                user=None,
+                db=db,
+                user_role="guest",
+            ):
+                yield event
+        except Exception as exc:
+            logger.error("Public SSE stream error: %s", exc, exc_info=True)
+            yield (
+                f"event: error\ndata: {_json.dumps({'code': 'STREAM_ERROR', 'message': str(exc)[:200]})}\n\n"
+            )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post("/chat")
@@ -72,7 +132,6 @@ async def agent_chat(
                 user=current_user,
                 db=db,
             ):
-                import json as _json
                 # Extract response text from done event to persist
                 if '"response_text"' in event:
                     try:
@@ -93,7 +152,6 @@ async def agent_chat(
                 yield event
         except Exception as exc:
             logger.error("SSE stream error: %s", exc, exc_info=True)
-            import json as _json
             yield f"event: error\ndata: {_json.dumps({'code': 'STREAM_ERROR', 'message': str(exc)[:200]})}\n\n"
         finally:
             try:

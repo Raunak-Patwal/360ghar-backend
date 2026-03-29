@@ -21,6 +21,15 @@ _DAILY_CRON = "0 2 * * *"
 _WEEKLY_CRON = "0 2 * * 1"        # Monday
 _QUARTERLY_CRON = "0 2 1 4,10 *"  # Apr 1 + Oct 1
 
+# Limit concurrent scrapers to avoid saturating PgBouncer connections.
+_SCRAPER_SEMAPHORE = asyncio.Semaphore(2)
+
+
+async def _run_scraper_limited(scraper):
+    """Run a single scraper under the concurrency semaphore."""
+    async with _SCRAPER_SEMAPHORE:
+        return await scraper.run()
+
 
 async def _run_daily_scrapers() -> None:
     """Bank auctions, gazette, court auctions, neighbourhood scores, alert matching."""
@@ -37,7 +46,7 @@ async def _run_daily_scrapers() -> None:
         NeighbourhoodScraper(),
         AlertMatcherService(),
     ]
-    results = await asyncio.gather(*[s.run() for s in scrapers], return_exceptions=True)
+    results = await asyncio.gather(*[_run_scraper_limited(s) for s in scrapers], return_exceptions=True)
     for scraper, result in zip(scrapers, results):
         if isinstance(result, Exception):
             logger.error("Daily scraper %s failed: %s", scraper.name, result, exc_info=result)
@@ -56,7 +65,7 @@ async def _run_weekly_scrapers() -> None:
         BankRateScraper(),
         ReraComplaintScraper(),
     ]
-    results = await asyncio.gather(*[s.run() for s in scrapers], return_exceptions=True)
+    results = await asyncio.gather(*[_run_scraper_limited(s) for s in scrapers], return_exceptions=True)
     for scraper, result in zip(scrapers, results):
         if isinstance(result, Exception):
             logger.error("Weekly scraper %s failed: %s", scraper.name, result, exc_info=result)
@@ -73,7 +82,7 @@ async def _run_quarterly_scrapers() -> None:
         CircleRateScraper(),
         ZoningScraper(),
     ]
-    results = await asyncio.gather(*[s.run() for s in scrapers], return_exceptions=True)
+    results = await asyncio.gather(*[_run_scraper_limited(s) for s in scrapers], return_exceptions=True)
     for scraper, result in zip(scrapers, results):
         if isinstance(result, Exception):
             logger.error("Quarterly scraper %s failed: %s", scraper.name, result, exc_info=result)
