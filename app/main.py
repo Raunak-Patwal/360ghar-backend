@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import sentry_sdk
@@ -11,6 +12,7 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 from sqlalchemy import text
 
 from app.core.config import settings
+from app.core.db_resilience import is_transient_db_error
 from app.core.logging import get_logger, setup_logging
 from app.core.utils import utc_now_iso
 from app.factory import create_app
@@ -80,41 +82,52 @@ async def health_check():
 
     Uses a raw engine connection (not the session pool) with a short
     timeout so the health check never blocks on pool exhaustion.
+    Retries once on transient PgBouncer errors (EDBHANDLEREXITED, etc.).
+    Always returns 200 — the status field indicates healthy/degraded.
     """
+    db_status = "unknown"
+
     try:
         from app.core.database import engine
 
-        db_status = "unknown"
-        try:
-            async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
-            db_status = "connected"
-        except Exception as db_e:
-            logger.error("Database health check failed: %s", db_e)
-            db_status = "disconnected"
-
-        overall_status = "healthy" if db_status == "connected" else "degraded"
-
-        return {
-            "status": overall_status,
-            "database": db_status,
-            **(
-                {
-                    "database_url": (
-                        settings.DATABASE_URL.split("@", 1)[1]
-                        if "@" in settings.DATABASE_URL
-                        else "configured"
+        for _attempt in range(2):
+            try:
+                async with asyncio.timeout(5):
+                    async with engine.connect() as conn:
+                        await conn.execute(text("SELECT 1"))
+                db_status = "connected"
+                break
+            except Exception as db_e:
+                if _attempt == 0 and is_transient_db_error(db_e):
+                    logger.warning(
+                        "Transient DB error on health check; retrying: %s", db_e
                     )
-                }
-                if settings.ENVIRONMENT != "production"
-                else {}
-            ),
-            "timestamp": utc_now_iso(),
-            "version": settings.APP_VERSION,
-        }
+                    continue
+                logger.error("Database health check failed: %s", db_e)
+                db_status = "disconnected"
     except Exception as e:
-        logger.error("Health check failed: %s", e)
-        raise HTTPException(status_code=503, detail="Service unavailable") from e
+        logger.error("Health check DB probe failed unexpectedly: %s", e)
+        db_status = "disconnected"
+
+    overall_status = "healthy" if db_status == "connected" else "degraded"
+
+    return {
+        "status": overall_status,
+        "database": db_status,
+        **(
+            {
+                "database_url": (
+                    settings.DATABASE_URL.split("@", 1)[1]
+                    if "@" in settings.DATABASE_URL
+                    else "configured"
+                )
+            }
+            if settings.ENVIRONMENT != "production"
+            else {}
+        ),
+        "timestamp": utc_now_iso(),
+        "version": settings.APP_VERSION,
+    }
 
 
 @app.get("/config")
