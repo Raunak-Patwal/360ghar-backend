@@ -1,44 +1,47 @@
 from fastapi import APIRouter
+
 from app.api.api_v1.endpoints import (
-    users,
-    properties,
-    visits,
-    bookings,
-    swipes,
-    agents,
-    amenities,
-    upload,
-    core,
-    blog,
-    flatmates,
-    notifications,
-    oauth,
-    pm_dashboard,
-    pm_properties,
-    pm_assignments,
-    pm_applications,
-    pm_tenants,
-    pm_leases,
-    pm_rent,
-    pm_expenses,
-    pm_maintenance,
-    pm_documents,
-    pm_inspections,
-    pm_reports,
-    vastu,
-    # 360 Virtual Tours
-    tours,
-    scenes,
-    hotspots,
-    floor_plans,
-    dashboard,
-    public,
-    ai,
-    custom_domains,
     # AI Agent
     agent_chat,
+    agents,
+    ai,
+    amenities,
+    blog,
+    bookings,
+    core,
+    custom_domains,
+    dashboard,
     # Data Hub
     data_hub,
+    design_studio,
+    flatmates,
+    flatmates_admin,
+    floor_plans,
+    hotspots,
+    notifications,
+    oauth,
+    pm_applications,
+    pm_assignments,
+    pm_dashboard,
+    pm_documents,
+    pm_expenses,
+    pm_inspections,
+    pm_leases,
+    pm_maintenance,
+    pm_properties,
+    pm_rent,
+    pm_reports,
+    pm_tenants,
+    properties,
+    public,
+    scenes,
+    swipes,
+    # 360 Virtual Tours
+    tours,
+    upload,
+    users,
+    vastu,
+    visits,
 )
 
 api_router = APIRouter()
@@ -56,6 +59,7 @@ api_router.include_router(blog.router, prefix="/blog", tags=["blog"])
 # Alias prefix for blogs to support /api/v1/blogs/* paths
 api_router.include_router(blog.router, prefix="/blogs", tags=["blog"])
 api_router.include_router(flatmates.router, prefix="/flatmates", tags=["flatmates"])
+api_router.include_router(flatmates_admin.router, prefix="/flatmates", tags=["flatmates-admin"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 # OAuth endpoints are mounted at the root level for MCP compatibility
 api_router.include_router(oauth.router, tags=["oauth"])
@@ -74,6 +78,9 @@ api_router.include_router(pm_maintenance.router, prefix="/pm/maintenance", tags=
 api_router.include_router(pm_documents.router, prefix="/pm/documents", tags=["pm-documents"])
 api_router.include_router(pm_inspections.router, prefix="/pm/inspections", tags=["pm-inspections"])
 api_router.include_router(pm_reports.router, prefix="/pm/reports", tags=["pm-reports"])
+
+# AI Design Studio - image generation (auth required)
+api_router.include_router(design_studio.router, prefix="/design-studio", tags=["design-studio"])
 
 # Vastu Checker - public endpoint (no auth required)
 api_router.include_router(vastu.router, prefix="/vastu", tags=["vastu"])

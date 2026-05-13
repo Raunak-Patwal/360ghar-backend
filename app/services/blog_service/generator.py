@@ -1,10 +1,9 @@
 import json
-import random
-from typing import List, Dict, Any, Tuple
+from typing import Any
 
 import httpx
 
-from app.core.config import settings
+from app.config import settings
 from app.core.exceptions import BaseAPIException, ExternalServiceError, ServiceUnavailableException
 from app.core.logging import get_logger
 from app.schemas.blog import BlogPostCreate
@@ -41,7 +40,7 @@ def _build_excerpt_from_html(html: str, max_len: int = 280) -> str:
         return (html or "")[:max_len]
 
 
-async def _perplexity_generate(topic: str) -> Dict[str, str]:
+async def _perplexity_generate(topic: str) -> dict[str, str]:
     if not settings.PERPLEXITY_API_KEY:
         raise ServiceUnavailableException(detail="PERPLEXITY_API_KEY not configured")
 
@@ -127,13 +126,13 @@ async def _perplexity_generate(topic: str) -> Dict[str, str]:
         content = data["choices"][0]["message"]["content"]
     except Exception:
         logger.error("Unexpected Perplexity response schema: %s", data)
-        raise ExternalServiceError(detail="Invalid Perplexity response")
+        raise ExternalServiceError(detail="Invalid Perplexity response") from None
 
     try:
         parsed = json.loads(content)
     except Exception as e:
         logger.error("Failed to parse Perplexity JSON content: %s | content=%s", e, content)
-        raise ExternalServiceError(detail="Invalid JSON from Perplexity")
+        raise ExternalServiceError(detail="Invalid JSON from Perplexity") from None
 
     if not isinstance(parsed, dict):
         logger.error("Perplexity JSON root is not an object: %s", parsed)
@@ -151,7 +150,7 @@ async def _perplexity_generate(topic: str) -> Dict[str, str]:
     return {"title": title.strip(), "content_html": safe_html}
 
 
-async def _serpapi_image_search(query: str, count: int = 5) -> List[str]:
+async def _serpapi_image_search(query: str, count: int = 5) -> list[str]:
     """
     Best-effort image search using SerpAPI's Google Images engine.
     Returns a list of direct image URLs (original where possible).
@@ -184,7 +183,7 @@ async def _serpapi_image_search(query: str, count: int = 5) -> List[str]:
 
     # SerpAPI Google Images returns results under "images_results"
     values = data.get("images_results") or []
-    urls: List[str] = []
+    urls: list[str] = []
     for item in values:
         # Prefer full-size image when available, otherwise thumbnail
         url = item.get("original") or item.get("thumbnail")
@@ -195,7 +194,7 @@ async def _serpapi_image_search(query: str, count: int = 5) -> List[str]:
     return urls
 
 
-async def generate_draft_from_topic(db, *, topic: str, actor) -> Dict[str, Any]:
+async def generate_draft_from_topic(db, *, topic: str, actor) -> dict[str, Any]:
     # Generate title + content
     result = await _perplexity_generate(topic)
     title = result["title"]
@@ -214,10 +213,16 @@ async def generate_draft_from_topic(db, *, topic: str, actor) -> Dict[str, Any]:
         content=content_html,
         excerpt=excerpt,
         cover_image_url=cover_image,
-        # Seed with brand- and city-aware categories/tags for 360 Ghar
         categories=["Gurgaon", "Real Estate", "Virtual Tours", "360 Ghar"],
         tags=["Gurgaon", "Real Estate", "Virtual Tours", "VR Real Estate", "360 Ghar"],
         active=False,
+        meta_title=None,
+        meta_description=None,
+        focus_keyword=None,
+        canonical_url=None,
+        og_image_url=None,
+        seo_metadata=None,
+        published_at=None,
     )
 
     created = await create_blog_post(db, payload, actor)
@@ -225,7 +230,7 @@ async def generate_draft_from_topic(db, *, topic: str, actor) -> Dict[str, Any]:
     return {"blog": created, "images": images}
 
 
-async def generate_bulk_blogs(db, *, count: int, actor) -> List[Dict[str, Any]]:
+async def generate_bulk_blogs(db, *, count: int, actor) -> list[dict[str, Any]]:
     # Generate topic ideas first
     if not settings.PERPLEXITY_API_KEY:
         raise ServiceUnavailableException(detail="PERPLEXITY_API_KEY not configured")
@@ -292,13 +297,13 @@ async def generate_bulk_blogs(db, *, count: int, actor) -> List[Dict[str, Any]]:
         content = data["choices"][0]["message"]["content"]
     except Exception:
         logger.error("Unexpected Perplexity response schema for topics: %s", data)
-        raise ExternalServiceError(detail="Invalid Perplexity response")
+        raise ExternalServiceError(detail="Invalid Perplexity response") from None
 
     try:
         parsed = json.loads(content)
     except Exception as e:
         logger.error("Failed to parse Perplexity topics JSON content: %s | content=%s", e, content)
-        raise ExternalServiceError(detail="Invalid JSON from Perplexity")
+        raise ExternalServiceError(detail="Invalid JSON from Perplexity") from None
 
     if not isinstance(parsed, dict):
         logger.error("Perplexity topics JSON root is not an object: %s", parsed)
@@ -309,10 +314,10 @@ async def generate_bulk_blogs(db, *, count: int, actor) -> List[Dict[str, Any]]:
         logger.error("Perplexity topics JSON 'topics' is not a list: %s", parsed)
         raise ExternalServiceError(detail="Invalid Perplexity topics JSON")
 
-    topics: List[str] = [str(t).strip() for t in raw_topics if str(t).strip()]
+    topics: list[str] = [str(t).strip() for t in raw_topics if str(t).strip()]
 
     # Deduplicate and cap to requested count
-    uniq: List[str] = []
+    uniq: list[str] = []
     seen = set()
     for t in topics:
         key = t.lower().strip()
@@ -322,7 +327,7 @@ async def generate_bulk_blogs(db, *, count: int, actor) -> List[Dict[str, Any]]:
         if len(uniq) >= count:
             break
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for t in uniq:
         try:
             draft = await generate_draft_from_topic(db, topic=t, actor=actor)

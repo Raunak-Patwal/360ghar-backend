@@ -4,14 +4,14 @@ import logging
 import sentry_sdk
 import sentry_sdk.integrations.fastapi
 import sentry_sdk.integrations.sqlalchemy
-import yaml
+import yaml  # type: ignore[import-untyped]
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from fastapi.responses import Response
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sqlalchemy import text
 
-from app.core.config import settings
+from app.config import settings
 from app.core.db_resilience import is_transient_db_error
 from app.core.logging import get_logger, setup_logging
 from app.core.utils import utc_now_iso
@@ -46,7 +46,7 @@ if settings.SENTRY_DSN:
             if settings.SENTRY_TRACES_SAMPLE_RATE is not None
             else (0.5 if _is_dev else 0.05)
         ),
-        send_default_pii=True,
+        send_default_pii=False,
         release=f"360ghar-backend@{settings.APP_VERSION}",
         before_send=_sentry_before_send,
         integrations=[

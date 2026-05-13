@@ -5,7 +5,7 @@ Refactored from existing CacheManager implementation.
 
 import json
 import pickle
-from typing import Optional, Any
+from typing import Any
 
 import redis.asyncio as redis
 
@@ -44,7 +44,7 @@ class RedisCacheBackend:
         self._default_ttl = default_ttl
         self._max_connections = max_connections
         self._key_prefix = key_prefix
-        self._client: Optional[redis.Redis] = None
+        self._client: redis.Redis | None = None
         self.stats = CacheStats()
 
     async def connect(self) -> None:
@@ -56,7 +56,7 @@ class RedisCacheBackend:
                 decode_responses=False,  # Handle bytes for pickle
                 max_connections=self._max_connections,
             )
-            await self._client.ping()
+            await self._client.ping()  # type: ignore[misc]
             logger.info("Redis cache connected successfully")
         except Exception as e:
             logger.error("Failed to connect to Redis: %s", e)
@@ -91,7 +91,7 @@ class RedisCacheBackend:
         except (json.JSONDecodeError, UnicodeDecodeError):
             return pickle.loads(data)
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """Retrieve value from Redis."""
         if not self._client:
             return None
@@ -109,7 +109,7 @@ class RedisCacheBackend:
             self.stats.errors += 1
             return None
 
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
+    async def set(self, key: str, value: Any, ttl: int | None = None) -> bool:
         """Store value in Redis with TTL."""
         if not self._client:
             return False
@@ -125,7 +125,7 @@ class RedisCacheBackend:
             self.stats.errors += 1
             return False
 
-    async def get_and_delete(self, key: str) -> Optional[Any]:
+    async def get_and_delete(self, key: str) -> Any | None:
         """Atomically retrieve value and delete key from Redis.
 
         Uses GETDEL (Redis 6.2+) when available, otherwise falls back to
@@ -138,7 +138,7 @@ class RedisCacheBackend:
             full_key = self._make_key(key)
             # Try GETDEL first (Redis 6.2+)
             try:
-                data = await self._client.getdel(full_key)  # type: ignore[attr-defined]
+                data = await self._client.getdel(full_key)
             except (AttributeError, Exception):
                 # Fallback: Lua script for atomic get-and-delete
                 lua_script = """
@@ -148,7 +148,7 @@ class RedisCacheBackend:
                 end
                 return value
                 """
-                data = await self._client.eval(lua_script, 1, full_key)
+                data = await self._client.eval(lua_script, 1, full_key)  # type: ignore[misc]
 
             if data is None:
                 self.stats.misses += 1

@@ -6,7 +6,7 @@ to browse and discover properties.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic_ai import RunContext
 
@@ -19,15 +19,15 @@ logger = get_logger(__name__)
 
 async def guest_property_search(
     ctx: RunContext[AgentDeps],
-    query: Optional[str] = None,
-    city: Optional[str] = None,
-    locality: Optional[str] = None,
-    property_type: Optional[str] = None,
-    purpose: Optional[str] = None,
-    price_min: Optional[float] = None,
-    price_max: Optional[float] = None,
-    bedrooms_min: Optional[int] = None,
-    bedrooms_max: Optional[int] = None,
+    query: str | None = None,
+    city: str | None = None,
+    locality: str | None = None,
+    property_type: str | None = None,
+    purpose: str | None = None,
+    price_min: float | None = None,
+    price_max: float | None = None,
+    bedrooms_min: int | None = None,
+    bedrooms_max: int | None = None,
     page: int = 1,
     limit: int = 20,
 ) -> dict[str, Any]:
@@ -84,13 +84,13 @@ async def guest_property_details(
     from app.services.property import get_property
 
     property_obj = await get_property(ctx.deps.db, property_id)
-    return {"property": serialize_property_full(property_obj)}
+    return {"property": dict(serialize_property_full(property_obj))}  # type: ignore[arg-type]
 
 
 async def guest_property_recommendations(
     ctx: RunContext[AgentDeps],
-    city: Optional[str] = None,
-    purpose: Optional[str] = None,
+    city: str | None = None,
+    purpose: str | None = None,
     limit: int = 10,
 ) -> dict[str, Any]:
     """Get a list of recommended properties for discovery. No authentication required."""

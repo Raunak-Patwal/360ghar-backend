@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,21 +14,21 @@ router = APIRouter()
 
 @router.get("/overview", response_model=DashboardOverview)
 async def dashboard_overview(
-    owner_id: Optional[int] = Query(None, description="Owner id (agent/admin only)"),
+    owner_id: int | None = Query(None, description="Owner id (agent/admin only)"),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    data = await get_dashboard_overview(db, actor=current_user, owner_id=owner_id)
+    data = await get_dashboard_overview(db, actor=current_user, owner_id=owner_id)  # type: ignore[arg-type]
     return data
 
 
 @router.get("/activity", response_model=list[ActivityItem])
 async def dashboard_activity(
-    owner_id: Optional[int] = Query(None, description="Owner id (agent/admin only)"),
+    owner_id: int | None = Query(None, description="Owner id (agent/admin only)"),
     limit: int = Query(20, ge=1, le=100),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    items = await get_recent_activity(db, actor=current_user, owner_id=owner_id, limit=limit)
+    items = await get_recent_activity(db, actor=current_user, owner_id=owner_id, limit=limit)  # type: ignore[arg-type]
     return items
 

@@ -1,26 +1,40 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
-from sqlalchemy.orm import aliased
-from datetime import datetime, timedelta, timezone
-from app.models.bookings import Booking
-from app.models.properties import Property
-from app.schemas.booking import BookingCreate, BookingUpdate, BookingPayment, BookingReview
-from app.core.utils import make_tz_aware
-from typing import Optional
 import uuid
-from app.core.exceptions import BadRequestException, PropertyNotFoundException, BookingNotFoundException, BookingConflictError
+from datetime import datetime, timezone
+
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
+
+from app.core.exceptions import (
+    BadRequestException,
+    BookingConflictError,
+    PropertyNotFoundException,
+)
+from app.core.logging import get_logger
+from app.core.utils import make_tz_aware
+from app.models.bookings import Booking
+from app.models.enums import BookingStatus, PaymentStatus
+from app.models.properties import Property
+from app.schemas.booking import BookingCreate, BookingPayment, BookingReview, BookingUpdate
+
+logger = get_logger(__name__)
 
 async def create_booking(db: AsyncSession, user_id: int, booking: BookingCreate):
     """Create a new booking"""
     booking_data = booking.model_dump()
     booking_data["user_id"] = user_id
     booking_data["booking_reference"] = f"BK{uuid.uuid4().hex[:8].upper()}"
-    
+
     # Calculate nights
     check_in = booking_data["check_in_date"]
     check_out = booking_data["check_out_date"]
     nights = (check_out - check_in).days
     if nights <= 0:
+        logger.warning(
+            "Invalid date range in booking creation",
+            extra={"user_id": user_id, "property_id": booking_data["property_id"],
+                   "check_in": str(check_in), "check_out": str(check_out), "reason": "invalid_date_range"},
+        )
         raise BadRequestException(detail="Invalid date range: check-out must be after check-in")
 
     # Check availability before creating the booking
@@ -56,13 +70,26 @@ async def create_booking(db: AsyncSession, user_id: int, booking: BookingCreate)
     booking_data["total_amount"] = pricing["total_amount"]
 
     # Set initial statuses
-    booking_data["booking_status"] = "pending"
-    booking_data["payment_status"] = "pending"
-    
+    booking_data["booking_status"] = BookingStatus.pending
+    booking_data["payment_status"] = PaymentStatus.pending
+
     db_booking = Booking(**booking_data)
     db.add(db_booking)
     await db.flush()
     await db.refresh(db_booking)
+    logger.info(
+        "Booking created",
+        extra={
+            "booking_id": db_booking.id,
+            "booking_reference": db_booking.booking_reference,
+            "user_id": user_id,
+            "property_id": booking_data["property_id"],
+            "check_in": str(booking_data["check_in_date"]),
+            "check_out": str(booking_data["check_out_date"]),
+            "nights": nights,
+            "total_amount": float(booking_data["total_amount"]),
+        },
+    )
     return db_booking
 
 async def get_booking(db: AsyncSession, booking_id: int):
@@ -81,9 +108,9 @@ async def get_user_bookings(db: AsyncSession, user_id: int):
     now = datetime.now(timezone.utc)
 
     # Calculate counts for different statuses (handle tz-naive dates from DB)
-    upcoming = sum(1 for b in bookings if make_tz_aware(b.check_in_date) > now and b.booking_status in ["confirmed", "pending"])
-    completed = sum(1 for b in bookings if make_tz_aware(b.check_out_date) < now and b.booking_status in ["confirmed", "completed"])
-    cancelled = sum(1 for b in bookings if b.booking_status == "cancelled")
+    upcoming = sum(1 for b in bookings if b.check_in_date is not None and (ci := make_tz_aware(b.check_in_date)) is not None and ci > now and b.booking_status in [BookingStatus.confirmed, BookingStatus.pending])
+    completed = sum(1 for b in bookings if b.check_out_date is not None and (co := make_tz_aware(b.check_out_date)) is not None and co < now and b.booking_status in [BookingStatus.confirmed, BookingStatus.completed])
+    cancelled = sum(1 for b in bookings if b.booking_status == BookingStatus.cancelled)
 
     return {
         "bookings": bookings,
@@ -99,7 +126,7 @@ async def get_user_upcoming_bookings(db: AsyncSession, user_id: int):
     stmt = select(Booking).where(
         Booking.user_id == user_id,
         Booking.check_in_date > now,
-        Booking.booking_status.in_(["confirmed", "pending"])
+            Booking.booking_status.in_([BookingStatus.confirmed, BookingStatus.pending])
     ).order_by(Booking.check_in_date)
     result = await db.execute(stmt)
     bookings = result.scalars().all()
@@ -121,15 +148,15 @@ async def update_booking(db: AsyncSession, booking_id: int, booking_update: Book
     stmt = select(Booking).where(Booking.id == booking_id)
     result = await db.execute(stmt)
     booking = result.scalar_one_or_none()
-    
+
     if booking:
         update_data = booking_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(booking, field, value)
-        
+
         await db.flush()
         await db.refresh(booking)
-    
+
     return booking
 
 async def cancel_booking(db: AsyncSession, booking_id: int, reason: str):
@@ -137,14 +164,18 @@ async def cancel_booking(db: AsyncSession, booking_id: int, reason: str):
     stmt = select(Booking).where(Booking.id == booking_id)
     result = await db.execute(stmt)
     booking = result.scalar_one_or_none()
-    
+
     if booking:
-        booking.booking_status = "cancelled"
+        booking.booking_status = BookingStatus.cancelled
         booking.cancellation_date = datetime.now(timezone.utc)
         booking.cancellation_reason = reason
         await db.flush()
+        logger.info(
+            "Booking cancelled",
+            extra={"booking_id": booking_id, "user_id": booking.user_id, "reason": reason},
+        )
         return True
-    
+
     return False
 
 async def process_payment(db: AsyncSession, payment_data: BookingPayment):
@@ -152,16 +183,24 @@ async def process_payment(db: AsyncSession, payment_data: BookingPayment):
     stmt = select(Booking).where(Booking.id == payment_data.booking_id)
     result = await db.execute(stmt)
     booking = result.scalar_one_or_none()
-    
+
     if booking:
-        booking.payment_status = "paid"
+        booking.payment_status = PaymentStatus.paid
         booking.payment_method = payment_data.payment_method
         booking.transaction_id = payment_data.transaction_id
         booking.payment_date = datetime.now(timezone.utc)
-        booking.booking_status = "confirmed"
+        booking.booking_status = BookingStatus.confirmed
         await db.flush()
+        logger.info(
+            "Booking payment processed",
+            extra={
+                "booking_id": payment_data.booking_id,
+                "payment_method": payment_data.payment_method,
+                "transaction_id": payment_data.transaction_id,
+            },
+        )
         return True
-    
+
     return False
 
 async def add_review(db: AsyncSession, review_data: BookingReview):
@@ -169,25 +208,25 @@ async def add_review(db: AsyncSession, review_data: BookingReview):
     stmt = select(Booking).where(Booking.id == review_data.booking_id)
     result = await db.execute(stmt)
     booking = result.scalar_one_or_none()
-    
+
     if booking:
         booking.guest_rating = review_data.guest_rating
         booking.guest_review = review_data.guest_review
         await db.flush()
         return True
-    
+
     return False
 
 async def check_availability(db: AsyncSession, property_id: int, check_in_date: str, check_out_date: str, guests: int):
     """Check if property is available for booking"""
     check_in = datetime.fromisoformat(check_in_date)
     check_out = datetime.fromisoformat(check_out_date)
-    
+
     # Check for overlapping bookings (include pending to prevent double-booking)
     stmt = select(Booking).where(
         and_(
             Booking.property_id == property_id,
-            Booking.booking_status.in_(["pending", "confirmed", "checked_in"]),
+            Booking.booking_status.in_([BookingStatus.pending, BookingStatus.confirmed, BookingStatus.checked_in]),
             # Check for date overlap
             Booking.check_in_date < check_out,
             Booking.check_out_date > check_in
@@ -195,21 +234,38 @@ async def check_availability(db: AsyncSession, property_id: int, check_in_date: 
     )
     result = await db.execute(stmt)
     overlapping_bookings = result.scalars().all()
-    
+
     # Get property max occupancy
-    stmt = select(Property).where(Property.id == property_id)
-    result = await db.execute(stmt)
-    property_obj = result.scalar_one_or_none()
-    
+    prop_stmt = select(Property).where(Property.id == property_id)
+    prop_result = await db.execute(prop_stmt)
+    property_obj = prop_result.scalar_one_or_none()
+
     if not property_obj:
         return {"available": False, "reason": "Property not found"}
-    
+
     if overlapping_bookings:
         return {"available": False, "reason": "Property already booked for these dates"}
-    
+
     if property_obj.max_occupancy and guests > property_obj.max_occupancy:
+        logger.info(
+            "Availability check: guests exceed max occupancy",
+            extra={
+                "property_id": property_id, "guests": guests,
+                "max_occupancy": property_obj.max_occupancy,
+                "check_in": check_in_date, "check_out": check_out_date,
+            },
+        )
         return {"available": False, "reason": f"Property can accommodate maximum {property_obj.max_occupancy} guests"}
-    
+
+    logger.info(
+        "Availability check passed",
+        extra={
+            "property_id": property_id, "guests": guests,
+            "max_occupancy": property_obj.max_occupancy,
+            "check_in": check_in_date, "check_out": check_out_date,
+            "overlapping_bookings": len(overlapping_bookings),
+        },
+    )
     return {"available": True, "max_occupancy": property_obj.max_occupancy}
 
 async def calculate_pricing(db: AsyncSession, property_id: int, check_in_date: datetime, check_out_date: datetime, guests: int):
@@ -277,10 +333,10 @@ async def get_all_bookings(
     *,
     page: int = 1,
     limit: int = 20,
-    status: Optional[str] = None,
-    filter_agent_id: Optional[int] = None,
-    property_id: Optional[int] = None,
-    user_id: Optional[int] = None,
+    status: str | None = None,
+    filter_agent_id: int | None = None,
+    property_id: int | None = None,
+    user_id: int | None = None,
 ):
     """Global bookings listing with optional filters and pagination.
 
@@ -344,7 +400,7 @@ async def get_all_bookings(
     upcoming_query = upcoming_query.where(
         and_(
             Booking.check_in_date > now,
-            Booking.booking_status.in_(["confirmed", "pending"])
+        Booking.booking_status.in_([BookingStatus.confirmed, BookingStatus.pending])
         )
     )
     upcoming = (await db.execute(upcoming_query)).scalar() or 0
@@ -363,7 +419,7 @@ async def get_all_bookings(
     completed_query = completed_query.where(
         and_(
             Booking.check_out_date < now,
-            Booking.booking_status.in_(["confirmed", "completed"])
+            Booking.booking_status.in_([BookingStatus.confirmed, BookingStatus.completed])
         )
     )
     completed = (await db.execute(completed_query)).scalar() or 0
@@ -379,7 +435,7 @@ async def get_all_bookings(
         cancelled_query = cancelled_query.where(Booking.property_id == property_id)
     if user_id:
         cancelled_query = cancelled_query.where(Booking.user_id == user_id)
-    cancelled_query = cancelled_query.where(Booking.booking_status == "cancelled")
+    cancelled_query = cancelled_query.where(Booking.booking_status == BookingStatus.cancelled)
     cancelled = (await db.execute(cancelled_query)).scalar() or 0
 
     return {

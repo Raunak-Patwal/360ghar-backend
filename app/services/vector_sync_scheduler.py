@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from fastapi import FastAPI
 
-from app.core.config import settings
+from app.config import settings
 from app.core.logging import get_logger
 from app.vector.sync import run_property_vector_sync
 
@@ -49,4 +49,12 @@ def start_vector_sync_scheduler(app: FastAPI):
     sched.start()
     _scheduler = sched
     logger.info("Vector sync scheduler started")
+
+
+def shutdown_scheduler() -> None:
+    """Shut down the vector sync scheduler. Called during app lifespan teardown."""
+    global _scheduler
+    if _scheduler is not None:
+        _scheduler.shutdown(wait=False)
+        _scheduler = None
 

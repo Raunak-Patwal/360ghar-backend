@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy import select
 
-from app.core.config import settings
+from app.config import settings
 from app.models.blogs import BlogPost
 from app.schemas.blog import BlogPostCreate
 from app.services.blog import create_blog_post
@@ -217,7 +217,7 @@ class TestDailyPerplexityBlogPublisher:
         publish_with_session = AsyncMock()
 
         monkeypatch.setattr(
-            "app.services.blog_auto_publish.AsyncSessionLocal",
+            "app.services.blog_auto_publish.AsyncSessionLocalBG",
             lambda: _DummySessionContext(managed_session),
         )
         monkeypatch.setattr(publisher, "_acquire_publish_lock", acquire_lock)

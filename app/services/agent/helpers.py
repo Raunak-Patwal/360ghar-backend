@@ -1,6 +1,7 @@
-from sqlalchemy import select, func
+from typing import Any
+
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Dict, Any
 
 from app.models.agents import Agent
 from app.schemas.agent import Agent as AgentSchema
@@ -8,10 +9,10 @@ from app.schemas.agent import Agent as AgentSchema
 
 async def _paginate_agents(
     db: AsyncSession,
-    base_stmt,
+    base_stmt: Any,
     page: int = 1,
     limit: int = 20,
-):
+) -> dict[str, Any]:
     offset = (page - 1) * limit
     # Page rows
     page_stmt = base_stmt.offset(offset).limit(limit)

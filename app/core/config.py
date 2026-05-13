@@ -1,9 +1,18 @@
+import os
 from pathlib import Path
 
 from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+
+_ENV_FILE_MAP = {
+    "development": ".env.dev",
+    "test": ".env.test",
+    "production": ".env.prod",
+}
+_CURRENT_ENV = os.getenv("ENVIRONMENT", "development")
+_ENV_FILE = _ENV_FILE_MAP.get(_CURRENT_ENV, ".env.dev")
 
 
 class Settings(BaseSettings):
@@ -19,11 +28,17 @@ class Settings(BaseSettings):
     SENTRY_TRACES_SAMPLE_RATE: float | None = None  # Free tier default: 0.5 dev, 0.05 prod
     VALID_API_KEYS: str = ""  # API keys for middleware (comma-separated)
 
+    # ── Serverless ──────────────────────────────────────────────────────────────
+    SERVERLESS_ENABLED: bool = False  # When true, skips in-process schedulers to allow scale-to-zero
+
     # ── Public URLs ─────────────────────────────────────────────────────────────
     PUBLIC_BASE_URL: str | None = None  # e.g., https://xyz.ngrok-free.app (OAuth/MCP)
     PUBLIC_APP_URL: str | None = None  # e.g., https://360viewer.360ghar.com (share previews)
 
     # ── CORS ─────────────────────────────────────────────────────────────────────
+    # Set CORS_ORIGINS_STR via env to override the default list (comma-separated).
+    # Example: CORS_ORIGINS_STR=https://app.example.com,https://admin.example.com
+    CORS_ORIGINS_STR: str = ""  # Comma-separated override for CORS origins
     CORS_ORIGINS: list[str] = [
         # Local development
         "http://localhost:3000",
@@ -57,6 +72,21 @@ class Settings(BaseSettings):
         "https://chat.openai.com",
         "https://platform.openai.com",
     ]
+
+    @field_validator("CORS_ORIGINS", mode="after")
+    @classmethod
+    def _cors_origins_from_env(cls, value: list[str], info: ValidationInfo) -> list[str]:
+        """Override CORS_ORIGINS from CORS_ORIGINS_STR if provided."""
+        origins_str = info.data.get("CORS_ORIGINS_STR", "")
+        if origins_str and origins_str.strip():
+            origins = [origin.strip() for origin in origins_str.split(",") if origin.strip()]
+            for origin in origins:
+                if not origin.startswith(("http://", "https://")):
+                    raise ValueError(
+                        f"Invalid CORS origin: {origin!r}. Must start with http:// or https://"
+                    )
+            return origins
+        return value
 
     @field_validator("SECRET_KEY", mode="after")
     @classmethod
@@ -115,29 +145,41 @@ class Settings(BaseSettings):
     # ── AI Providers ─────────────────────────────────────────────────────────────
     # Gemini
     GOOGLE_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-3-flash-preview"
+    GEMINI_MODEL: str = "gemini-3.1-flash-lite-preview"
     GEMINI_EMBED_MODEL: str = "text-embedding-004"
     # GLM (ZhipuAI) — used for Vastu and other AI features
     GLM_API_KEY: str | None = None
-    GLM_API_URL: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-    GLM_MODEL: str = "glm-4.6v-flash"
+    GLM_API_URL: str = "https://api.z.ai/api/coding/paas/v4/chat/completions"
+    GLM_MODEL: str = "glm-5v-turbo"
     # Vastu analyzer
     VASTU_DEFAULT_PROVIDER: str = "glm"  # "gemini" or "glm"
     VASTU_FALLBACK_PROVIDER: str = ""  # Auto-derived if empty (swaps to the other provider)
-    # Pydantic AI Agent
-    AI_AGENT_MODEL: str = "glm-4.7-flash"  # ZhipuAI GLM-4.7-Flash
-    # Note: Base URL excludes /chat/completions as Pydantic AI adds it automatically
-    AI_AGENT_API_BASE: str = "https://open.bigmodel.cn/api/paas/v4"  # ZhipuAI base URL
+    # Pydantic AI Agent — fallback chain: GLM -> Gemini -> Groq
+    AI_AGENT_MODEL: str = "glm-4.7-flash"  # ZhipuAI GLM-4.7-Flash (primary)
+    AI_AGENT_API_BASE: str = "https://api.z.ai/api/coding/paas/v4"
+    AI_AGENT_API_KEY: str | None = None  # Defaults to GLM_API_KEY
     AI_AGENT_FALLBACK_MODEL: str | None = None
+    AI_AGENT_FALLBACK_API_BASE: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    AI_AGENT_FALLBACK_API_KEY: str | None = None  # Defaults to GOOGLE_API_KEY
+    AI_AGENT_FALLBACK2_MODEL: str = "qwen/qwen3-32b"
+    AI_AGENT_FALLBACK2_API_BASE: str = "https://api.groq.com/openai/v1"
+    AI_AGENT_FALLBACK2_API_KEY: str | None = None  # Groq API key
     AI_AGENT_MAX_TOKENS: int = 64096
     AI_AGENT_TEMPERATURE: float = 0.7
     AI_AGENT_MAX_HISTORY: int = 50
+    # Groq
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "qwen/qwen3-32b"
+    GROQ_API_BASE: str = "https://api.groq.com/openai/v1"
     # Perplexity (web search for blog & agent)
     PERPLEXITY_API_KEY: str | None = None
     PERPLEXITY_MODEL: str = "sonar"
     # SerpAPI (Google Images search for blog)
     SERPAPI_API_KEY: str | None = None
     SERPAPI_SEARCH_ENDPOINT: str = "https://serpapi.com/search.json"
+    # Image APIs (blog cover image acquisition)
+    PIXABAY_API_KEY: str | None = None
+    PEXELS_API_KEY: str | None = None
 
     # ── Blog Auto-Publish ────────────────────────────────────────────────────────
     AUTO_BLOG_ENABLED: bool = False
@@ -191,14 +233,15 @@ class Settings(BaseSettings):
     # ── Vector Embeddings & Sync ────────────────────────────────────────────────
     VECTOR_SYNC_ENABLED: bool = True
     VECTOR_SYNC_CRON: str | None = "0 9 * * *"  # once daily at 9:00 AM
-    VECTOR_SYNC_INTERVAL_SECONDS: int = 300  # used when CRON not provided
+    VECTOR_SYNC_INTERVAL_SECONDS: int = 86400  # used when CRON not provided (daily)
     VECTOR_SYNC_BATCH_SIZE: int = 500
     VECTOR_SYNC_MAX_RETRIES: int = 3
 
     model_config = SettingsConfigDict(
-        env_file=str(BASE_DIR / ".env"),
+        env_file=str(BASE_DIR / _ENV_FILE),
         case_sensitive=True,
+        extra="ignore",
     )
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]

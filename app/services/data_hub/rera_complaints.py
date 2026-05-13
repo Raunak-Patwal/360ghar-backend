@@ -1,17 +1,19 @@
 """RERA complaints/orders scraper — HRERA (Playwright) with builder scoring."""
 import asyncio
 import logging
-from datetime import date
 import re
+from datetime import date
+from typing import Any
+
 from bs4 import BeautifulSoup
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.data_hub.base_scraper import BaseScraper
-from app.services.data_hub.utils import generate_slug, calculate_builder_score
 from app.models.data_hub import ReraComplaint, ReraProject
 from app.models.enums import ComplaintNature
+from app.services.data_hub.base_scraper import BaseScraper
+from app.services.data_hub.utils import generate_slug
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +83,7 @@ class ReraComplaintScraper(BaseScraper):
                 cells = [td.get_text(strip=True) for td in row.find_all("td")]
                 if len(cells) < 2:
                     continue
-                rec = {"raw_data": {"headers": headers, "cells": cells}}
+                rec: dict[str, Any] = {"raw_data": {"headers": headers, "cells": cells}}
                 for i, h in enumerate(headers):
                     if i >= len(cells):
                         break

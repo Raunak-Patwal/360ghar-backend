@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,17 +14,21 @@ from app.models.enums import LeaseStatus
 from app.models.pm_finance import RentPayment
 from app.models.pm_leases import Lease
 from app.models.properties import Property
-from app.mcp.tool_ops import _user_schema
+from app.schemas.user import User as UserSchema
 from app.services.pm_authz import assert_can_access_lease
 
 logger = get_logger(__name__)
 
 
+def _user_schema(user) -> UserSchema:
+    return UserSchema.model_validate(user)
+
+
 async def compute_rent_due_items(
     db: AsyncSession,
     *,
-    owner_ids: Optional[List[int]] = None,
-    property_id: Optional[int] = None,
+    owner_ids: list[int] | None = None,
+    property_id: int | None = None,
     overdue_only: bool = False,
     page: int = 1,
     limit: int = 20,
@@ -35,6 +39,7 @@ async def compute_rent_due_items(
     overdue status.
     """
     limit = min(max(1, limit), 100)
+    offset = (page - 1) * limit
     today = utc_now().date()
 
     stmt = select(Lease).where(Lease.status == LeaseStatus.active)
@@ -44,9 +49,18 @@ async def compute_rent_due_items(
     if property_id:
         stmt = stmt.where(Lease.property_id == property_id)
 
-    stmt = stmt.order_by(Lease.created_at.desc())
+    stmt = stmt.order_by(Lease.created_at.desc()).offset(offset).limit(limit)
     result = await db.execute(stmt)
     leases = result.scalars().all()
+
+    # Batch-load property titles to avoid N+1 queries
+    property_ids = {lease.property_id for lease in leases if lease.property_id}
+    prop_titles: dict[int, str] = {}
+    if property_ids:
+        prop_result = await db.execute(
+            select(Property.id, Property.title).where(Property.id.in_(property_ids))
+        )
+        prop_titles = {r[0]: r[1] or "Property" for r in prop_result.all()}
 
     items: list[dict[str, Any]] = []
     for lease in leases:
@@ -71,11 +85,7 @@ async def compute_rent_due_items(
         if overdue_only and not is_overdue:
             continue
 
-        # Get property title
-        prop_result = await db.execute(
-            select(Property.title).where(Property.id == lease.property_id)
-        )
-        prop_title = prop_result.scalar() or "Property"
+        prop_title = prop_titles.get(lease.property_id, "Property")
 
         items.append({
             "lease_id": lease.id,
@@ -111,8 +121,8 @@ async def record_rent_payment(
     amount: float,
     payment_date: str,
     payment_method: str,
-    transaction_reference: Optional[str] = None,
-    notes: Optional[str] = None,
+    transaction_reference: str | None = None,
+    notes: str | None = None,
 ) -> dict:
     """Record a rent payment for a lease."""
     actor_schema = _user_schema(actor)
@@ -208,7 +218,7 @@ async def get_rent_history(
             "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else None,
         })
 
-    total_collected = sum(p["amount"] for p in items)
+    total_collected = sum(float(p.get("amount") or 0) for p in items)
 
     return {
         "payments": items,

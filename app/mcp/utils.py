@@ -7,11 +7,11 @@ and role-based authorization used across both User and Admin MCP servers.
 
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from mcp.server.auth.middleware.auth_context import get_access_token as get_auth_access_token
 
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocalBG
 from app.core.logging import get_logger
 from app.models.enums import UserRole
 from app.services.user import get_user_by_id
@@ -27,12 +27,30 @@ logger = get_logger(__name__)
 
 
 async def get_db():
-    """Async generator for database sessions."""
-    async with AsyncSessionLocal() as db:
-        yield db
+    """Async generator for database sessions using the background pool.
+
+    MCP tool calls are typically long-lived and read-heavy. Using the
+    background pool avoids competing with HTTP API requests for the
+    limited main pool connections.
+    """
+    import sentry_sdk
+
+    async with AsyncSessionLocalBG() as db:
+        try:
+            yield db
+        except Exception as e:
+            logger.error("MCP database session error: %s", e)
+            sentry_sdk.set_context("database", {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            })
+            await db.rollback()
+            raise
+        else:
+            await db.commit()
 
 
-def get_user_role(user: "User") -> UserRole:
+def get_user_role(user: User) -> UserRole:
     """Get the UserRole enum from a user object.
 
     The model column now stores a UserRole enum directly.
@@ -48,23 +66,23 @@ def get_user_role(user: "User") -> UserRole:
         return UserRole.user
 
 
-def is_admin(user: "User") -> bool:
+def is_admin(user: User) -> bool:
     """Check if user has admin role."""
     return get_user_role(user) == UserRole.admin
 
 
-def is_agent(user: "User") -> bool:
+def is_agent(user: User) -> bool:
     """Check if user has agent role."""
     return get_user_role(user) == UserRole.agent
 
 
-def is_owner_or_above(user: "User") -> bool:
+def is_owner_or_above(user: User) -> bool:
     """Check if user is at least a regular user (can own properties)."""
     role = get_user_role(user)
     return role in (UserRole.user, UserRole.agent, UserRole.admin)
 
 
-def can_manage_property(user: "User", property_owner_id: int) -> bool:
+def can_manage_property(user: User, property_owner_id: int) -> bool:
     """
     Check if user can manage a property (basic check without DB).
 
@@ -78,7 +96,7 @@ def can_manage_property(user: "User", property_owner_id: int) -> bool:
     return False
 
 
-async def get_user_from_mcp_context(db) -> Optional["User"]:
+async def get_user_from_mcp_context(db) -> User | None:
     """
     Resolve the current authenticated user for MCP tools.
 
@@ -123,7 +141,7 @@ async def get_user_from_mcp_context(db) -> Optional["User"]:
     return user
 
 
-def serialize_property_basic(prop: "Property") -> dict:
+def serialize_property_basic(prop: Property) -> dict:
     """Serialize a property object to basic dict for MCP responses."""
     property_type = getattr(prop, "property_type", None)
     purpose = getattr(prop, "purpose", None)
@@ -157,13 +175,13 @@ def serialize_property_basic(prop: "Property") -> dict:
     }
 
 
-def serialize_property_full(prop: "Property") -> dict:
+def serialize_property_full(prop: Property) -> dict:
     """Serialize a property object to full dict for MCP responses.
 
     Handles both SQLAlchemy models and Pydantic models.
     """
     if hasattr(prop, "model_dump"):
-        return prop.model_dump()
+        return dict(prop.model_dump())
 
     basic = serialize_property_basic(prop)
 
@@ -223,7 +241,7 @@ def serialize_property_full(prop: "Property") -> dict:
     return basic
 
 
-def serialize_booking(booking: "Booking") -> dict:
+def serialize_booking(booking: Booking) -> dict:
     """Serialize a booking object for MCP responses."""
     booking_status = getattr(booking, "booking_status", None)
     payment_status = getattr(booking, "payment_status", None)
@@ -254,7 +272,7 @@ def serialize_booking(booking: "Booking") -> dict:
     }
 
 
-def serialize_lease(lease: "Lease") -> dict:
+def serialize_lease(lease: Lease) -> dict:
     """Serialize a lease object for MCP responses."""
     start_date = getattr(lease, "start_date", None)
     end_date = getattr(lease, "end_date", None)
@@ -283,13 +301,13 @@ def serialize_lease(lease: "Lease") -> dict:
     }
 
 
-def serialize_maintenance_request(req: "MaintenanceRequest") -> dict:
+def serialize_maintenance_request(req: MaintenanceRequest) -> dict:
     """Serialize a maintenance request for MCP responses."""
     category = getattr(req, "category", None)
-    category_value = category.value if hasattr(category, "value") else category
+    category_value = category.value if category is not None and hasattr(category, "value") else category
 
     urgency = getattr(req, "urgency", None)
-    urgency_value = urgency.value if hasattr(urgency, "value") else urgency
+    urgency_value = urgency.value if urgency is not None and hasattr(urgency, "value") else urgency
 
     # Widget expects priority values: low|medium|high|urgent.
     # Our DB enum uses urgency: low|medium|high|emergency.
@@ -297,12 +315,12 @@ def serialize_maintenance_request(req: "MaintenanceRequest") -> dict:
 
     request_status = getattr(req, "request_status", None)
     request_status_value = (
-        request_status.value if hasattr(request_status, "value") else request_status
+        request_status.value if request_status is not None and hasattr(request_status, "value") else request_status
     )
 
     work_order_status = getattr(req, "work_order_status", None)
     work_order_status_value = (
-        work_order_status.value if hasattr(work_order_status, "value") else work_order_status
+        work_order_status.value if work_order_status is not None and hasattr(work_order_status, "value") else work_order_status
     )
 
     scheduled_for = getattr(req, "scheduled_for", None)
@@ -349,7 +367,7 @@ def serialize_maintenance_request(req: "MaintenanceRequest") -> dict:
     }
 
 
-def serialize_user_basic(user: "User") -> dict:
+def serialize_user_basic(user: User) -> dict:
     """Serialize a user object to basic dict for MCP responses."""
     return {
         "id": user.id,

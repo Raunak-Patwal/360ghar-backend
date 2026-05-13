@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import time
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from fastmcp.server.auth import AccessToken, RemoteAuthProvider, TokenVerifier
 
-from app.core.config import settings
+from app.config import settings
 from app.core.logging import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -16,7 +15,7 @@ def get_public_base_url() -> str:
     """Return the public base URL (scheme+host) for OAuth metadata and resource binding."""
     public_base_url = getattr(settings, "PUBLIC_BASE_URL", None)
     if public_base_url:
-        return public_base_url.rstrip("/")
+        return str(public_base_url.rstrip("/"))
 
     if settings.ENVIRONMENT == "production":
         return "https://api.360ghar.com"
@@ -43,9 +42,9 @@ class SupabaseTokenVerifier(TokenVerifier):
 
     def __init__(
         self,
-        required_scopes: Optional[list[str]] | None = None,
-        expected_resource: Optional[str] = None,
-        expected_resources: Optional[Sequence[str]] = None,
+        required_scopes: list[str] | None | None = None,
+        expected_resource: str | None = None,
+        expected_resources: Sequence[str] | None = None,
     ):
         super().__init__(base_url=None, required_scopes=required_scopes)
         allowed: list[str] = []
@@ -66,7 +65,6 @@ class SupabaseTokenVerifier(TokenVerifier):
         Supabase JWT tokens are no longer supported in MCP endpoints.
         """
         logger.debug("Verifying OAuth token", extra={"token_len": len(token) if token else 0})
-        scopes = self.required_scopes or ["mcp:read", "mcp:write"]
 
         # OAuth access token verification
         try:
@@ -205,10 +203,10 @@ class SupabaseAuthProvider(RemoteAuthProvider):
 
         super().__init__(
             token_verifier=token_verifier,
-            authorization_servers=[auth_server_url],
+            authorization_servers=[auth_server_url],  # type: ignore[list-item]
             base_url=resource_base_url,
             resource_name="360Ghar MCP API",
-            resource_documentation=f"{public_base_url}/docs",
+            resource_documentation=f"{public_base_url}/docs",  # type: ignore[arg-type]
         )
 
 

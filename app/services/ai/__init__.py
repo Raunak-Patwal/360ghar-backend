@@ -4,6 +4,9 @@ AI Provider Factory and Exports.
 This module provides the factory function for creating AI providers
 and exports all necessary types for AI integration.
 
+Providers are cached as singletons so the underlying httpx.AsyncClient
+and connection pool are reused across calls instead of being leaked.
+
 Usage:
     from app.services.ai import get_ai_provider, AIProviderType, AIMessage, VisionInput
 
@@ -15,18 +18,24 @@ Usage:
 """
 
 from enum import Enum
-from typing import Optional
 
-from app.core.config import settings
-from app.core.constants import DEFAULT_VISION_MODEL_GEMINI, DEFAULT_VISION_MODEL_GLM, DEFAULT_VISION_PROVIDER
+from app.config import settings
+from app.core.constants import (
+    DEFAULT_VISION_MODEL_GEMINI,
+    DEFAULT_VISION_MODEL_GLM,
+    DEFAULT_VISION_PROVIDER,
+)
+from app.core.logging import get_logger
 from app.services.ai.base import (
+    AIMessage,
     AIProvider,
     AIProviderConfig,
-    AIMessage,
+    AIProviderError,
     AIRole,
     VisionInput,
-    AIProviderError,
 )
+
+logger = get_logger(__name__)
 
 
 class AIProviderType(str, Enum):
@@ -35,30 +44,39 @@ class AIProviderType(str, Enum):
     GLM = "glm"
 
 
+# Singleton provider cache — one httpx client pool per provider type.
+_provider_cache: dict[AIProviderType, AIProvider] = {}
+
+
 def get_ai_provider(
     provider_type: AIProviderType = AIProviderType.GEMINI,
     **config_overrides,
 ) -> AIProvider:
     """
-    Factory function to get an AI provider instance.
+    Get a cached AI provider instance (singleton per type).
+
+    Reuses the same provider and httpx.AsyncClient across calls to avoid
+    leaking connection pools.
 
     Args:
         provider_type: Type of provider to create (gemini, glm)
-        **config_overrides: Override default configuration values
+        **config_overrides: Override default configuration values (only used
+            on first call; subsequent calls return the cached instance)
 
     Returns:
         AIProvider instance configured for the specified provider
 
     Raises:
         ValueError: If provider type is unknown or API key is not configured
-
-    Example:
-        # Get Gemini provider with default settings
-        provider = get_ai_provider(AIProviderType.GEMINI)
-
-        # Get GLM provider with custom temperature
-        provider = get_ai_provider(AIProviderType.GLM, temperature=0.5)
     """
+    if provider_type in _provider_cache:
+        if config_overrides:
+            logger.warning(
+                "AI provider %s already cached — config_overrides ignored",
+                provider_type.value,
+            )
+        return _provider_cache[provider_type]
+
     if provider_type == AIProviderType.GEMINI:
         from app.services.ai.providers.gemini import GeminiProvider
 
@@ -73,7 +91,7 @@ def get_ai_provider(
             temperature=config_overrides.pop("temperature", 0.7),
             timeout=config_overrides.pop("timeout", 120),
         )
-        return GeminiProvider(config)
+        provider: AIProvider = GeminiProvider(config)
 
     elif provider_type == AIProviderType.GLM:
         from app.services.ai.providers.glm import GLMProvider
@@ -89,10 +107,20 @@ def get_ai_provider(
             temperature=config_overrides.pop("temperature", 0.7),
             timeout=config_overrides.pop("timeout", 120),
         )
-        return GLMProvider(config)
+        provider = GLMProvider(config)
 
     else:
         raise ValueError(f"Unknown AI provider type: {provider_type}")
+
+    _provider_cache[provider_type] = provider
+    return provider
+
+
+async def close_all_providers() -> None:
+    """Close all cached provider HTTP clients. Call during app shutdown."""
+    for p in _provider_cache.values():
+        await p.close()
+    _provider_cache.clear()
 
 
 def get_default_provider() -> AIProvider:

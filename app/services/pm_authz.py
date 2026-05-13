@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
+from typing import Any, Protocol, runtime_checkable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +19,14 @@ from app.models.properties import Property, PropertyAmenity
 from app.models.users import User
 
 
-def _get_actor_role(actor) -> UserRole:
+@runtime_checkable
+class _Actor(Protocol):
+    id: int
+    role: Any
+    agent_id: int | None
+
+
+def _get_actor_role(actor: _Actor) -> UserRole:
     """Return the UserRole for the given actor.
 
     The model column now stores a UserRole enum directly.
@@ -35,7 +43,7 @@ def _get_actor_role(actor) -> UserRole:
 
 
 async def assert_can_manage_owner_portfolio(
-    db: AsyncSession, *, actor: User, owner_id: int
+    db: AsyncSession, *, actor: _Actor, owner_id: int
 ) -> None:
     """Assert the actor can manage an owner's portfolio (PM scope)."""
     role = _get_actor_role(actor)
@@ -67,7 +75,7 @@ async def assert_can_manage_owner_portfolio(
 async def assert_can_access_property(
     db: AsyncSession,
     *,
-    actor: User,
+    actor: _Actor,
     property_id: int,
     allow_tenant: bool = False,
 ) -> Property:
@@ -123,7 +131,7 @@ async def assert_can_access_property(
 async def assert_can_access_lease(
     db: AsyncSession,
     *,
-    actor: User,
+    actor: _Actor,
     lease_id: int,
 ) -> Lease:
     """Assert the actor can access a lease."""
@@ -164,7 +172,7 @@ async def assert_can_access_lease(
     raise InsufficientPermissionsError("Not authorized for this lease")
 
 
-async def get_accessible_owner_ids(db: AsyncSession, *, actor: User) -> Optional[Sequence[int]]:
+async def get_accessible_owner_ids(db: AsyncSession, *, actor: _Actor) -> Sequence[int] | None:
     """Return owner ids the actor can access for PM list endpoints.
 
     - admin: None (no filtering)
@@ -180,3 +188,72 @@ async def get_accessible_owner_ids(db: AsyncSession, *, actor: User) -> Optional
         res = await db.execute(select(User.id).where(User.agent_id == actor.agent_id))
         return [int(r[0]) for r in res.all()]
     return [actor.id]
+
+
+async def can_access_booking(
+    db: AsyncSession,
+    *,
+    actor: _Actor,
+    booking_user_id: int,
+    booking_property_id: int,
+) -> bool:
+    """Check if the actor can access a booking.
+
+    - The booking owner can always access
+    - Admins can always access
+    - Agents can access if they manage the booking user or the property owner
+    """
+    from app.models.properties import Property
+
+    actor_id = actor.id
+    role = _get_actor_role(actor)
+
+    if booking_user_id == actor_id:
+        return True
+    if role == UserRole.admin:
+        return True
+    if role == UserRole.agent and actor.agent_id is not None:
+        booking_user = await db.get(User, booking_user_id)
+        property_obj = await db.get(Property, booking_property_id)
+        owner = await db.get(User, property_obj.owner_id) if property_obj else None
+        return bool(
+            (booking_user and booking_user.agent_id == actor.agent_id)
+            or (owner and owner.agent_id == actor.agent_id)
+        )
+    return False
+
+
+async def can_access_visit(
+    db: AsyncSession,
+    *,
+    actor: _Actor,
+    visit_user_id: int,
+    visit_property_id: int,
+    visit_counterparty_user_id: int | None = None,
+) -> bool:
+    """Check if the actor can access a visit.
+
+    - The visit owner or counterparty can always access
+    - Admins can always access
+    - Agents can access if they manage the visit user or the property owner
+    """
+    from app.models.properties import Property
+
+    actor_id = actor.id
+    role = _get_actor_role(actor)
+
+    if visit_user_id == actor_id:
+        return True
+    if visit_counterparty_user_id is not None and visit_counterparty_user_id == actor_id:
+        return True
+    if role == UserRole.admin:
+        return True
+    if role == UserRole.agent and actor.agent_id is not None:
+        visit_user = await db.get(User, visit_user_id)
+        property_obj = await db.get(Property, visit_property_id)
+        owner = await db.get(User, property_obj.owner_id) if property_obj else None
+        return bool(
+            (visit_user and visit_user.agent_id == actor.agent_id)
+            or (owner and owner.agent_id == actor.agent_id)
+        )
+    return False

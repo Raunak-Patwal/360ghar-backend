@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
-from app.models.properties import Property
 from app.mcp.utils import serialize_booking, serialize_property_basic
-from app.schemas.booking import BookingCreate, BookingUpdate
+from app.models.properties import Property
+from app.schemas.booking import BookingCreate
 from app.services import booking as booking_svc
 
 logger = get_logger(__name__)
+
+TOOL_OPS_NOT_FOUND = "NOT_FOUND"
+TOOL_OPS_FORBIDDEN = "FORBIDDEN"
+TOOL_OPS_OPERATION_FAILED = "OPERATION_FAILED"
+TOOL_OPS_INVALID_INPUT = "INVALID_INPUT"
 
 
 async def check_availability(
@@ -67,7 +71,7 @@ async def create_booking(
     check_in_date: str,
     check_out_date: str,
     guests: int = 1,
-    special_requests: Optional[str] = None,
+    special_requests: str | None = None,
 ) -> dict:
     """Create a short-stay booking."""
     try:
@@ -94,6 +98,9 @@ async def create_booking(
         check_in_date=check_in,
         check_out_date=check_out,
         guests=guests,
+        primary_guest_name="Guest",
+        primary_guest_phone="N/A",
+        primary_guest_email="guest@360ghar.com",
         special_requests=special_requests,
     )
 
@@ -115,9 +122,9 @@ async def get_booking_detail(
     """Get booking details, verifying ownership."""
     booking = await booking_svc.get_booking(db, booking_id)
     if not booking:
-        return {"error": True, "message": f"Booking {booking_id} not found."}
+        return {"error": True, "code": TOOL_OPS_NOT_FOUND, "message": f"Booking {booking_id} not found."}
     if booking.user_id != user_id:
-        return {"error": True, "message": "You can only view your own bookings."}
+        return {"error": True, "code": TOOL_OPS_FORBIDDEN, "message": "You can only view your own bookings."}
 
     prop = (
         await db.execute(select(Property).where(Property.id == booking.property_id))
@@ -139,13 +146,13 @@ async def cancel_booking(
     """Cancel a booking, verifying ownership."""
     booking = await booking_svc.get_booking(db, booking_id)
     if not booking:
-        return {"error": True, "message": f"Booking {booking_id} not found."}
+        return {"error": True, "code": TOOL_OPS_NOT_FOUND, "message": f"Booking {booking_id} not found."}
     if booking.user_id != user_id:
-        return {"error": True, "message": "You can only cancel your own bookings."}
+        return {"error": True, "code": TOOL_OPS_FORBIDDEN, "message": "You can only cancel your own bookings."}
 
     status = getattr(booking, "booking_status", "")
     if status in ("cancelled", "completed", "checked_out"):
-        return {"error": True, "message": f"Cannot cancel booking (status: {status})"}
+        return {"error": True, "code": TOOL_OPS_OPERATION_FAILED, "message": f"Cannot cancel booking (status: {status})"}
 
     await booking_svc.cancel_booking(db, booking_id, reason)
     await db.commit()
@@ -159,7 +166,7 @@ async def list_user_bookings(
     user_id: int,
     page: int = 1,
     limit: int = 20,
-    status: Optional[str] = None,
+    status: str | None = None,
 ) -> dict:
     """List bookings for a user."""
     limit = min(max(1, limit), 100)

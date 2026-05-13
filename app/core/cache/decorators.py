@@ -3,7 +3,8 @@ Caching decorators for FastAPI endpoints and service functions.
 """
 
 import functools
-from typing import Any, Awaitable, Callable, List, Optional, TypeVar, Union
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 from app.core.cache.keys import build_cache_key
 from app.core.logging import get_logger
@@ -17,10 +18,10 @@ T = TypeVar("T")
 def cached(
     prefix: str,
     ttl: int = 300,
-    key_params: Optional[List[str]] = None,
+    key_params: list[str] | None = None,
     include_user: bool = False,
     cache_none: bool = False,
-    condition: Optional[Callable[..., bool]] = None,
+    condition: Callable[..., bool] | None = None,
 ) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
     """Decorator for caching async function results.
 
@@ -84,7 +85,7 @@ def cached(
                 cached_value = await cache.get(cache_key)
                 if cached_value is not None:
                     logger.debug("Cache hit: %s", cache_key)
-                    return cached_value
+                    return cached_value  # type: ignore[no-any-return]
             except Exception as e:
                 logger.warning("Cache get error: %s", e)
 
@@ -115,7 +116,7 @@ def cached(
     return decorator
 
 
-def invalidate_cache(patterns: Union[str, List[str]]) -> Callable:
+def invalidate_cache(patterns: str | list[str]) -> Callable:
     """Decorator to invalidate cache patterns after function execution.
 
     Args:

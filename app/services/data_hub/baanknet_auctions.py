@@ -3,15 +3,16 @@ import asyncio
 import logging
 import re
 from datetime import date, datetime
+from typing import Any
 
 from bs4 import BeautifulSoup
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.data_hub.base_scraper import BaseScraper
-from app.services.data_hub.utils import address_hash
 from app.models.data_hub import BankAuction
 from app.models.enums import AuctionSource
+from app.services.data_hub.base_scraper import BaseScraper
+from app.services.data_hub.utils import address_hash
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class BaankNetAuctionScraper(BaseScraper):
                 if len(cells) < 3:
                     continue
 
-                record = {
+                record: dict[str, Any] = {
                     "source": AuctionSource.baanknet,
                     "bank_name": "BaankNet",
                     "property_description": cells[0] if cells else "",

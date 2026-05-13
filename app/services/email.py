@@ -4,9 +4,8 @@ import asyncio
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional
 
-from app.core.config import settings
+from app.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -17,7 +16,7 @@ async def send_email(
     to_email: str,
     subject: str,
     body: str,
-    html_body: Optional[str] = None,
+    html_body: str | None = None,
 ) -> bool:
     """Send an email using basic SMTP configuration.
 
@@ -47,7 +46,7 @@ async def send_email(
     if html_body:
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    async def _send() -> bool:
+    def _send() -> bool:
         try:
             with smtplib.SMTP(host, port) as server:
                 server.starttls()
@@ -61,5 +60,5 @@ async def send_email(
             )
             return False
 
-    return await asyncio.to_thread(_send)
+    return await asyncio.to_thread(lambda: _send())
 

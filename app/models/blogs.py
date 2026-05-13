@@ -1,8 +1,12 @@
-from sqlalchemy import Integer, String, Text, DateTime, ForeignKey, Index, Boolean
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
-from typing import Optional, List
-from datetime import datetime
+
 from app.core.database import Base
 
 
@@ -16,11 +20,11 @@ class BlogCategory(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     slug: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
-    posts: Mapped[List["BlogPost"]] = relationship(
+    posts: Mapped[list[BlogPost]] = relationship(
         back_populates="categories",
         secondary="blog_post_categories",
         lazy="selectin",
@@ -38,9 +42,9 @@ class BlogTag(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     slug: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
-    posts: Mapped[List["BlogPost"]] = relationship(
+    posts: Mapped[list[BlogPost]] = relationship(
         back_populates="tags",
         secondary="blog_post_tags",
         lazy="selectin",
@@ -58,19 +62,39 @@ class BlogPost(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     slug: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    excerpt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    cover_image_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cover_image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=False)
-    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    author_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
-    categories: Mapped[List[BlogCategory]] = relationship(
+    # SEO fields
+    meta_title: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    meta_description: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    focus_keyword: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    canonical_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    og_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Reading analytics
+    reading_time_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    word_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Publishing timestamp (separate from created_at for scheduling)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Structured sources: JSONB array of {url, name, type, retrieved_at}
+    sources: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+
+    # Flexible SEO metadata: schema_markup, keyword_analysis, trending_score, etc.
+    seo_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+
+    categories: Mapped[list[BlogCategory]] = relationship(
         back_populates="posts",
         secondary="blog_post_categories",
         lazy="selectin",
     )
-    tags: Mapped[List[BlogTag]] = relationship(
+    tags: Mapped[list[BlogTag]] = relationship(
         back_populates="posts",
         secondary="blog_post_tags",
         lazy="selectin",

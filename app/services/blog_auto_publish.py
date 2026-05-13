@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from html import escape
 from typing import Any
 from urllib.parse import urlparse
@@ -16,7 +16,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.config import settings
 from app.core.database import AsyncSessionLocalBG
 from app.core.logging import get_logger
 from app.models.blogs import BlogPost
@@ -260,7 +260,7 @@ class DailyPerplexityBlogPublisher:
         return user
 
     async def _get_recent_published_posts(self, db: AsyncSession) -> list[RecentPublishedPost]:
-        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=RECENT_POST_LOOKBACK_DAYS)
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=RECENT_POST_LOOKBACK_DAYS)
         result = await db.execute(
             select(BlogPost)
             .where(BlogPost.active.is_(True), BlogPost.created_at >= cutoff)
@@ -394,11 +394,44 @@ class DailyPerplexityBlogPublisher:
         )
 
     def _build_blog_payload(self, *, item: DiscoveredNewsItem, draft: GeneratedBlogDraft) -> BlogPostCreate:
+        from app.schemas.blog import BlogSEOMetadata, BlogSource
+
         citations = self._unique_urls([*draft.citations, *item.citations, item.source_url])
         content_html = self._append_sources_section(draft.content_html, citations)
         sanitized_content = ValidationUtils.sanitize_html(content_html)
         excerpt = draft.excerpt.strip() or self._build_excerpt(sanitized_content)
         tags = self._merge_tags(DEFAULT_TAGS, item.tags, draft.tags)
+        today_iso = self._today_ist().isoformat()
+
+        # Build structured sources
+        sources = []
+        for url in citations:
+            parsed = urlparse(url)
+            sources.append(BlogSource(
+                url=url,
+                name=parsed.netloc or url,
+                type="article",
+                retrieved_at=today_iso,
+            ))
+        # Mark the primary source
+        if item.source_url:
+            for s in sources:
+                if s.url == item.source_url:
+                    s.type = "primary"
+                    break
+
+        # Build SEO metadata
+        meta_title = draft.title.strip()[:60]
+        meta_description = excerpt[:160]
+        focus_keyword = " ".join(item.tags[:2]) if item.tags else None
+        seo_metadata = BlogSEOMetadata(
+            trending_score=70.0,
+            secondary_keywords=item.tags,
+            schema_markup=None,
+            keyword_analysis=None,
+            internal_links=None,
+            custom_data=None,
+        )
 
         return BlogPostCreate(
             title=draft.title.strip(),
@@ -408,6 +441,14 @@ class DailyPerplexityBlogPublisher:
             categories=list(DEFAULT_CATEGORIES),
             tags=tags,
             active=True,
+            meta_title=meta_title,
+            meta_description=meta_description,
+            focus_keyword=focus_keyword,
+            sources=sources,
+            seo_metadata=seo_metadata,
+            canonical_url=None,
+            og_image_url=None,
+            published_at=None,
         )
 
     def _filter_discovered_items(

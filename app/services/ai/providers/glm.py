@@ -2,16 +2,17 @@
 ZhipuAI GLM Provider with Vision support.
 
 This module implements the AIProvider interface for ZhipuAI's GLM models,
-supporting both text and vision (image) inputs via the GLM-4.6V-Flash model.
+supporting both text and vision (image) inputs via the GLM-5V-Turbo model.
 All HTTP requests use the retry-enabled ``_make_request`` from the base class.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
-from app.core.config import settings
+from app.config import settings
 from app.core.logging import get_logger
 from app.services.ai.base import (
     AIMessage,
@@ -29,11 +30,13 @@ class GLMProvider(AIProvider):
     ZhipuAI GLM provider with vision support.
 
     Supports models like:
-    - glm-4.6v-flash (vision model, recommended)
+    - glm-5v-turbo (vision + coding model, recommended)
+    - glm-4.6v-flash (vision model, free tier)
     - glm-4.6v (vision model)
+    - glm-4.1v-thinking (vision + reasoning)
     - glm-4.5 (text only)
     - glm-4.6 (text only)
-    - glm-4.7 (text only, latest)
+    - glm-4.7 (text only)
     """
 
     @property
@@ -42,7 +45,8 @@ class GLMProvider(AIProvider):
 
     @property
     def supports_vision(self) -> bool:
-        return "4.6v" in self.config.model.lower()
+        m = self.config.model.lower()
+        return "4.6v" in m or "5v" in m or "4v" in m or "4.1v" in m
 
     @property
     def supports_json_mode(self) -> bool:
@@ -50,7 +54,7 @@ class GLMProvider(AIProvider):
 
     def _get_api_url(self) -> str:
         """Get the API URL from settings or use default."""
-        return getattr(settings, "GLM_API_URL", "https://open.bigmodel.cn/api/paas/v4/chat/completions")
+        return getattr(settings, "GLM_API_URL", "https://api.z.ai/api/coding/paas/v4/chat/completions")
 
     def _build_headers(self) -> dict[str, str]:
         """Build common request headers."""
@@ -68,13 +72,16 @@ class GLMProvider(AIProvider):
         Build the messages array for GLM API.
 
         GLM uses OpenAI-compatible message format with vision support.
+        Vision input is attached only to the first user message to avoid
+        duplicating the large base64 string.
         """
         result = []
+        vision_attached = False
 
         for msg in messages:
             role = msg.role.value
 
-            if vision_input and msg.role == AIRole.USER:
+            if vision_input and msg.role == AIRole.USER and not vision_attached:
                 content = [
                     {"type": "text", "text": msg.content},
                     {
@@ -85,6 +92,7 @@ class GLMProvider(AIProvider):
                     }
                 ]
                 result.append({"role": role, "content": content})
+                vision_attached = True
             else:
                 result.append({"role": role, "content": msg.content})
 
@@ -106,7 +114,13 @@ class GLMProvider(AIProvider):
         }
 
         client = self._get_http_client()
+        t_start = time.monotonic()
         response = await self._make_request(client, url, headers, payload)
+        elapsed_ms = (time.monotonic() - t_start) * 1000
+        logger.info(
+            "External call completed",
+            extra={"provider": self.name, "model": self.config.model, "duration_ms": round(elapsed_ms, 1), "endpoint": url},
+        )
         try:
             data = response.json()
         except json.JSONDecodeError as exc:
@@ -144,7 +158,13 @@ class GLMProvider(AIProvider):
             }
 
         client = self._get_http_client()
+        t_start = time.monotonic()
         response = await self._make_request(client, url, headers, payload)
+        elapsed_ms = (time.monotonic() - t_start) * 1000
+        logger.info(
+            "External call completed",
+            extra={"provider": self.name, "model": self.config.model, "duration_ms": round(elapsed_ms, 1), "endpoint": url, "json_mode": True},
+        )
         try:
             data = response.json()
         except json.JSONDecodeError as exc:
@@ -175,7 +195,7 @@ class GLMProvider(AIProvider):
                     provider=self.name,
                 )
 
-            return content
+            return str(content)
 
         except (KeyError, IndexError) as e:
             logger.error("Failed to extract text from GLM response: %s", e)

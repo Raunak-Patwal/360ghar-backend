@@ -2,17 +2,18 @@
 import asyncio
 import logging
 import re
-from datetime import date, datetime
+from datetime import date
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.data_hub.base_scraper import BaseScraper
-from app.services.data_hub.utils import classify_gazette_relevance, extract_pdf_text
 from app.models.data_hub import GazetteNotification
 from app.models.enums import GazetteType
+from app.services.data_hub.base_scraper import BaseScraper
+from app.services.data_hub.utils import classify_gazette_relevance, extract_pdf_text
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class GazetteScraper(BaseScraper):
             if len(cells) < 2:
                 continue
             pdf_link = row.find("a", href=True)
-            item = {
+            item: dict[str, Any] = {
                 "title": cells[0] if cells else "Untitled",
                 "department": cells[1] if len(cells) > 1 else None,
                 "source_url": _GAZETTE_URL,
@@ -79,7 +80,7 @@ class GazetteScraper(BaseScraper):
                         pass
                     break
             if pdf_link:
-                href = pdf_link["href"]
+                href = str(pdf_link["href"])
                 if not href.startswith("http"):
                     href = _GAZETTE_URL.rstrip("/") + "/" + href.lstrip("/")
                 item["pdf_url"] = href

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.core.utils import utc_now
+from app.mcp.utils import serialize_maintenance_request
 from app.models.enums import (
     LeaseStatus,
     MaintenanceCategory,
@@ -19,10 +20,13 @@ from app.models.enums import (
 )
 from app.models.pm_leases import Lease
 from app.models.pm_maintenance import MaintenanceRequest
-from app.mcp.utils import serialize_maintenance_request
-from app.schemas.user import User as UserSchema
 
 logger = get_logger(__name__)
+
+TOOL_OPS_NOT_FOUND = "NOT_FOUND"
+TOOL_OPS_FORBIDDEN = "FORBIDDEN"
+TOOL_OPS_OPERATION_FAILED = "OPERATION_FAILED"
+TOOL_OPS_INVALID_INPUT = "INVALID_INPUT"
 
 
 # Priority keyword → urgency enum mapping (used by create and update operations)
@@ -36,12 +40,12 @@ _PRIORITY_TO_URGENCY: dict[str, MaintenanceUrgency] = {
 
 # Status keyword → SQLAlchemy filter expression (used by list operations)
 # Returns (filter_expression, normalized_status) or (None, error_message)
-StatusFilterResult = Tuple[Any, Optional[str]]
+StatusFilterResult = tuple[Any, str | None]
 
 
 def build_maintenance_status_filter(
     stmt,
-    status: Optional[str],
+    status: str | None,
     model=None,
 ) -> StatusFilterResult:
     """Apply a status filter to a MaintenanceRequest query.
@@ -81,10 +85,10 @@ def apply_maintenance_status_update(
     request: MaintenanceRequest,
     *,
     status: str,
-    notes: Optional[str] = None,
-    scheduled_date: Optional[str] = None,
-    estimated_cost: Optional[float] = None,
-    actual_cost: Optional[float] = None,
+    notes: str | None = None,
+    scheduled_date: str | None = None,
+    estimated_cost: float | None = None,
+    actual_cost: float | None = None,
 ) -> None:
     """Apply a status update to a MaintenanceRequest.
 
@@ -146,14 +150,14 @@ async def create_maintenance_request(
         cat = MaintenanceCategory(category.lower())
     except ValueError:
         valid = [c.value for c in MaintenanceCategory]
-        return {"error": True, "message": f"Invalid category. Valid: {', '.join(valid)}"}
+        return {"error": True, "code": TOOL_OPS_INVALID_INPUT, "message": f"Invalid category. Valid: {', '.join(valid)}"}
 
     # Map priority to urgency
     priority_norm = priority.lower().strip()
     urgency = _PRIORITY_TO_URGENCY.get(priority_norm)
     if urgency is None:
         valid = list(_PRIORITY_TO_URGENCY.keys())
-        return {"error": True, "message": f"Invalid priority. Valid: {', '.join(valid)}"}
+        return {"error": True, "code": TOOL_OPS_INVALID_INPUT, "message": f"Invalid priority. Valid: {', '.join(valid)}"}
 
     # Verify tenant has active lease on this property
     lease = (
@@ -169,6 +173,7 @@ async def create_maintenance_request(
     if not lease:
         return {
             "error": True,
+            "code": TOOL_OPS_FORBIDDEN,
             "message": "No active lease found for this property. Only tenants can submit maintenance requests.",
         }
 
@@ -197,10 +202,10 @@ async def create_maintenance_request(
 async def list_maintenance_requests(
     db: AsyncSession,
     *,
-    tenant_user_id: Optional[int] = None,
-    owner_id: Optional[int] = None,
-    property_id: Optional[int] = None,
-    status: Optional[str] = None,
+    tenant_user_id: int | None = None,
+    owner_id: int | None = None,
+    property_id: int | None = None,
+    status: str | None = None,
     page: int = 1,
     limit: int = 20,
 ) -> dict:

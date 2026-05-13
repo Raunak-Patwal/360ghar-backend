@@ -1,16 +1,22 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.api_v1.dependencies.auth import get_current_active_user
 from app.core.database import get_db
 from app.models.enums import LeaseStatus, UserRole
-from app.schemas.pm_lease import Lease as LeaseSchema, LeaseCreate, LeaseRenew, LeaseUploadSigned
+from app.schemas.pm_lease import Lease as LeaseSchema
+from app.schemas.pm_lease import LeaseCreate, LeaseRenew, LeaseUploadSigned
 from app.schemas.user import User as UserSchema
-from app.services.pm_leases import create_lease, get_lease, list_leases, renew_lease, terminate_lease, upload_signed_lease
+from app.services.pm_leases import (
+    create_lease,
+    get_lease,
+    list_leases,
+    renew_lease,
+    terminate_lease,
+    upload_signed_lease,
+)
 
 router = APIRouter()
 
@@ -32,7 +38,7 @@ async def create_pm_lease(
 
     lease = await create_lease(
         db,
-        actor=current_user,
+        actor=current_user,  # type: ignore[arg-type]
         owner_id=target_owner_id,
         property_id=payload.property_id,
         tenant_user_id=payload.tenant_user_id,
@@ -57,10 +63,10 @@ async def create_pm_lease(
 
 @router.get("", response_model=list[LeaseSchema])
 async def list_pm_leases(
-    owner_id: Optional[int] = Query(None, description="Owner id (agent/admin only)"),
-    property_id: Optional[int] = Query(None),
-    tenant_user_id: Optional[int] = Query(None),
-    status: Optional[LeaseStatus] = Query(None),
+    owner_id: int | None = Query(None, description="Owner id (agent/admin only)"),
+    property_id: int | None = Query(None),
+    tenant_user_id: int | None = Query(None),
+    status: LeaseStatus | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     current_user: UserSchema = Depends(get_current_active_user),
@@ -68,7 +74,7 @@ async def list_pm_leases(
 ):
     leases = await list_leases(
         db,
-        actor=current_user,
+        actor=current_user,  # type: ignore[arg-type]
         owner_id=owner_id,
         property_id=property_id,
         tenant_user_id=tenant_user_id,
@@ -76,7 +82,7 @@ async def list_pm_leases(
         limit=limit,
         offset=offset,
     )
-    return [LeaseSchema.model_validate(l) for l in leases]
+    return [LeaseSchema.model_validate(lease) for lease in leases]
 
 
 @router.get("/{lease_id}", response_model=LeaseSchema)
@@ -85,7 +91,7 @@ async def get_pm_lease(
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    lease = await get_lease(db, actor=current_user, lease_id=lease_id)
+    lease = await get_lease(db, actor=current_user, lease_id=lease_id)  # type: ignore[arg-type]
     return LeaseSchema.model_validate(lease)
 
 
@@ -98,7 +104,7 @@ async def upload_signed(
 ):
     lease = await upload_signed_lease(
         db,
-        actor=current_user,
+        actor=current_user,  # type: ignore[arg-type]
         lease_id=lease_id,
         lease_document_id=payload.lease_document_id,
         signed_by_owner=payload.signed_by_owner,
@@ -116,7 +122,7 @@ async def renew(
 ):
     lease = await renew_lease(
         db,
-        actor=current_user,
+        actor=current_user,  # type: ignore[arg-type]
         lease_id=lease_id,
         start_date=payload.start_date,
         end_date=payload.end_date,
@@ -133,6 +139,6 @@ async def terminate(
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    lease = await terminate_lease(db, actor=current_user, lease_id=lease_id)
+    lease = await terminate_lease(db, actor=current_user, lease_id=lease_id)  # type: ignore[arg-type]
     return LeaseSchema.model_validate(lease)
 
