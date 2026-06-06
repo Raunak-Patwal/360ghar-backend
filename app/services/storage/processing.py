@@ -1,9 +1,3 @@
-"""
-Image processing pipeline for the storage service.
-
-Thumbnail generation, WebP conversion, and scene-image upload orchestration
-that was previously embedded in the StorageService class.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -22,14 +16,19 @@ from .helpers import VALID_IMAGE_TYPES
 if TYPE_CHECKING:
     from PIL.Image import Image as PILImage
 
+    from app.services.cloudinary.service import CloudinaryService
+
 logger = get_logger(__name__)
 
 _IMAGE_PROCESSING_SEMAPHORE = asyncio.Semaphore(2)
 
 
+def _folder_for_scene(tour_id: str, scene_id: str, user_id: int) -> str:
+    return f"tours/{tour_id}/scenes/{scene_id}"
+
+
 async def upload_scene_image(
-    supabase: Any,
-    bucket_name: str,
+    cloudinary: CloudinaryService,
     file: UploadFile,
     *,
     tour_id: str,
@@ -38,39 +37,15 @@ async def upload_scene_image(
     create_media_record: Callable | None = None,
     db: Any | None = None,
 ) -> dict[str, Any]:
-    """
-    Upload a 360 scene image with automatic thumbnail generation.
-
-    Opens the source image once and reuses it for all operations to minimize
-    peak memory usage.
-
-    Uses user-scoped path: users/{user_id}/tours/{tour_id}/scenes/{scene_id}/...
-
-    Args:
-        supabase: Supabase storage client.
-        bucket_name: Name of the storage bucket.
-        file: The image file to upload.
-        tour_id: The tour ID.
-        scene_id: The scene ID.
-        user_id: User ID for path scoping (REQUIRED).
-        create_media_record: Optional async callback to create a MediaFile DB record.
-        db: Database session (passed through to create_media_record).
-
-    Returns:
-        Dict with image_url, thumbnail_url, web_url, and metadata.
-    """
     try:
         from PIL import Image
 
-        # Validate file type
         if file.content_type not in VALID_IMAGE_TYPES:
             raise InvalidFileException(detail="Invalid image type")
 
         async with _IMAGE_PROCESSING_SEMAPHORE:
-            # Read file content and derive resized images under the memory-heavy gate.
             file_content = await file.read()
 
-            # Open image once for all operations
             import io
             with Image.open(io.BytesIO(file_content)) as img:
                 width, height = img.size
@@ -79,10 +54,7 @@ async def upload_scene_image(
                 if not is_panorama:
                     logger.warning("Image may not be a valid 360 panorama for scene %s", scene_id)
 
-                # Extract metadata using the already-open image (no extra opens)
                 image_info = image_processing.get_image_info(img=img, file_size=len(file_content))
-
-                # Generate thumbnail from the open image
                 rgb_img, _ = image_processing._normalize_image_mode(img)
 
                 try:
@@ -92,79 +64,46 @@ async def upload_scene_image(
                     if rgb_img is not img:
                         rgb_img.close()
 
-        # Release file_content early — the derived buffers are much smaller
         file_size = len(file_content)
+        file_id = str(uuid.uuid4())[:8]
+        base_folder = _folder_for_scene(tour_id, scene_id, user_id)
 
-        # Generate unique filenames with user-scoped paths
-        file_id = str(uuid.uuid4())
-        base_folder = f"users/{user_id}/tours/{tour_id}/scenes/{scene_id}"
-
-        # Upload original image
-        original_path = f"{base_folder}/original/{file_id}.jpg"
-        original_result = supabase.storage.from_(bucket_name).upload(
-            path=original_path,
-            file=file_content,
-            file_options={
-                "content-type": file.content_type,
-                "cache-control": "31536000",
-                "upsert": False,
-            },
+        original_result = cloudinary.upload_file(
+            file_bytes=file_content,
+            public_id=f"{file_id}_original",
+            folder=f"{base_folder}/original",
+            content_type=file.content_type,
+            is_image=True,
         )
-
-        if hasattr(original_result, "error") and original_result.error:
-            raise StorageException(detail="Failed to upload original image")
-
-        original_url = supabase.storage.from_(bucket_name).get_public_url(original_path)
-
-        # Free the original content now that it's uploaded
+        original_url = original_result["secure_url"]
         del file_content
 
-        # Upload thumbnail
-        thumbnail_path = f"{base_folder}/thumbnail/{file_id}.webp"
-        thumbnail_result = supabase.storage.from_(bucket_name).upload(
-            path=thumbnail_path,
-            file=thumbnail_bytes,
-            file_options={
-                "content-type": "image/webp",
-                "cache-control": "31536000",
-                "upsert": False,
-            },
+        thumbnail_result = cloudinary.upload_file(
+            file_bytes=thumbnail_bytes,
+            public_id=f"{file_id}_thumb",
+            folder=f"{base_folder}/thumbnail",
+            content_type="image/webp",
+            is_image=True,
         )
-
-        if hasattr(thumbnail_result, "error") and thumbnail_result.error:
-            logger.warning("Failed to upload thumbnail for scene %s", scene_id)
-            thumbnail_url = None
-        else:
-            thumbnail_url = supabase.storage.from_(bucket_name).get_public_url(thumbnail_path)
-
-        # Upload WebP optimized version
+        thumbnail_url = thumbnail_result["secure_url"]
         del thumbnail_bytes
-        web_path = f"{base_folder}/web/{file_id}.webp"
-        web_result = supabase.storage.from_(bucket_name).upload(
-            path=web_path,
-            file=web_bytes,
-            file_options={
-                "content-type": "image/webp",
-                "cache-control": "31536000",
-                "upsert": False,
-            },
+
+        web_result = cloudinary.upload_file(
+            file_bytes=web_bytes,
+            public_id=f"{file_id}_web",
+            folder=f"{base_folder}/web",
+            content_type="image/webp",
+            is_image=True,
         )
-
-        if hasattr(web_result, "error") and web_result.error:
-            logger.warning("Failed to upload WebP version for scene %s", scene_id)
-            web_url = original_url
-        else:
-            web_url = supabase.storage.from_(bucket_name).get_public_url(web_path)
-
+        web_url = web_result["secure_url"]
         del web_bytes
 
-        # Track in database if available
         if db and create_media_record:
             await create_media_record(
                 db=db,
                 user_id=user_id,
                 upload_result={
-                    "file_path": original_path,
+                    "file_path": original_result["public_id"],
                     "public_url": original_url,
                     "file_type": "scene_image",
                     "file_size": file_size,
@@ -196,7 +135,6 @@ async def upload_scene_image(
 
 
 def _thumbnail_from_image(img: PILImage, max_size: int = 512) -> bytes:
-    """Generate thumbnail bytes from an already-open Pillow Image."""
     import io as _io
 
     from PIL import Image
@@ -224,7 +162,6 @@ def _webp_from_image(
     max_dimension: int = 4096,
     quality: int = image_processing.WEBP_QUALITY,
 ) -> bytes:
-    """Generate WebP bytes from an already-open Pillow Image."""
     import io as _io
 
     from PIL import Image
@@ -250,64 +187,35 @@ def _webp_from_image(
 
 
 async def process_existing_scene_image(
-    supabase: Any,
-    bucket_name: str,
+    cloudinary: CloudinaryService,
     image_url: str,
     tour_id: str,
     scene_id: str,
     user_id: int,
 ) -> dict[str, Any]:
-    """
-    Process an existing scene image URL to generate thumbnails.
-
-    Uses user-scoped path for generated files.
-
-    Args:
-        supabase: Supabase storage client.
-        bucket_name: Name of the storage bucket.
-        image_url: URL of the existing image.
-        tour_id: Tour ID.
-        scene_id: Scene ID.
-        user_id: User ID for path scoping.
-
-    Returns:
-        Dict with thumbnail_url and metadata.
-    """
     from app.core.http import get_general_client
 
     try:
-        # Download the image
         client = get_general_client()
         response = await client.get(image_url, timeout=60.0)
         response.raise_for_status()
         file_content = response.content
 
-        # Get image info
         image_info = image_processing.get_image_info(file_content)
 
-        # Generate unique filenames with user-scoped path
-        file_id = str(uuid.uuid4())
-        folder = f"users/{user_id}/tours/{tour_id}/scenes/{scene_id}"
+        file_id = str(uuid.uuid4())[:8]
+        base_folder = _folder_for_scene(tour_id, scene_id, user_id)
 
-        # Generate and upload thumbnail
         thumbnail_bytes = image_processing.generate_thumbnail(file_content, max_size=512)
-        thumbnail_path = f"{folder}/thumbnail/{file_id}.webp"
 
-        thumbnail_result = supabase.storage.from_(bucket_name).upload(
-            path=thumbnail_path,
-            file=thumbnail_bytes,
-            file_options={
-                "content-type": "image/webp",
-                "cache-control": "31536000",
-                "upsert": False,
-            },
+        result = cloudinary.upload_file(
+            file_bytes=thumbnail_bytes,
+            public_id=f"{file_id}_thumb",
+            folder=f"{base_folder}/thumbnail",
+            content_type="image/webp",
+            is_image=True,
         )
-
-        if hasattr(thumbnail_result, "error") and thumbnail_result.error:
-            logger.warning("Failed to upload thumbnail for scene %s", scene_id)
-            return {"thumbnail_url": None, "metadata": image_info}
-
-        thumbnail_url = supabase.storage.from_(bucket_name).get_public_url(thumbnail_path)
+        thumbnail_url = result["secure_url"]
 
         return {
             "thumbnail_url": thumbnail_url,

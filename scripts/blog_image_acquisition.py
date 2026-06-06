@@ -38,6 +38,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.services.cloudinary import cloudinary_service
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -312,52 +313,32 @@ class ImageAcquisition:
             "skipped": 0,
             "db_updated": 0,
         }
-        self._supabase_storage = None
+    def _get_cloudinary(self):
+        return cloudinary_service
 
-    def _get_supabase_storage(self):
-        """Lazy-init Supabase storage client."""
-        if self._supabase_storage is None:
-            from app.core.auth import get_supabase_storage_client
+    def _is_cloudinary_url(self, url: str) -> bool:
+        """Check if URL is already a Cloudinary URL."""
+        return "res.cloudinary.com" in url
 
-            self._supabase_storage = get_supabase_storage_client()
-        return self._supabase_storage
-
-    def _is_supabase_url(self, url: str) -> bool:
-        """Check if URL is already a Supabase Storage public URL."""
-        return "supabase.co" in url and "/storage/" in url
-
-    async def _upload_to_supabase(self, file_path: Path, blog_id: int, ext: str) -> str | None:
-        """Upload image to Supabase Storage blog-covers bucket and return public URL."""
+    async def _upload_to_cloudinary(self, file_path: Path, blog_id: int) -> str | None:
+        """Upload image to Cloudinary blog-covers folder and return URL."""
         if self.dry_run:
-            return f"dry-run://blog-covers/{blog_id}{ext}"
+            return f"dry-run://cloudinary/blog-covers/blog_{blog_id}"
 
         try:
-            storage = self._get_supabase_storage()
-            bucket = os.environ.get("SUPABASE_STORAGE_BUCKET", settings.SUPABASE_STORAGE_BUCKET)
-            storage_path = f"blog-covers/{blog_id}{ext}"
-
             with open(file_path, "rb") as f:
-                content_type = (
-                    "image/jpeg"
-                    if ext in (".jpg", ".jpeg")
-                    else "image/webp"
-                    if ext == ".webp"
-                    else "image/png"
-                )
-                # Delete existing file first (upsert not always reliable)
-                try:
-                    storage.storage.from_(bucket).remove([storage_path])
-                except Exception:
-                    pass
-                storage.storage.from_(bucket).upload(
-                    storage_path,
-                    f.read(),
-                    {"content-type": content_type},
-                )
-
-            public_url = storage.storage.from_(bucket).get_public_url(storage_path)
+                content = f.read()
+            ext = file_path.suffix.lower()
+            is_image = ext in (".jpg", ".jpeg", ".png", ".webp", ".gif")
+            result = cloudinary_service.upload_file(
+                file_bytes=content,
+                public_id=f"blog_{blog_id}",
+                folder="blog-covers",
+                content_type=f"image/{ext.lstrip('.')}" if ext != ".jpg" else "image/jpeg",
+                is_image=is_image,
+            )
             self.stats["uploaded"] += 1
-            return public_url
+            return result["secure_url"]
         except Exception as e:
             print(f"    [ERROR] Upload failed for blog {blog_id}: {e}")
             self.stats["upload_failed"] += 1
@@ -424,7 +405,7 @@ class ImageAcquisition:
 
         async with httpx.AsyncClient(timeout=DOWNLOAD_TIMEOUT, follow_redirects=True) as client:
             for idx, (pid, title, url) in enumerate(posts):
-                if self.resume and self._is_supabase_url(url):
+                if self.resume and self._is_cloudinary_url(url):
                     self.stats["skipped"] += 1
                     continue
 
@@ -436,8 +417,8 @@ class ImageAcquisition:
 
                 # Download
                 if await self._download_image(client, url, local_path):
-                    # Upload to Supabase Storage
-                    public_url = await self._upload_to_supabase(local_path, pid, ext)
+                    # Upload to Cloudinary
+                    public_url = await self._upload_to_cloudinary(local_path, pid)
                     if public_url:
                         await self._update_db(session, pid, public_url, public_url)
                         if not self.dry_run:

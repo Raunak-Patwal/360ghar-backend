@@ -153,9 +153,9 @@ class SecurityHeadersMiddleware:
                         b"default-src 'self'; "
                         b"script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
                         b"style-src 'self' 'unsafe-inline'; "
-                        b"img-src 'self' data: https:; "
+                        b"img-src 'self' data: https: https://res.cloudinary.com; "
                         b"font-src 'self' data:; "
-                        b"connect-src 'self' https://api.supabase.co"))
+                        b"connect-src 'self' https://api.supabase.co https://res.cloudinary.com"))
 
                 message["headers"] = headers
             await original_send(message)

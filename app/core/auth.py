@@ -10,20 +10,14 @@ logger = get_logger(__name__)
 
 SUPABASE_AUTH_TIMEOUT = 10.0
 SUPABASE_DATA_TIMEOUT = 120.0
-SUPABASE_STORAGE_TIMEOUT = 20.0
 
 
 class SupabaseClientManager:
-    """Encapsulates Supabase client lifecycle — replaces module-level globals.
+    """Manages Supabase clients as singletons with environment-based configuration."""
 
-    Provides lazy initialization of all Supabase clients and a proper
-    shutdown path for the async HTTP client used for auth API calls.
-    """
-
-    def __init__(self) -> None:
+    def __init__(self):
         self._auth_client: Client | None = None
         self._service_client: Client | None = None
-        self._storage_client: Client | None = None
         self._auth_http_client: httpx.AsyncClient | None = None
 
     # -- Auth HTTP client (async, used for verify_supabase_token) ---------------
@@ -62,16 +56,6 @@ class SupabaseClientManager:
                 options=self._build_client_options(SUPABASE_DATA_TIMEOUT),
             )
         return self._service_client
-
-    def get_storage_client(self) -> Client:
-        """Get Supabase client configured for server-side storage operations."""
-        if self._storage_client is None:
-            self._storage_client = create_client(
-                settings.SUPABASE_URL,
-                settings.SUPABASE_SECRET_KEY,
-                options=self._build_client_options(SUPABASE_STORAGE_TIMEOUT),
-            )
-        return self._storage_client
 
     # -- Lifecycle --------------------------------------------------------------
 
@@ -251,11 +235,6 @@ def get_supabase_auth_client() -> Client:
 def get_supabase_service_client() -> Client:
     """Backward-compatible wrapper."""
     return _manager.get_service_client()
-
-
-def get_supabase_storage_client() -> Client:
-    """Backward-compatible wrapper."""
-    return _manager.get_storage_client()
 
 
 async def close_supabase_clients() -> None:

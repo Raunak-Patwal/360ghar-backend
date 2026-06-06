@@ -224,7 +224,9 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: str | None = None  # path to service account JSON
 
     # ── Storage ──────────────────────────────────────────────────────────────────
-    SUPABASE_STORAGE_BUCKET: str = "360ghar-storage"
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
     MAX_UPLOAD_SIZE_MB: int = 50
 
     # ── Tax & Service Rates ────────────────────────────────────────────────────
