@@ -2641,7 +2641,7 @@
                     }
                   }
                 },
-                "description": "Generate presigned S3/Supabase URLs for direct client-side uploads."
+                "description": "Create presigned upload entries for client-side uploads (stored to Cloudinary)."
               },
               "response": []
             },

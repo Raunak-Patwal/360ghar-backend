@@ -1736,7 +1736,7 @@
                 "upload"
               ]
             },
-            "description": "Uploads a document to Supabase storage and creates a `documents` record.\n\nAction required:\n- Select a local PDF file for the `file` field.\n\nSaves:\n- `pm_document_id`\n- `pm_lease_document_id`"
+            "description": "Uploads a document to Cloudinary storage and creates a `documents` record.\n\nAction required:\n- Select a local PDF file for the `file` field.\n\nSaves:\n- `pm_document_id`\n- `pm_lease_document_id`"
           },
           "response": []
         },

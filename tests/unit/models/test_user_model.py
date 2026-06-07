@@ -2,9 +2,7 @@
 Tests for app.models.users module — User, UserSearchHistory, UserSwipe models.
 """
 
-import pytest
 
-from app.models.enums import UserRole
 from app.models.users import User, UserSearchHistory, UserSwipe
 
 
@@ -37,9 +35,22 @@ class TestUserModel:
         col = User.__table__.columns.phone
         assert col.unique
 
-    def test_email_is_indexed(self):
-        col = User.__table__.columns.email
-        assert col.index
+    def test_email_has_partial_unique_index(self):
+        # Email is the canonical identity-linking key: unique-when-present via
+        # the partial unique index uq_users_email (not a column-level index).
+        indexes = {idx.name: idx for idx in User.__table__.indexes}
+        assert "uq_users_email" in indexes
+        uq = indexes["uq_users_email"]
+        assert uq.unique
+        assert [c.name for c in uq.columns] == ["email"]
+
+    def test_has_identity_columns(self):
+        columns = {c.name for c in User.__table__.columns}
+        assert {
+            "email_verified",
+            "last_auth_method",
+            "last_auth_method_at",
+        }.issubset(columns)
 
     def test_has_flatmates_columns(self):
         columns = {c.name for c in User.__table__.columns}

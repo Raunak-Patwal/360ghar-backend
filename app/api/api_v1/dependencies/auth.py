@@ -4,7 +4,7 @@ import sentry_sdk
 from fastapi import Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import verify_supabase_token
+from app.core.auth import AuthFailureReason, _is_failure, verify_supabase_token
 from app.core.database import get_bg_session_factory, get_db
 from app.core.logging import get_logger
 from app.models.enums import UserRole
@@ -12,6 +12,25 @@ from app.models.users import User
 from app.services.user import get_or_create_user_from_supabase
 
 logger = get_logger(__name__)
+
+_RETRY_AFTER_SECONDS = "5"
+
+
+def _provider_unavailable_response() -> HTTPException:
+    """Build a 503 response for an unreachable Supabase host.
+
+    The token may be valid; the server just can't reach Supabase right
+    now.  Returning 503 (instead of 401) lets the client distinguish
+    a transient outage from a bad token.
+    """
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": "AUTH_PROVIDER_UNREACHABLE",
+            "message": "Authentication provider is temporarily unreachable, please retry",
+        },
+        headers={"Retry-After": _RETRY_AFTER_SECONDS},
+    )
 
 
 def _parse_bearer_token(authorization: str | None) -> str:
@@ -66,6 +85,33 @@ async def get_current_user(
 
     try:
         supabase_user_data = await verify_supabase_token(token)
+        if _is_failure(supabase_user_data):
+            token_suffix = token[-8:] if len(token) > 8 else token
+            reason = supabase_user_data.get("reason")
+            if reason == AuthFailureReason.PROVIDER_UNREACHABLE.value:
+                logger.warning(
+                    "Auth provider unreachable (suffix=%s): %s",
+                    token_suffix,
+                    supabase_user_data.get("error"),
+                    extra={
+                        "reason": "auth_provider_unreachable",
+                        "token_suffix": token_suffix,
+                    },
+                )
+                raise _provider_unavailable_response()
+            logger.warning(
+                "Auth provider error (suffix=%s): %s",
+                token_suffix,
+                supabase_user_data.get("error"),
+                extra={"reason": "auth_provider_error", "token_suffix": token_suffix},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "TOKEN_INVALID",
+                    "message": "Invalid or expired token",
+                },
+            )
         if not supabase_user_data:
             token_suffix = token[-8:] if len(token) > 8 else token
             logger.warning(
@@ -145,6 +191,33 @@ async def get_current_user_sse(
 
     try:
         supabase_user_data = await verify_supabase_token(resolved_token)
+        if _is_failure(supabase_user_data):
+            token_suffix = resolved_token[-8:] if len(resolved_token) > 8 else resolved_token
+            reason = supabase_user_data.get("reason")
+            if reason == AuthFailureReason.PROVIDER_UNREACHABLE.value:
+                logger.warning(
+                    "SSE auth provider unreachable (suffix=%s): %s",
+                    token_suffix,
+                    supabase_user_data.get("error"),
+                    extra={
+                        "reason": "auth_provider_unreachable",
+                        "token_suffix": token_suffix,
+                    },
+                )
+                raise _provider_unavailable_response()
+            logger.warning(
+                "SSE auth provider error (suffix=%s): %s",
+                token_suffix,
+                supabase_user_data.get("error"),
+                extra={"reason": "auth_provider_error", "token_suffix": token_suffix},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "TOKEN_INVALID",
+                    "message": "Invalid or expired token",
+                },
+            )
         if not supabase_user_data:
             token_suffix = resolved_token[-8:] if len(resolved_token) > 8 else resolved_token
             logger.warning(
@@ -217,6 +290,26 @@ async def get_current_user_optional(
         token = _parse_bearer_token(authorization)
 
         supabase_user_data = await verify_supabase_token(token)
+        if _is_failure(supabase_user_data):
+            token_suffix = token[-8:] if len(token) > 8 else token
+            reason = supabase_user_data.get("reason")
+            if reason == AuthFailureReason.PROVIDER_UNREACHABLE.value:
+                logger.warning(
+                    "Optional auth provider unreachable (suffix=%s): %s",
+                    token_suffix,
+                    supabase_user_data.get("error"),
+                    extra={
+                        "reason": "auth_provider_unreachable",
+                        "token_suffix": token_suffix,
+                    },
+                )
+                return None
+            logger.warning(
+                "Optional auth provider error (suffix=%s)",
+                token_suffix,
+                extra={"reason": "auth_provider_error", "token_suffix": token_suffix},
+            )
+            return None
         if not supabase_user_data:
             return None
 

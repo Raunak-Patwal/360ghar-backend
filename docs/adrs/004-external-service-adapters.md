@@ -18,7 +18,7 @@ The 360Ghar backend integrates with several external HTTP services:
 
 5. **SMS** — SMS delivery (`app/services/sms.py`).
 
-6. **Storage** — File upload/storage (Supabase Storage via `app/services/storage/`).
+6. **Storage** — File upload/storage (Cloudinary via `app/services/storage/` which wraps `app/services/cloudinary/`).
 
 7. **Data Hub Scrapers** — 15+ scraper modules in `app/services/data_hub/` that make HTTP requests to external data sources (bank auctions, court auctions, RERA, circle rates, etc.).
 
@@ -62,7 +62,7 @@ This is a good pattern but has gaps:
 │  NotificationDisp► send_to_user() ──► Supabase Push │
 │                                                    │
 │  DataHubScrapers ──► httpx ──► Various sites       │
-│  StorageService ───► Supabase Storage API           │
+│  StorageService ───► Cloudinary API                     │
 └───────────────────────────────────────────────────┘
 ```
 
@@ -106,7 +106,7 @@ Formalize the **Adapter Pattern** for all external service integrations. Each ex
 │  SMTPEmailAdapter ◄─ EmailAdapter                  │
 │  TwilioSMSAdapter ◄── SMSAdapter                   │
 │  FCMPushAdapter ◄──── PushAdapter                  │
-│  SupabaseStorageAdapter ◄── StorageAdapter         │
+│  CloudinaryStorageAdapter ◄── StorageAdapter       │
 │  BankAuctionScraperAdapter ◄── ScraperAdapter       │
 │  ...                                                │
 │                                                    │
@@ -530,7 +530,7 @@ The AI providers are the best starting point because they already follow an adap
 
 ### Phase 4: Wrap Storage and Scrapers (2 weeks)
 
-1. Create `SupabaseStorageAdapter` wrapping `app/services/storage/`.
+1. Create `CloudinaryStorageAdapter` wrapping `app/services/storage/`.
 2. Create `BaseScraperAdapter` and implement adapters for each data hub scraper.
 3. Update `data_hub_scheduler.py` to use scraper adapters.
 

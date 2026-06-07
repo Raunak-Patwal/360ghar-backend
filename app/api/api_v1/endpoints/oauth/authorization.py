@@ -228,7 +228,7 @@ async def process_consent(
 
         logger.info(
             "OAuth login - Supabase auth successful",
-            extra={"supabase_id": supabase_user_data.get("sub")},
+            extra={"supabase_id": supabase_user_data.get("id")},
         )
         db_user = await get_or_create_user_from_supabase(db, supabase_user_data)
 

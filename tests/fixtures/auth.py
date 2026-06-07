@@ -13,7 +13,7 @@ import jwt
 import pytest
 import pytest_asyncio
 
-from app.models.enums import UserRole
+from app.models.enums import AuthMethod, UserRole
 from app.models.users import User
 
 # =============================================================================
@@ -101,6 +101,9 @@ async def test_user(db_session) -> User:
         role=UserRole.user.value,
         is_active=True,
         is_verified=True,
+        email_verified=True,
+        phone_verified=True,
+        last_auth_method=AuthMethod.email_password.value,
         preferences={},
         notification_settings={},
         privacy_settings={},
@@ -127,6 +130,8 @@ async def test_user_2(db_session) -> User:
         role=UserRole.user.value,
         is_active=True,
         is_verified=True,
+        email_verified=True,
+        phone_verified=True,
     )
     db_session.add(user)
     await db_session.flush()
@@ -150,6 +155,8 @@ async def test_agent_user(db_session) -> User:
         role=UserRole.agent.value,
         is_active=True,
         is_verified=True,
+        email_verified=True,
+        phone_verified=True,
     )
     db_session.add(user)
     await db_session.flush()
@@ -173,6 +180,8 @@ async def test_admin_user(db_session) -> User:
         role=UserRole.admin.value,
         is_active=True,
         is_verified=True,
+        email_verified=True,
+        phone_verified=True,
     )
     db_session.add(user)
     await db_session.flush()

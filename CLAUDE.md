@@ -479,21 +479,21 @@ Child entities (PropertyImage, Visit, Booking, Tour, BlogPost, PM entities, soci
 
 1. **Generate**: `seed_data/generators/` produce deterministic JSON files with `random.seed(42)`
 2. **Load**: `seed_data/loaders/` insert data into the database, setting `is_seed_data = true` on User/Agent/Property records
-3. **Media**: `seed_data/loaders/05_media_loader.py` uploads images to Supabase Storage (`360ghar-storage` bucket) using `generate_storage_path()` with the appropriate `StorageFolder` enum
+3. **Media**: `seed_data/loaders/05_media_loader.py` uploads images to Cloudinary using `cloudinary_service`
 4. **Clear**: `02_clear_data.py` removes seed data via subquery-based FK mapping, preserving real (non-seed) records
 
-### Media Upload Conventions
+### Cloudinary Upload Path Conventions
 
-| Content Type | StorageFolder | Bucket | Path Pattern |
-|-------------|---------------|--------|-------------|
-| User avatars | `AVATAR` | `360ghar-storage` | `users/{user_id}/avatars/{uuid}-{name}` |
-| Property images | `PROPERTY_IMAGE` | `360ghar-storage` | `users/{user_id}/properties/{property_id}/images/{uuid}-{name}` |
-| Property videos | `PROPERTY_VIDEO` | `360ghar-storage` | `users/{user_id}/properties/{property_id}/videos/{uuid}-{name}` |
-| Blog covers | `BLOG_COVER` | `360ghar-storage` | `users/{user_id}/blog-covers/{uuid}-{name}` |
-| Tour assets | `TOUR_*` / `SCENE_*` | `360ghar-storage` | `users/{user_id}/tours/{tour_id}/...` |
-| Documents | `DOCUMENT_*` | `360ghar-storage` | `users/{user_id}/documents/{type}/{uuid}-{name}` |
-| Agent avatars | `AGENT_AVATAR` | `360ghar-storage` | `agents/{agent_id}/avatars/{uuid}-{name}` |
-| General uploads | `GENERIC_UPLOAD` | `360ghar-storage` | `users/{user_id}/uploads/{uuid}-{name}` |
+| Content Type | StorageFolder | Cloudinary Folder |
+|-------------|---------------|-------------------|
+| User avatars | `AVATAR` | `360ghar/avatars/{user_id}` |
+| Property images | `PROPERTY_IMAGE` | `360ghar/properties/{property_id}` |
+| Property videos | `PROPERTY_VIDEO` | `360ghar/properties/{property_id}/videos` |
+| Blog covers | `BLOG_COVER` | `360ghar/blog-covers` |
+| Tour assets | `TOUR_*` / `SCENE_*` | `360ghar/tours/{tour_id}/...` |
+| Documents | `DOCUMENT_*` | `360ghar/documents/{type}` |
+| Agent avatars | `AGENT_AVATAR` | `360ghar/agents/{agent_id}/avatars` |
+| General uploads | `GENERIC_UPLOAD` | `360ghar/uploads/{user_id}` |
 
 All media uploads use the shared `httpx` clients from `app/core/http.py` for outbound HTTP calls. Image files are optimized via `optimize_for_web()` from `app/services/image_processing.py` before upload.
 

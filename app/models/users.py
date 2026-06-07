@@ -21,7 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Enum as SQLEnum
 
 from app.core.database import Base
-from app.models.enums import FlatmatesMode, FlatmatesProfileStatus, UserRole
+from app.models.enums import AuthMethod, FlatmatesMode, FlatmatesProfileStatus, UserRole
 
 if TYPE_CHECKING:
     from app.models.agents import Agent
@@ -32,10 +32,20 @@ if TYPE_CHECKING:
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        # Email is the canonical identity-linking key: unique when present.
+        # Mirrors migration 20260606000000 (uq_users_email partial unique index).
+        Index(
+            "uq_users_email",
+            "email",
+            unique=True,
+            postgresql_where=text("email IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     supabase_user_id: Mapped[str] = mapped_column(String, unique=True, index=True)
-    email: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
     phone: Mapped[str | None] = mapped_column(String, unique=True, index=True, nullable=True)
     full_name: Mapped[str | None] = mapped_column(String, nullable=True)
     date_of_birth: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -45,6 +55,14 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     phone_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # Last auth method used (mirrors client login state-machine). TEXT + CHECK
+    # constraint in the DB (see migration 20260606000000), typed via AuthMethod.
+    last_auth_method: Mapped[AuthMethod | None] = mapped_column(String, nullable=True)
+    last_auth_method_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     preferences: Mapped[dict | None] = mapped_column(JSON, default=dict)
     current_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     current_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)

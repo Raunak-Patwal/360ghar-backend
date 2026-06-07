@@ -30,5 +30,5 @@ ON media_files (bucket_name);
 
 -- Add comment for documentation
 COMMENT ON COLUMN media_files.upload_status IS 'Upload status: pending (client upload in progress), complete (upload finished), failed (upload failed)';
-COMMENT ON COLUMN media_files.bucket_name IS 'Supabase storage bucket name where file is stored';
+COMMENT ON COLUMN media_files.bucket_name IS 'Storage provider bucket identifier (e.g., cloudinary)';
 COMMENT ON COLUMN media_files.storage_path IS 'Full path within the storage bucket';

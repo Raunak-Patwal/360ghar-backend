@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import socket
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -31,6 +33,7 @@ def create_lifespan(testing: bool, user_mcp_app: Any, admin_mcp_app: Any) -> Lif
                     if not testing:
                         await _initialize_cache()
                         await _apply_pending_migrations()
+                        await _prewarm_supabase_dns()
                         _register_scheduler_jobs(app)
                         start_scheduler()
                 except Exception as exc:
@@ -56,7 +59,6 @@ def create_lifespan(testing: bool, user_mcp_app: Any, admin_mcp_app: Any) -> Lif
                     await _shutdown_shared_http_clients()
                     await close_all_http_clients()
                     _shutdown_notification_executor()
-                    await _shutdown_supabase_clients()
                     await _shutdown_cache()
                 await engine.dispose()
                 await bg_engine.dispose()
@@ -96,6 +98,39 @@ async def _initialize_cache() -> None:
         await initialize_cache()
     except Exception as cache_e:
         logger.warning("Cache connection skipped/failed: %s", cache_e)
+
+
+async def _prewarm_supabase_dns() -> None:
+    """Resolve ``settings.SUPABASE_URL`` once at startup.
+
+    Uses the running event loop's ``getaddrinfo`` (same resolver as
+    httpx) so a misconfigured ``/etc/hosts`` or broken DNS surfaces in
+    the startup log instead of only on the first authenticated request.
+    Failures are logged at WARNING and do not block startup.
+    """
+    raw = settings.SUPABASE_URL
+    if not raw:
+        return
+    host = raw.split("//", 1)[-1].split("/", 1)[0]
+    if not host:
+        return
+    loop = asyncio.get_running_loop()
+    try:
+        infos = await loop.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        addrs = [info[4][0] for info in infos[:3]]
+        logger.info(
+            "Supabase DNS prewarm OK: %s -> %s",
+            host,
+            addrs,
+            extra={"event": "supabase_dns_prewarm", "host": host, "addrs": addrs},
+        )
+    except (socket.gaierror, OSError) as exc:
+        logger.warning(
+            "Supabase DNS prewarm failed for %s: %s",
+            host,
+            exc,
+            extra={"event": "supabase_dns_prewarm_failed", "host": host},
+        )
 
 
 async def _shutdown_cache() -> None:
@@ -184,12 +219,3 @@ def _shutdown_notification_executor() -> None:
         shutdown_executor()
     except Exception as e:
         logger.warning("Failed to shutdown notification executor: %s", e)
-
-
-async def _shutdown_supabase_clients() -> None:
-    """Close Supabase sync and async HTTP clients."""
-    try:
-        from app.core.auth import close_supabase_clients
-        await close_supabase_clients()
-    except Exception as e:
-        logger.warning("Failed to close Supabase clients: %s", e)

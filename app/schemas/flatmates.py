@@ -48,6 +48,8 @@ class FlatmatesProfileUpdate(BaseModel):
     food_habits: str | None = None
     smoking_drinking: str | None = None
     guests_policy: str | None = None
+    email: str | None = None
+    phone: str | None = None
     work_style: str | None = None
     gender: str | None = None
     gender_preference: str | None = None

@@ -363,32 +363,6 @@ async def send_message(
         else conversation.user_one_id
     )
 
-    # --- SSE events ---
-    try:
-        from app.core.sse import SSE_MESSAGE, SSE_NOTIFICATION, sse_bus
-
-        await sse_bus.emit(
-            peer_id,
-            {
-                "type": SSE_MESSAGE,
-                "data": {
-                    "conversation_id": conversation.id,
-                    "message_id": message.id,
-                    "sender_id": user_id,
-                },
-            },
-        )
-        for uid in (user_id, peer_id):
-            await sse_bus.emit(
-                uid,
-                {
-                    "type": SSE_NOTIFICATION,
-                    "data": {"conversation_id": conversation.id},
-                },
-            )
-    except Exception:  # noqa: BLE001
-        pass  # best-effort
-
     try:
         from app.services.push_notification import notify_new_message
 
@@ -431,20 +405,6 @@ async def mark_conversation_read(
         .values(read_at=now)
     )
     await db.commit()
-
-    # --- SSE event to peer so their unread count refreshes ---
-    try:
-        from app.core.sse import SSE_NOTIFICATION, sse_bus
-
-        await sse_bus.emit(
-            peer_id,
-            {
-                "type": SSE_NOTIFICATION,
-                "data": {"conversation_id": conversation_id},
-            },
-        )
-    except Exception:  # noqa: BLE001
-        pass  # best-effort
 
     return {"status": "success"}
 

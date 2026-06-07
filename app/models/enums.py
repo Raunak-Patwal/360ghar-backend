@@ -212,6 +212,21 @@ class UserRole(str, Enum):
     admin = "admin"
 
 
+class AuthMethod(str, Enum):
+    """Last authentication method used by a user.
+
+    Mirrors the client-side login state-machine. Stored as a TEXT column with a
+    DB-level CHECK constraint (see migration 20260606000000); not a PG enum.
+    """
+
+    google = "google"
+    apple = "apple"
+    email_password = "email_password"
+    phone_password = "phone_password"
+    phone_otp = "phone_otp"
+    email_otp = "email_otp"
+
+
 # --------------------
 # Property Management
 # --------------------

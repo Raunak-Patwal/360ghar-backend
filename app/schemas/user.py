@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
-from app.models.enums import PropertyPurpose, PropertyType, UserRole
+from app.models.enums import AuthMethod, PropertyPurpose, PropertyType, UserRole
 from app.utils.validators import ValidationUtils
 
 
@@ -102,6 +102,8 @@ class UserInDB(UserBase):
     is_active: bool
     is_verified: bool
     phone_verified: bool = False
+    email_verified: bool = False
+    last_auth_method: AuthMethod | None = None
     profile_image_url: str | None = None
     preferences: dict[str, Any] | None = None
     current_latitude: float | None = None

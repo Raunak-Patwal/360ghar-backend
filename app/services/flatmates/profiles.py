@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException
@@ -56,12 +56,18 @@ async def get_flatmates_profile(db: AsyncSession, user_id: int) -> dict[str, Any
     return _build_profile_payload(user)
 
 
-async def get_profile_by_id(db: AsyncSession, user_id: int) -> dict[str, Any]:
+async def get_profile_by_id(
+    db: AsyncSession,
+    user_id: int,
+    *,
+    current_user_id: int | None = None,
+) -> dict[str, Any]:
     """Return a flatmates peer payload for an arbitrary user (used by GET /profiles/{user_id})."""
     user = await db.get(User, user_id)
     if user is None:
         raise BadRequestException(detail="User not found")
-    return _build_peer_payload(user, current_user=None)
+    current_user = await db.get(User, current_user_id) if current_user_id else None
+    return _build_peer_payload(user, current_user=current_user)
 
 
 async def list_discoverable_profiles(
@@ -72,10 +78,15 @@ async def list_discoverable_profiles(
     budget_min: int | None = None,
     budget_max: int | None = None,
     move_in: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    radius: float | None = None,
+    non_negotiables_override: list[str] | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     from app.models.social import UserBlock  # noqa: WPS433 – avoid top-level circular risk
+    from app.utils.distance import get_bounding_box
 
     blocked_stmt = select(UserBlock.blocked_user_id).where(
         UserBlock.blocker_user_id == user_id,
@@ -96,12 +107,23 @@ async def list_discoverable_profiles(
     # --- Deal-breaker (non-negotiables) filtering (P0-4) ---
     requesting_user = await db.get(User, user_id)
     non_negotiables: list[str] = []
-    if requesting_user and isinstance(requesting_user.preferences, dict):
+    if non_negotiables_override is not None:
+        non_negotiables = non_negotiables_override
+    elif requesting_user and isinstance(requesting_user.preferences, dict):
         flatmates_prefs = requesting_user.preferences.get("flatmates")
         if isinstance(flatmates_prefs, dict):
             raw_nn = flatmates_prefs.get("non_negotiables")
             if isinstance(raw_nn, list):
                 non_negotiables = [str(x) for x in raw_nn]
+
+    # --- Exclude users with the same phone number (same-person dedup guard) ---
+    phone_excluded_subq = select(User.id).where(
+        User.phone == requesting_user.phone,
+        User.id != user_id,
+    )
+    if requesting_user and requesting_user.phone:
+        phone_dup_ids = list((await db.execute(phone_excluded_subq)).scalars().all())
+        excluded.update(phone_dup_ids)
 
     filters = [
         User.id.notin_(excluded),
@@ -126,21 +148,21 @@ async def list_discoverable_profiles(
         elif nn == "no_pets":
             # pets is stored inside preferences.flatmates.pets
             filters.append(
-                func.coalesce(User.preferences["flatmates"]["pets"].astext, "no_pets") == "no_pets"
+                func.coalesce(cast(User.preferences[("flatmates", "pets")], String), "no_pets") == "no_pets"
             )
         elif nn == "gender_female_only":
             # gender stored in preferences.flatmates.gender
             filters.append(
-                func.coalesce(User.preferences["flatmates"]["gender"].astext, "") == "female"
+                func.coalesce(cast(User.preferences[("flatmates", "gender")], String), "") == "female"
             )
         elif nn == "gender_male_only":
             filters.append(
-                func.coalesce(User.preferences["flatmates"]["gender"].astext, "") == "male"
+                func.coalesce(cast(User.preferences[("flatmates", "gender")], String), "") == "male"
             )
         elif nn == "no_parties":
             # parties_at_home stored in preferences.flatmates.parties_at_home
             filters.append(
-                func.coalesce(User.preferences["flatmates"]["parties_at_home"].astext, "").notin_(
+                func.coalesce(cast(User.preferences[("flatmates", "parties_at_home")], String), "").notin_(
                     ["occasional_weekends", "party_friendly", "occasionally", "regularly"]
                 )
             )
@@ -169,6 +191,14 @@ async def list_discoverable_profiles(
     move_in_values = _move_in_profile_values(move_in)
     if move_in_values:
         filters.append(User.flatmates_move_in_timeline.in_(move_in_values))
+
+    # --- Geolocation filtering ---
+    if lat is not None and lng is not None and radius is not None:
+        min_lat, max_lat, min_lon, max_lon = get_bounding_box(lat, lng, radius)
+        filters.extend([
+            User.current_latitude.between(min_lat, max_lat),
+            User.current_longitude.between(min_lon, max_lon),
+        ])
 
     count_stmt = select(func.count(User.id)).where(*filters)
     total = int((await db.execute(count_stmt)).scalar() or 0)
@@ -204,6 +234,10 @@ async def update_flatmates_profile(
         if url is not None and not ValidationUtils.is_absolute_url(url):
             logger.warning("Non-absolute profile_image_url for user %s: %s", user_id, url)
         user.profile_image_url = url
+    if "email" in update_data:
+        user.email = update_data.pop("email")
+    if "phone" in update_data:
+        user.phone = update_data.pop("phone")
 
     preference_fields = ("age", "profession", "gender", "gender_preference")
     current_preferences = user.preferences if isinstance(user.preferences, dict) else {}

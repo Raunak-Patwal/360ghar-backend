@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 # Canonical SSE event type constants — use these instead of raw strings.
 SSE_SWIPE = "swipe"
-SSE_MESSAGE = "message"
 SSE_NOTIFICATION = "notification"
 SSE_VISIT_UPDATED = "visit_updated"
 SSE_PROPERTY_UPDATE = "property_update"

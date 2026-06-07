@@ -9,6 +9,7 @@ from app.api.api_v1.endpoints import (
     agents,
     ai,
     amenities,
+    auth,
     blog,
     bookings,
     core,
@@ -56,6 +57,7 @@ async def api_v1_health_redirect():
     return RedirectResponse(url="/health", status_code=307)
 
 
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(properties.router, prefix="/properties", tags=["properties"])
 api_router.include_router(visits.router, prefix="/visits", tags=["visits"])

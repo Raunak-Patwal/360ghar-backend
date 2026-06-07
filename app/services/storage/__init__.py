@@ -1,5 +1,5 @@
 """
-Supabase Storage Service package.
+Cloudinary Storage Service package.
 
 Re-exports all public symbols from the sub-modules so that existing imports
 like ``from app.services.storage import StorageService`` continue to work

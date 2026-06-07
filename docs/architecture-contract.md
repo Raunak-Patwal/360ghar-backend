@@ -24,6 +24,11 @@ This document defines the current backend shape. It is normative: new code shoul
 - `app/services/ai_agent` may orchestrate models, tool registration, and streaming, but tool execution should prefer shared service-layer behavior over agent-only mutations.
 - `app/models` and `app/schemas` are leaf data layers. They should not import endpoint or transport code.
 
+## Shared HTTP Clients
+- `app/core/http.py` owns the shared `httpx.AsyncClient` singletons: `get_scraper_client`, `get_blog_client`, `get_general_client`, `get_supabase_auth_http_client`. New outbound HTTP call sites MUST use these shared clients instead of creating ephemeral `async with httpx.AsyncClient()` blocks.
+- The Supabase auth client (`get_supabase_auth_http_client`) is tuned for short, latency-sensitive GoTrue calls (10 s default timeout, 10 max connections, 5 keep-alive) and is used by `app/core/auth.py` for `verify_token` and admin user ops. It is closed via `close_all_clients()` in `app/infrastructure/lifespan.py`.
+- Auth verification distinguishes transient provider failures from bad tokens: `app/core/auth.py` returns tagged `AuthFailureReason` results, and `app/api/api_v1/dependencies/auth.py` maps `PROVIDER_UNREACHABLE` to HTTP 503 with `Retry-After: 5` instead of 401. This lets clients distinguish a Supabase outage from an invalid JWT.
+
 ## Approved Extension Points
 - Add new REST functionality by wiring the REST transport in `app/api/api_v1/endpoints/`, service logic in `app/services/`, and matching schemas in `app/schemas/`. Only add `app/modules/<domain>/` code when the domain implementation is physically migrated there, not as a re-export shim.
 - Add new MCP capabilities by extending `app/mcp/user/server.py`, `app/mcp/admin/`, or the multi-client tool modules in `app/mcp/chatgpt/`, while reusing existing services for authz and persistence. Tools must use `AppsSDKToolResult` and include standard annotations (`readOnlyHint`, `openWorldHint`, `destructiveHint`, `securitySchemes`).

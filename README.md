@@ -338,7 +338,7 @@ DATABASE_URL=postgresql://username:password@localhost:5432/ghar360
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your_publishable_key
 SUPABASE_SECRET_KEY=your_service_role_key
-SUPABASE_STORAGE_BUCKET=360ghar-storage
+# Storage uses Cloudinary (configured via CLOUDINARY_* env vars)
 
 # JWT Configuration
 SECRET_KEY=your_jwt_secret_key

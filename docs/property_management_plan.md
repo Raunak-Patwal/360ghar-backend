@@ -42,8 +42,7 @@ It is written to be **backward-compatible** with the existing 360 Ghar Core and 
 - APScheduler is available (`app/services/notification_scheduler.py`) for periodic reminders (opt-in via config).
 
 **File storage**
-- Supabase storage service exists (`app/services/storage.py`) but currently validates **images/videos only**.
-- Property management needs PDFs/docs; plan includes extending storage to support document MIME types and possibly a separate bucket.
+- Cloudinary storage service exists (`app/services/storage/`) and supports images, videos, and documents.
 
 **Auth & onboarding additions (for the Property Management app)**
 - Clients authenticate directly with Supabase SDK (password and/or OTP), then call backend with bearer access tokens.

@@ -57,7 +57,7 @@ A standalone mobile app for Property Owners to manage their complete rental port
 - **API Base Path:** `/api/v1/pm/*`
 - **Auth:** Bearer token (JWT from Supabase)
 - **Database:** PostgreSQL (Supabase)
-- **Storage:** Supabase Storage (signed URLs)
+- **Storage:** Cloudinary (secure URLs)
 - **Docs:** Swagger/OpenAPI available at `/api/v1/docs`
 
 ---

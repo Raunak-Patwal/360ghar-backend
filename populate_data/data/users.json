@@ -30,7 +30,22 @@
       "profile_visibility": "public",
       "location_sharing": true
     },
-    "profile_image_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=SakshamMittal"
+    "profile_image_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=SakshamMittal",
+    "flatmates_mode": "open_to_both",
+    "flatmates_profile_status": "active",
+    "flatmates_onboarding_completed": true,
+    "flatmates_bio": "Hey! I'm Saksham, a tech entrepreneur building 360Ghar. Looking for a like-minded flatmate in Gurgaon. I'm clean, respectful, and love working on new ideas. Enjoy playing cricket on weekends and exploring new cafes in Cyber City.",
+    "flatmates_budget_min": 15000,
+    "flatmates_budget_max": 30000,
+    "flatmates_move_in_timeline": "within_month",
+    "flatmates_city": "Gurgaon",
+    "flatmates_locality": "DLF Phase 2",
+    "flatmates_sleep_schedule": "night_owl",
+    "flatmates_cleanliness": "balanced",
+    "flatmates_food_habits": "non_veg",
+    "flatmates_smoking_drinking": "socially",
+    "flatmates_guests_policy": "occasionally",
+    "flatmates_work_style": "hybrid"
   },
   {
     "supabase_user_id": null,
@@ -40,8 +55,8 @@
     "date_of_birth": "1999-06-14",
     "is_active": true,
     "is_verified": true,
-    "current_latitude": 19.076,
-    "current_longitude": 72.8777,
+    "current_latitude": 28.4595,
+    "current_longitude": 77.0266,
     "preferences": {
       "property_type": ["apartment", "house"],
       "purpose": "buy",
@@ -51,7 +66,7 @@
       "bedrooms_max": 4,
       "area_min": 800,
       "area_max": 1200,
-      "location_preference": ["Bandra West", "Juhu", "Andheri West"],
+      "location_preference": ["DLF Phase 1", "Sector 29", "Golf Course Road"],
       "max_distance_km": 15
     },
     "notification_settings": {
@@ -63,6 +78,21 @@
       "profile_visibility": "friends",
       "location_sharing": false
     },
-    "profile_image_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=AyushKashyap"
+    "profile_image_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=RaviSahu",
+    "flatmates_mode": "co_hunter",
+    "flatmates_profile_status": "active",
+    "flatmates_onboarding_completed": true,
+    "flatmates_bio": "Hey! I'm Ravi, working as a full-stack developer in Gurgaon. I'm looking for a flatmate to hunt for a place together near Golf Course Road. I'm a foodie who loves cooking, enjoys road trips, and keeps things tidy. Prefer a calm, respectful living environment.",
+    "flatmates_budget_min": 20000,
+    "flatmates_budget_max": 40000,
+    "flatmates_move_in_timeline": "immediately",
+    "flatmates_city": "Gurgaon",
+    "flatmates_locality": "Golf Course Road",
+    "flatmates_sleep_schedule": "early_bird",
+    "flatmates_cleanliness": "neat_freak",
+    "flatmates_food_habits": "veg",
+    "flatmates_smoking_drinking": "no",
+    "flatmates_guests_policy": "occasionally",
+    "flatmates_work_style": "office"
   }
 ]

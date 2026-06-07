@@ -3,7 +3,7 @@
     "owner_id": 1,
     "title": "1BHK Floor in Sector 10A",
     "description": "Beautiful 1BHK floor located in the heart of Sector 10A, Gurgaon.\n\nThis well-designed floor offers 650 sq ft of living space with 1 spacious bedroom and 1 modern bathroom. Perfect for families looking for a comfortable home in one of Gurgaon's most sought-after residential areas.\n\nKey Features:\n- Prime location in Sector 10A\n- 650 sq ft carpet area\n- 1 spacious bedroom\n- 1 modern bathroom\n- Reserved parking\n\nModern amenities available for a comfortable living experience.\n\nNear Hero Honda Chowk - This property offers excellent connectivity and lifestyle amenities.",
-    "property_type": "floor",
+    "property_type": "flatmate",
     "purpose": "rent",
     "status": "available",
 
@@ -43,8 +43,8 @@
     "virtual_tour_url": "https://kuula.co/share/collection/71284?logo=-1&card=1&info=0&fs=1&vr=1&thumbs=3&alpha=0.71",
     "floor_plan_url": null,
     "video_tour_url": null,
-    "tags": ["apartment", "rent", "DLF Phase 3", "3bhk"],
-    "search_keywords": "apartment rent DLF Phase 3 3bhk Gurgaon",
+    "tags": ["flatmate", "rent", "Sector 10A", "1bhk"],
+    "search_keywords": "flatmate rent Sector 10A 1bhk Gurgaon",
 
     "owner_name": "Saksham Mittal",
     "owner_contact": "+918178340031",
@@ -65,7 +65,7 @@
     "owner_id": 1,
     "title": "Premium 3BHK Apartment in DLF Phase 3",
     "description": "Beautiful 3BHK apartment located in the heart of DLF Phase 3, Gurgaon.\n\nThis well-designed apartment offers 1400 sq ft of living space with 3 spacious bedrooms and 2 modern bathrooms. Perfect for families looking for a comfortable home in one of Gurgaon's most sought-after residential areas.\n\nKey Features:\n- Prime location in DLF Phase 3\n- 1400 sq ft carpet area\n- 3 spacious bedrooms\n- 2 modern bathrooms\n- Reserved parking\n\nModern amenities available for a comfortable living experience.\n\nNear DLF CyberHub - This property offers excellent connectivity and lifestyle amenities.",
-    "property_type": "apartment",
+    "property_type": "flatmate",
     "purpose": "rent",
     "status": "available",
 
@@ -105,8 +105,8 @@
     "virtual_tour_url": "https://kuula.co/share/collection/71284?logo=-1&card=1&info=0&fs=1&vr=1&thumbs=3&alpha=0.71",
     "floor_plan_url": null,
     "video_tour_url": null,
-    "tags": ["apartment", "rent", "DLF Phase 3", "3bhk"],
-    "search_keywords": "apartment rent DLF Phase 3 3bhk Gurgaon",
+    "tags": ["flatmate", "rent", "DLF Phase 3", "3bhk"],
+    "search_keywords": "flatmate rent DLF Phase 3 3bhk Gurgaon",
 
     "owner_name": "Amit Kumar",
     "owner_contact": "+919876543210",
@@ -121,6 +121,6 @@
 
     "property_amenities": ["Swimming Pool", "Gym", "Power Backup", "24/7 Security"],
     "images": ["https://www.nobroker.in/blog/wp-content/uploads/2023/11/Victory-Valley.jpg"],
-    "videos": ["https://kuula.co/share/collection/71284?logo=-1&card=1&info=0&fs=1&vr=1&thumbs=3&alpha=0.71"],
+    "videos": ["https://kuula.co/share/collection/71284?logo=-1&card=1&info=0&fs=1&vr=1&thumbs=3&alpha=0.71"]
   }
 ]

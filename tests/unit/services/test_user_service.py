@@ -3,14 +3,15 @@ Tests for user service module.
 """
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BaseAPIException
-from app.models.users import User
 from app.models.enums import UserRole
+from app.models.users import User
 
 
 class TestGetUserByPhone:
@@ -116,6 +117,9 @@ class TestGetOrCreateUserFromSupabase:
             "phone": "+919111222333",
             "email": "newuser@example.com",
             "email_verified": True,
+            # A confirmed email always carries email_confirmed_at from
+            # /auth/v1/user; only then is it persisted to the unique column.
+            "email_confirmed_at": "2025-01-01T00:00:00Z",
             "user_metadata": {"full_name": "New User"},
         }
 
@@ -156,6 +160,415 @@ class TestGetOrCreateUserFromSupabase:
 
         assert result is not None
         assert result.phone == "+919444555666"
+
+
+class TestEmailLinkedIdentity:
+    """Tests for the email-linked, multi-method identity model."""
+
+    @pytest.mark.asyncio
+    async def test_link_by_verified_email(self, db_session: AsyncSession):
+        """Verified email in the token links to the existing local row."""
+        from app.services.user import get_or_create_user_from_supabase
+
+        existing = User(
+            supabase_user_id=str(uuid.uuid4()),
+            email="linkme@example.com",
+            phone=None,
+            full_name="Link Me",
+            role=UserRole.user.value,
+            is_active=True,
+            email_verified=True,
+        )
+        db_session.add(existing)
+        await db_session.flush()
+        existing_id = existing.id
+
+        new_supabase_id = str(uuid.uuid4())
+        supabase_data = {
+            "id": new_supabase_id,
+            "email": "linkme@example.com",
+            "phone": None,
+            "email_verified": True,
+            "email_confirmed_at": "2025-01-01T00:00:00Z",
+            "user_metadata": {},
+        }
+
+        result = await get_or_create_user_from_supabase(db_session, supabase_data)
+
+        # Same local row, repointed to the new supabase id.
+        assert result.id == existing_id
+        assert result.supabase_user_id == new_supabase_id
+
+    @pytest.mark.asyncio
+    async def test_refuse_link_on_unverified_email(self, db_session: AsyncSession):
+        """Unverified email must NOT link; a new row is created instead."""
+        from app.services.user import get_or_create_user_from_supabase
+
+        existing = User(
+            supabase_user_id=str(uuid.uuid4()),
+            email="noverify@example.com",
+            phone=None,
+            full_name="No Verify",
+            role=UserRole.user.value,
+            is_active=True,
+            email_verified=True,
+        )
+        db_session.add(existing)
+        await db_session.flush()
+        existing_id = existing.id
+        existing_supabase_id = existing.supabase_user_id
+
+        new_supabase_id = str(uuid.uuid4())
+        supabase_data = {
+            "id": new_supabase_id,
+            "email": "noverify@example.com",
+            "phone": None,
+            # Email present but NOT confirmed → must not link by email.
+            "email_verified": False,
+            "email_confirmed_at": None,
+            "user_metadata": {},
+        }
+
+        result = await get_or_create_user_from_supabase(db_session, supabase_data)
+
+        # A new row keyed on the new supabase id; the existing row is untouched.
+        assert result.supabase_user_id == new_supabase_id
+        assert result.id != existing_id
+        # Unverified incoming email is NOT persisted (would collide with unique key).
+        assert result.email is None
+
+        refreshed = await db_session.get(User, existing_id)
+        assert refreshed.supabase_user_id == existing_supabase_id
+
+    @pytest.mark.asyncio
+    async def test_phone_verified_unconfirmed_email_not_persisted(self, db_session: AsyncSession):
+        """A phone-verified user with an UNCONFIRMED email must NOT have that
+        email persisted/linked.
+
+        Regression guard: the aggregate ``email_verified`` flag is True when
+        EITHER channel is confirmed. For a phone-verified user carrying an
+        unconfirmed email, the email-linking decision must be driven SOLELY by
+        ``email_confirmed_at`` (here None), so the unconfirmed email is never
+        written to the unique email column.
+        """
+        from app.services.user import get_or_create_user_from_supabase
+
+        new_supabase_id = str(uuid.uuid4())
+        supabase_data = {
+            "id": new_supabase_id,
+            "email": "unconfirmed@example.com",
+            "phone": "+919000000099",
+            # Aggregate flag is True (phone is confirmed), but the EMAIL itself
+            # is NOT confirmed → email must not be persisted.
+            "email_verified": True,
+            "phone_verified": True,
+            "email_confirmed_at": None,
+            "phone_confirmed_at": "2025-01-01T00:00:00Z",
+            "user_metadata": {},
+        }
+
+        result = await get_or_create_user_from_supabase(db_session, supabase_data)
+
+        assert result.supabase_user_id == new_supabase_id
+        assert result.phone == "+919000000099"
+        assert result.phone_verified is True
+        # The unconfirmed email is NOT persisted into the unique email column.
+        assert result.email is None
+
+    @pytest.mark.asyncio
+    async def test_verified_google_over_unverified_local(self, db_session: AsyncSession):
+        """A verified-email Google login links to a local row that has the email."""
+        from app.services.user import get_or_create_user_from_supabase
+
+        existing = User(
+            supabase_user_id=str(uuid.uuid4()),
+            email="google@example.com",
+            phone="+919000000001",
+            full_name="Google User",
+            role=UserRole.user.value,
+            is_active=True,
+            email_verified=False,
+        )
+        db_session.add(existing)
+        await db_session.flush()
+        existing_id = existing.id
+
+        new_supabase_id = str(uuid.uuid4())
+        supabase_data = {
+            "id": new_supabase_id,
+            "email": "google@example.com",
+            "phone": None,
+            "email_verified": True,
+            "email_confirmed_at": "2025-01-01T00:00:00Z",
+            "user_metadata": {"full_name": "Google User"},
+        }
+
+        result = await get_or_create_user_from_supabase(db_session, supabase_data)
+
+        assert result.id == existing_id
+        assert result.supabase_user_id == new_supabase_id
+        # Verification mirrored from the verified token.
+        assert result.email_verified is True
+
+    @pytest.mark.asyncio
+    async def test_phone_backfill_conflict_skip(self, db_session: AsyncSession):
+        """When linking by email, an incoming phone that already belongs to a
+        DIFFERENT user is not force-written (no duplicate-phone violation)."""
+        from app.services.user import get_or_create_user_from_supabase
+
+        # User A owns the phone.
+        owner_phone = "+919000000010"
+        user_a = User(
+            supabase_user_id=str(uuid.uuid4()),
+            email="a@example.com",
+            phone=owner_phone,
+            role=UserRole.user.value,
+            is_active=True,
+            email_verified=True,
+        )
+        # User B has the email we will link by, and no phone.
+        user_b = User(
+            supabase_user_id=str(uuid.uuid4()),
+            email="b@example.com",
+            phone=None,
+            role=UserRole.user.value,
+            is_active=True,
+            email_verified=True,
+        )
+        db_session.add_all([user_a, user_b])
+        await db_session.flush()
+        user_b_id = user_b.id
+
+        new_supabase_id = str(uuid.uuid4())
+        supabase_data = {
+            "id": new_supabase_id,
+            "email": "b@example.com",
+            # Phone collides with user A — backfill onto B would violate unique.
+            "phone": owner_phone,
+            "email_verified": True,
+            "email_confirmed_at": "2025-01-01T00:00:00Z",
+            "user_metadata": {},
+        }
+
+        # Linking by verified email finds B first (B has no phone, so it would
+        # try to backfill the colliding phone). We assert it does NOT corrupt
+        # the data: B keeps no phone or the flush reconciles without raising.
+        result = await get_or_create_user_from_supabase(db_session, supabase_data)
+
+        assert result.id == user_b_id
+        assert result.supabase_user_id == new_supabase_id
+        # B did not steal A's phone.
+        refreshed_a = await db_session.get(User, user_a.id)
+        assert refreshed_a.phone == owner_phone
+
+    @pytest.mark.asyncio
+    async def test_legacy_duplicate_repoint(self, db_session: AsyncSession):
+        """A legacy row found by phone is repointed, not duplicated."""
+        from app.services.user import get_or_create_user_from_supabase
+
+        legacy = User(
+            supabase_user_id=str(uuid.uuid4()),
+            email=None,
+            phone="+919000000020",
+            full_name="Legacy",
+            role=UserRole.user.value,
+            is_active=True,
+        )
+        db_session.add(legacy)
+        await db_session.flush()
+        legacy_id = legacy.id
+
+        new_supabase_id = str(uuid.uuid4())
+        supabase_data = {
+            "id": new_supabase_id,
+            "email": None,
+            "phone": "+919000000020",
+            "phone_verified": True,
+            "user_metadata": {},
+        }
+
+        result = await get_or_create_user_from_supabase(db_session, supabase_data)
+
+        assert result.id == legacy_id
+        assert result.supabase_user_id == new_supabase_id
+        assert result.phone_verified is True
+
+    @pytest.mark.asyncio
+    async def test_integrity_error_reconciles_by_supabase_id(self):
+        """IntegrityError on flush reconciles by supabase_user_id."""
+        from app.services.user import get_or_create_user_from_supabase
+
+        supabase_id = str(uuid.uuid4())
+        reconciled = User(
+            id=99,
+            supabase_user_id=supabase_id,
+            email="recon@example.com",
+            phone="+919000000030",
+            role=UserRole.user.value,
+            is_active=True,
+        )
+
+        db = AsyncMock(spec=AsyncSession)
+        # First lookup by supabase id (pre-flush) returns None → create path.
+        # After IntegrityError + rollback, lookup by supabase id returns the row.
+        db.flush.side_effect = [IntegrityError("dup", None, Exception("dup")), None]
+
+        with patch(
+            "app.services.user.get_user_by_supabase_id", new_callable=AsyncMock
+        ) as mock_by_sb, patch(
+            "app.services.user.get_user_by_email", new_callable=AsyncMock
+        ) as mock_by_email, patch(
+            "app.services.user.get_user_by_phone", new_callable=AsyncMock
+        ) as mock_by_phone:
+            mock_by_sb.side_effect = [None, reconciled]
+            mock_by_email.return_value = None
+            mock_by_phone.return_value = None
+
+            supabase_data = {
+                "id": supabase_id,
+                "email": "recon@example.com",
+                "phone": "+919000000030",
+                "email_verified": True,
+                "email_confirmed_at": "2025-01-01T00:00:00Z",
+                "user_metadata": {},
+            }
+
+            result = await get_or_create_user_from_supabase(db, supabase_data)
+
+        assert result is reconciled
+        db.rollback.assert_awaited()
+
+
+class TestSetLastAuthMethod:
+    """Tests for set_last_auth_method helper."""
+
+    @pytest.mark.asyncio
+    async def test_records_method_and_timestamp(self, db_session: AsyncSession, test_user):
+        from app.models.enums import AuthMethod
+        from app.services.user import set_last_auth_method
+
+        result = await set_last_auth_method(db_session, test_user, AuthMethod.google)
+
+        assert result.last_auth_method == AuthMethod.google.value
+        assert result.last_auth_method_at is not None
+
+    @pytest.mark.asyncio
+    async def test_records_apple_method(self, db_session: AsyncSession, test_user):
+        """Sign in with Apple is a valid last_auth_method (DB CHECK allows it)."""
+        from app.models.enums import AuthMethod
+        from app.services.user import set_last_auth_method
+
+        result = await set_last_auth_method(db_session, test_user, AuthMethod.apple)
+
+        assert result.last_auth_method == AuthMethod.apple.value
+        assert result.last_auth_method_at is not None
+
+
+class TestGetIdentifierStatus:
+    """Tests for get_identifier_status helper."""
+
+    @pytest.mark.asyncio
+    async def test_verified_email_with_password_yields_password(self):
+        from app.services.user import get_identifier_status
+
+        with patch("app.services.user._manager") as mock_manager:
+            mock_manager.admin_get_user_by_email = AsyncMock(
+                return_value={
+                    "id": str(uuid.uuid4()),
+                    "email": "known@example.com",
+                    "email_confirmed_at": "2025-01-01T00:00:00Z",
+                    "phone_confirmed_at": None,
+                    "app_metadata": {"providers": ["email"]},
+                }
+            )
+            result = await get_identifier_status("known@example.com")
+
+        assert result == {
+            "exists": True,
+            "verified": True,
+            "has_password": True,
+            "channel": "email",
+            "next_step": "password",
+        }
+
+    @pytest.mark.asyncio
+    async def test_oauth_only_user_yields_otp(self):
+        from app.services.user import get_identifier_status
+
+        with patch("app.services.user._manager") as mock_manager:
+            mock_manager.admin_get_user_by_email = AsyncMock(
+                return_value={
+                    "id": str(uuid.uuid4()),
+                    "email": "oauth@example.com",
+                    "email_confirmed_at": "2025-01-01T00:00:00Z",
+                    "phone_confirmed_at": None,
+                    "app_metadata": {"providers": ["google"]},
+                }
+            )
+            result = await get_identifier_status("oauth@example.com")
+
+        assert result["exists"] is True
+        assert result["verified"] is True
+        assert result["has_password"] is False
+        assert result["next_step"] == "otp"
+
+    @pytest.mark.asyncio
+    async def test_apple_only_user_yields_otp(self):
+        """An Apple-only user (providers=['apple']) has no password → otp."""
+        from app.services.user import get_identifier_status
+
+        with patch("app.services.user._manager") as mock_manager:
+            mock_manager.admin_get_user_by_email = AsyncMock(
+                return_value={
+                    "id": str(uuid.uuid4()),
+                    "email": "apple@example.com",
+                    "email_confirmed_at": "2025-01-01T00:00:00Z",
+                    "phone_confirmed_at": None,
+                    "app_metadata": {"provider": "apple", "providers": ["apple"]},
+                }
+            )
+            result = await get_identifier_status("apple@example.com")
+
+        assert result["exists"] is True
+        assert result["verified"] is True
+        assert result["has_password"] is False
+        assert result["next_step"] == "otp"
+
+    @pytest.mark.asyncio
+    async def test_unknown_phone_yields_otp(self):
+        from app.services.user import get_identifier_status
+
+        with patch("app.services.user._manager") as mock_manager:
+            mock_manager.admin_find_user_by_phone = AsyncMock(return_value=None)
+            result = await get_identifier_status("+919999999999")
+
+        assert result == {
+            "exists": False,
+            "verified": False,
+            "has_password": False,
+            "channel": "phone",
+            "next_step": "otp",
+        }
+
+    @pytest.mark.asyncio
+    async def test_phone_only_user_email_probe_yields_otp(self):
+        """A phone-only user probed on the EMAIL channel is not found by email
+        → exists=false, verified=false, channel=email, next_step=otp."""
+        from app.services.user import get_identifier_status
+
+        with patch("app.services.user._manager") as mock_manager:
+            # The phone-only user has no email identity, so the email lookup
+            # returns None.
+            mock_manager.admin_get_user_by_email = AsyncMock(return_value=None)
+            result = await get_identifier_status("phoneonly@example.com")
+
+        assert result == {
+            "exists": False,
+            "verified": False,
+            "has_password": False,
+            "channel": "email",
+            "next_step": "otp",
+        }
 
 
 class TestUserRoles:

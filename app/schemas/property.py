@@ -261,6 +261,14 @@ class PropertyInDB(PropertyBase):
     created_at: datetime
     updated_at: datetime | None = None
 
+    @field_validator("main_image_url", "floor_plan_url", "video_tour_url", "virtual_tour_url", "google_street_view_url", mode="before")
+    @classmethod
+    def strip_relative_urls(cls, v: object) -> str | None:
+        """Blank out relative paths so the app never builds a localhost URL from them."""
+        if isinstance(v, str) and v and not ValidationUtils.is_absolute_url(v):
+            return None
+        return v  # type: ignore[return-value]
+
     @field_validator("features", mode="before")
     @classmethod
     def coerce_features(cls, v: object) -> list[str] | None:

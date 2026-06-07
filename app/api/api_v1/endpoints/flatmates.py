@@ -179,7 +179,7 @@ async def get_user_profile(
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_profile_by_id(db, user_id)
+    return await get_profile_by_id(db, user_id, current_user_id=current_user.id)
 
 
 @router.get("/profiles", response_model=SwipeDeckResponse)
@@ -191,11 +191,21 @@ async def get_discoverable_profiles(
         default=None,
         description="Move-in timeline: immediate, this_month, next_month, flexible",
     ),
+    lat: float | None = Query(default=None, description="Latitude for geo filtering"),
+    lng: float | None = Query(default=None, description="Longitude for geo filtering"),
+    radius: float | None = Query(default=None, description="Radius in km for geo filtering"),
+    non_negotiables: str | None = Query(
+        default=None,
+        description="Comma-separated non-negotiable deal-breakers",
+    ),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
+    parsed_non_neg: list[str] | None = None
+    if non_negotiables:
+        parsed_non_neg = [n.strip() for n in non_negotiables.split(",") if n.strip()]
     profiles, total = await list_discoverable_profiles(
         db,
         current_user.id,
@@ -203,6 +213,10 @@ async def get_discoverable_profiles(
         budget_min=budget_min,
         budget_max=budget_max,
         move_in=move_in,
+        lat=lat,
+        lng=lng,
+        radius=radius,
+        non_negotiables_override=parsed_non_neg,
         limit=limit,
         offset=offset,
     )

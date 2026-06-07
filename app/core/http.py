@@ -5,13 +5,14 @@ context, DNS resolver, and connection pool — then tears it all down after
 one call.  Using shared clients avoids that overhead and enables TCP
 connection keep-alive across requests.
 
-Three domain-specific clients are provided:
+Four domain-specific clients are provided:
 
-| Client    | Default timeout | Max connections | Keepalive | Used by                      |
-|-----------|-----------------|-----------------|-----------|------------------------------|
-| scraper   | 30 s            | 10              | 3         | data-hub scrapers, jamabandi |
-| blog      | 120 s           | 5               | 2         | Perplexity, SerpAPI          |
-| general   | 30 s            | 5               | 2         | misc HTTP, image downloads   |
+| Client                | Default timeout | Max connections | Keepalive | Used by                            |
+|-----------------------|-----------------|-----------------|-----------|------------------------------------|
+| scraper               | 30 s            | 10              | 3         | data-hub scrapers, jamabandi       |
+| blog                  | 120 s           | 5               | 2         | Perplexity, SerpAPI                |
+| general               | 30 s            | 5               | 2         | misc HTTP, image downloads         |
+| supabase_auth_http    | 10 s            | 10              | 5         | verify_token, admin user ops       |
 
 Per-request ``timeout=`` overrides are supported — httpx applies the
 per-request value over the client default.
@@ -32,6 +33,7 @@ logger = get_logger(__name__)
 _scraper_client: httpx.AsyncClient | None = None
 _blog_client: httpx.AsyncClient | None = None
 _general_client: httpx.AsyncClient | None = None
+_supabase_auth_client: httpx.AsyncClient | None = None
 
 
 def _make_client(
@@ -74,13 +76,30 @@ def get_general_client() -> httpx.AsyncClient:
     return _general_client
 
 
+def get_supabase_auth_http_client() -> httpx.AsyncClient:
+    """Shared HTTP client for Supabase Auth (verify_token, admin user ops).
+
+    Tuned for short, latency-sensitive calls against GoTrue (default
+    ``/auth/v1`` endpoints).  Uses a 10 s default timeout and a larger
+    keep-alive pool than the general client because token verification
+    happens on every authenticated request.
+    """
+    global _supabase_auth_client
+    if _supabase_auth_client is None or _supabase_auth_client.is_closed:
+        _supabase_auth_client = _make_client(
+            timeout=10.0, max_connections=10, max_keepalive=5
+        )
+    return _supabase_auth_client
+
+
 async def close_all_clients() -> None:
     """Close all shared HTTP clients. Called during app shutdown."""
-    global _scraper_client, _blog_client, _general_client
+    global _scraper_client, _blog_client, _general_client, _supabase_auth_client
     for name, client in (
         ("scraper", _scraper_client),
         ("blog", _blog_client),
         ("general", _general_client),
+        ("supabase_auth_http", _supabase_auth_client),
     ):
         if client is not None and not client.is_closed:
             await client.aclose()
@@ -89,3 +108,4 @@ async def close_all_clients() -> None:
     _scraper_client = None
     _blog_client = None
     _general_client = None
+    _supabase_auth_client = None

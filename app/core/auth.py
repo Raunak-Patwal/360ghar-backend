@@ -1,8 +1,20 @@
+from __future__ import annotations
+
+import socket
+from enum import StrEnum
 from typing import Any
 
+import httpcore
 import httpx
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
 
 from app.config import settings
+from app.core.http import get_supabase_auth_http_client
 from app.core.logging import get_logger
 from supabase import Client, ClientOptions, create_client
 
@@ -11,24 +23,75 @@ logger = get_logger(__name__)
 SUPABASE_AUTH_TIMEOUT = 10.0
 SUPABASE_DATA_TIMEOUT = 120.0
 
+_RETRYABLE_NETWORK_ERRORS: tuple[type[BaseException], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadTimeout,
+    httpx.WriteTimeout,
+    httpx.PoolTimeout,
+    httpx.NetworkError,
+    httpcore.ConnectError,
+    httpcore.ConnectTimeout,
+    httpcore.ReadTimeout,
+    httpcore.NetworkError,
+    socket.gaierror,
+    socket.timeout,
+    ConnectionResetError,
+    ConnectionAbortedError,
+)
+
+
+def _retry_on_transient_network() -> Any:
+    """Tenacity decorator: 2 attempts, 0.3 s flat wait on transient network errors."""
+    return retry(
+        retry=retry_if_exception_type(_RETRYABLE_NETWORK_ERRORS),
+        wait=wait_fixed(0.3),
+        stop=stop_after_attempt(2),
+        reraise=True,
+    )
+
+
+class AuthFailureReason(StrEnum):
+    """Why an auth/admin Supabase call failed.
+
+    The dependency layer maps these to HTTP status codes so clients can
+    distinguish a bad token (401) from a transient provider outage (503).
+    """
+
+    INVALID_TOKEN = "invalid_token"
+    PROVIDER_UNREACHABLE = "provider_unreachable"
+    PROVIDER_ERROR = "provider_error"
+
+
+# Sentinel key used to mark a tagged failure result. Kept unlikely to
+# collide with real Supabase /auth/v1/user payload keys.
+_FAILURE_SENTINEL = "__auth_failure__"
+
+
+def _is_failure(result: Any) -> bool:
+    return isinstance(result, dict) and result.get(_FAILURE_SENTINEL) is True
+
+
+def _make_failure(reason: AuthFailureReason, error: str) -> dict[str, Any]:
+    return {
+        _FAILURE_SENTINEL: True,
+        "reason": reason.value,
+        "error": error,
+    }
+
 
 class SupabaseClientManager:
-    """Manages Supabase clients as singletons with environment-based configuration."""
+    """Manages Supabase clients as singletons with environment-based configuration.
 
-    def __init__(self):
+    The async HTTP client used for GoTrue REST calls (verify_token,
+    admin user ops) is owned by ``app.core.http`` and accessed via
+    :func:`get_supabase_auth_http_client`.  Only the synchronous
+    ``supabase.Client`` wrappers (auth, postgrest) are managed here.
+    """
+
+    def __init__(self) -> None:
         self._auth_client: Client | None = None
         self._service_client: Client | None = None
-        self._auth_http_client: httpx.AsyncClient | None = None
-
-    # -- Auth HTTP client (async, used for verify_supabase_token) ---------------
-
-    def get_auth_http_client(self) -> httpx.AsyncClient:
-        """Get or create the reusable async HTTP client for Supabase auth calls."""
-        if self._auth_http_client is None or self._auth_http_client.is_closed:
-            self._auth_http_client = httpx.AsyncClient(
-                timeout=SUPABASE_AUTH_TIMEOUT, follow_redirects=True
-            )
-        return self._auth_http_client
 
     # -- Sync Supabase clients --------------------------------------------------
 
@@ -60,19 +123,15 @@ class SupabaseClientManager:
     # -- Lifecycle --------------------------------------------------------------
 
     async def close(self) -> None:
-        """Gracefully close all managed HTTP clients. Call on app shutdown."""
-        if self._auth_http_client and not self._auth_http_client.is_closed:
-            await self._auth_http_client.aclose()
-            self._auth_http_client = None
+        """Release manager-owned sync clients. Call on app shutdown.
 
-        # Close sync Supabase clients' underlying httpx.Client connections.
-        # Each sub-client (auth, postgrest, storage) stores its httpx.Client
-        # as `.session` on the respective sub-object.
-        for client_attr in ("_auth_client", "_service_client", "_storage_client"):
+        The shared async HTTP client is owned by ``app.core.http`` and
+        is closed there.
+        """
+        for client_attr in ("_auth_client", "_service_client"):
             client = getattr(self, client_attr, None)
             if client is None:
                 continue
-            # Try known sub-client session paths
             for sub_attr in ("auth", "postgrest", "storage"):
                 sub = getattr(client, sub_attr, None)
                 if sub is not None:
@@ -103,108 +162,223 @@ class SupabaseClientManager:
     async def _admin_find_user_by_field(
         self, field: str, value: str
     ) -> dict[str, Any] | None:
-        """Lookup a user via Supabase GoTrue Admin by a single field."""
+        """Lookup a user via Supabase GoTrue Admin by a single field.
+
+        Returns the user dict on success, ``None`` on a "not found" /
+        invalid response, or a :func:`_make_failure` tagged dict on a
+        transient network / DNS error so callers can distinguish a
+        genuine "no such user" from an unreachable provider.
+        """
         url = self._admin_url("/admin/users")
         params: dict[str, str | int] = {field: value, "per_page": 1}
         try:
-            client = self.get_auth_http_client()
-            resp = await client.get(url, headers=self._admin_headers(), params=params)
-            if resp.status_code == 200:
-                data = resp.json()
-                users: list[dict[str, Any]] = []
-                if isinstance(data, dict) and "users" in data:
-                    users = data.get("users") or []
-                elif isinstance(data, list):
-                    users = data
-                for user in users:
-                    if user.get(field) == value:
-                        return {
-                            "id": user.get("id"),
-                            "email": user.get("email"),
-                            "phone": user.get("phone"),
-                            "user_metadata": user.get("user_metadata") or {},
-                        }
-                return None
-            if resp.status_code == 404:
-                return None
-            logger.warning(
-                "Admin user lookup by %s failed: %s %s", field, resp.status_code, resp.text[:200]
-            )
+            response = await self._get_with_retry(url, params=params)
+        except _RETRYABLE_NETWORK_ERRORS as exc:
+            logger.warning("Admin user lookup by %s unreachable: %s", field, exc)
+            return _make_failure(AuthFailureReason.PROVIDER_UNREACHABLE, str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Admin user lookup by %s error: %s", field, exc)
+            return _make_failure(AuthFailureReason.PROVIDER_ERROR, str(exc))
+
+        if response.status_code == 200:
+            data = response.json()
+            users: list[dict[str, Any]] = []
+            if isinstance(data, dict) and "users" in data:
+                users = data.get("users") or []
+            elif isinstance(data, list):
+                users = data
+            for user in users:
+                if user.get(field) == value:
+                    return {
+                        "id": user.get("id"),
+                        "email": user.get("email"),
+                        "phone": user.get("phone"),
+                        "user_metadata": user.get("user_metadata") or {},
+                        "app_metadata": user.get("app_metadata") or {},
+                        "email_confirmed_at": user.get("email_confirmed_at"),
+                        "phone_confirmed_at": user.get("phone_confirmed_at"),
+                    }
             return None
-        except Exception as e:
-            logger.error("Admin user lookup by %s error: %s", field, e)
+        if response.status_code == 404:
             return None
+        logger.warning(
+            "Admin user lookup by %s failed: %s %s", field, response.status_code, response.text[:200]
+        )
+        return None
+
+    @_retry_on_transient_network()
+    async def _get_with_retry(
+        self, url: str, *, params: dict[str, Any] | None = None
+    ) -> httpx.Response:
+        """GET against the shared Supabase auth client with transient-error retry."""
+        client = get_supabase_auth_http_client()
+        return await client.get(url, headers=self._admin_headers(), params=params)
+
+    @_retry_on_transient_network()
+    async def _post_with_retry(
+        self, url: str, *, json: dict[str, Any]
+    ) -> httpx.Response:
+        """POST against the shared Supabase auth client with transient-error retry."""
+        client = get_supabase_auth_http_client()
+        return await client.post(url, headers=self._admin_headers(json=True), json=json)
 
     async def verify_token(self, token: str) -> dict[str, Any] | None:
-        """Verify Supabase JWT by calling the Supabase Auth API."""
+        """Verify Supabase JWT by calling the Supabase Auth API.
+
+        Returns the user dict on success, ``None`` on invalid token /
+        bad response shape, or a tagged failure dict
+        (:func:`_make_failure`) when the Supabase host is unreachable.
+        Callers in the dependency layer must handle the tagged case.
+        """
         url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/user"
         headers = {
             "Authorization": f"Bearer {token}",
             "apikey": settings.SUPABASE_CLIENT_KEY,
         }
         try:
-            client = self.get_auth_http_client()
-            response = await client.get(url, headers=headers)
-
-            if response.status_code != 200:
-                logger.warning(
-                    "Supabase token verification failed: status=%s body=%s",
-                    response.status_code,
-                    response.text[:200],
-                )
-                return None
-
-            user_data = response.json()
-            user_id = user_data.get("id")
-            if not isinstance(user_id, str) or not user_id.strip():
-                logger.warning("Supabase /auth/v1/user response missing id")
-                return None
-
-            email = user_data.get("email") if isinstance(user_data.get("email"), str) else None
-            phone = user_data.get("phone") if isinstance(user_data.get("phone"), str) else None
-            user_metadata = user_data.get("user_metadata")
-            if not isinstance(user_metadata, dict):
-                user_metadata = {}
-
-            email_verified = bool(
-                user_data.get("email_confirmed_at")
-                or user_data.get("phone_confirmed_at")
+            response = await self._verify_get(url, headers=headers)
+        except _RETRYABLE_NETWORK_ERRORS as exc:
+            logger.warning(
+                "Supabase auth host unreachable for token verify: %s", exc
             )
-
-            return {
-                "id": user_id,
-                "email": email,
-                "user_metadata": user_metadata,
-                "phone": phone,
-                "email_verified": email_verified,
-            }
+            return _make_failure(AuthFailureReason.PROVIDER_UNREACHABLE, str(exc))
         except Exception as exc:  # noqa: BLE001
             logger.error("Supabase API token verification failed: %s", exc, exc_info=True)
+            return _make_failure(AuthFailureReason.PROVIDER_ERROR, str(exc))
+
+        if response.status_code != 200:
+            logger.warning(
+                "Supabase token verification failed: status=%s body=%s",
+                response.status_code,
+                response.text[:200],
+            )
             return None
 
+        try:
+            user_data = response.json()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Supabase /auth/v1/user returned non-JSON: %s", exc)
+            return None
+
+        user_id = user_data.get("id")
+        if not isinstance(user_id, str) or not user_id.strip():
+            logger.warning("Supabase /auth/v1/user response missing id")
+            return None
+
+        email = user_data.get("email") if isinstance(user_data.get("email"), str) else None
+        phone = user_data.get("phone") if isinstance(user_data.get("phone"), str) else None
+        user_metadata = user_data.get("user_metadata")
+        if not isinstance(user_metadata, dict):
+            user_metadata = {}
+        app_metadata = user_data.get("app_metadata")
+        if not isinstance(app_metadata, dict):
+            app_metadata = {}
+
+        email_confirmed_at = user_data.get("email_confirmed_at")
+        phone_confirmed_at = user_data.get("phone_confirmed_at")
+
+        # `email_verified` is kept for backward compatibility: it is True when
+        # EITHER channel is confirmed (matches the prior behaviour). Callers
+        # that need per-channel verification should read the new explicit
+        # keys (`*_confirmed_at`, `phone_verified`).
+        email_verified = bool(email_confirmed_at or phone_confirmed_at)
+        phone_verified = bool(phone_confirmed_at)
+
+        return {
+            "id": user_id,
+            "email": email,
+            "user_metadata": user_metadata,
+            "app_metadata": app_metadata,
+            "phone": phone,
+            "email_verified": email_verified,
+            "phone_verified": phone_verified,
+            "email_confirmed_at": email_confirmed_at,
+            "phone_confirmed_at": phone_confirmed_at,
+        }
+
+    @_retry_on_transient_network()
+    async def _verify_get(self, url: str, *, headers: dict[str, str]) -> httpx.Response:
+        """GET with bearer-style auth headers; transient network errors retried."""
+        client = get_supabase_auth_http_client()
+        return await client.get(url, headers=headers)
+
     async def admin_find_user_by_phone(self, phone: str) -> dict[str, Any] | None:
-        """Lookup a user via Supabase GoTrue Admin by phone."""
+        """Lookup a user via Supabase GoTrue Admin by phone.
+
+        Returns the user dict on success, ``None`` on not-found / bad
+        response, or a tagged failure dict when the Supabase host is
+        unreachable.
+        """
         return await self._admin_find_user_by_field("phone", phone)
 
     async def admin_get_user_by_email(self, email: str) -> dict[str, Any] | None:
         """Lookup a Supabase Auth user by email via GoTrue Admin API."""
         return await self._admin_find_user_by_field("email", email)
 
+    async def admin_create_user(
+        self,
+        email: str,
+        password: str,
+        email_confirm: bool = True,
+        user_metadata: dict | None = None,
+    ) -> dict[str, Any] | None:
+        """Create a new Supabase Auth user via GoTrue Admin API.
+
+        Returns created user dict with ``id`` and ``email`` on success,
+        ``None`` on a non-retryable failure (e.g. email already exists),
+        or a tagged failure dict on a transient network / DNS error.
+        """
+        url = self._admin_url("/admin/users")
+        payload: dict[str, Any] = {
+            "email": email,
+            "password": password,
+            "email_confirm": email_confirm,
+        }
+        if user_metadata:
+            payload["user_metadata"] = user_metadata
+        try:
+            resp = await self._post_with_retry(url, json=payload)
+        except _RETRYABLE_NETWORK_ERRORS as exc:
+            logger.warning("Admin create user unreachable for %s: %s", email, exc)
+            return _make_failure(AuthFailureReason.PROVIDER_UNREACHABLE, str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Admin create user error for %s: %s", email, exc)
+            return _make_failure(AuthFailureReason.PROVIDER_ERROR, str(exc))
+
+        if resp.status_code in (200, 201):
+            data = resp.json()
+            created: dict[str, Any] = {"id": data.get("id"), "email": data.get("email")}
+            logger.info("Created Supabase Auth user: %s", created.get("email"))
+            return created
+        logger.warning(
+            "Admin create user failed for %s: %s %s",
+            email, resp.status_code, resp.text[:300],
+        )
+        return None
+
     async def admin_link_identity(self, user_id: str, provider: str, id_token: str) -> bool:
-        """Link an OAuth identity to an existing Supabase user via GoTrue Admin API."""
+        """Link an OAuth identity to an existing Supabase user via GoTrue Admin API.
+
+        Returns ``True`` on success, ``False`` on a non-retryable
+        failure, or a tagged failure dict on a transient network / DNS
+        error.
+        """
         url = self._admin_url(f"/admin/users/{user_id}/identities")
         payload = {"provider": provider, "id_token": id_token}
         try:
-            client = self.get_auth_http_client()
-            resp = await client.post(url, headers=self._admin_headers(json=True), json=payload)
-            if resp.status_code in (200, 201):
-                logger.info("Successfully linked %s identity to user %s", provider, user_id)
-                return True
-            logger.warning("Failed to link identity: %s %s", resp.status_code, resp.text[:200])
-            return False
-        except Exception as e:
-            logger.error("Admin link identity error: %s", e)
-            return False
+            resp = await self._post_with_retry(url, json=payload)
+        except _RETRYABLE_NETWORK_ERRORS as exc:
+            logger.warning("Admin link identity unreachable: %s", exc)
+            return _make_failure(AuthFailureReason.PROVIDER_UNREACHABLE, str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Admin link identity error: %s", exc)
+            return _make_failure(AuthFailureReason.PROVIDER_ERROR, str(exc))
+
+        if resp.status_code in (200, 201):
+            logger.info("Successfully linked %s identity to user %s", provider, user_id)
+            return True
+        logger.warning("Failed to link identity: %s %s", resp.status_code, resp.text[:200])
+        return False
 
     # -- Internal ---------------------------------------------------------------
 
@@ -222,11 +396,6 @@ class SupabaseClientManager:
 _manager = SupabaseClientManager()
 
 
-def _get_supabase_auth_http_client() -> httpx.AsyncClient:
-    """Backward-compatible wrapper."""
-    return _manager.get_auth_http_client()
-
-
 def get_supabase_auth_client() -> Client:
     """Backward-compatible wrapper."""
     return _manager.get_auth_client()
@@ -238,11 +407,15 @@ def get_supabase_service_client() -> Client:
 
 
 async def close_supabase_clients() -> None:
-    """Close all managed Supabase connections. Call on app shutdown."""
+    """Close manager-owned Supabase clients. Call on app shutdown.
+
+    The shared async HTTP client used for GoTrue REST calls is owned
+    by ``app.core.http`` and is closed via ``close_all_clients()``.
+    """
     await _manager.close()
 
 
-# Alias for any existing callers of the old name
+# Alias retained for any existing callers of the old name.
 close_supabase_auth_http_client = close_supabase_clients
 
 
@@ -255,6 +428,11 @@ async def verify_supabase_token(token: str) -> dict[str, Any] | None:
     server-side validation.  This approach works with all Supabase key
     formats (including the newer ``sb_publishable_*`` / ``sb_secret_*``
     keys that do not expose JWKS).
+
+    On success returns the user dict, on invalid token returns
+    ``None``, and on a transient / DNS failure returns a tagged
+    failure dict (see :func:`_make_failure`) that the dependency
+    layer maps to HTTP 503.
     """
     return await _manager.verify_token(token)
 
@@ -263,7 +441,8 @@ async def admin_find_user_by_phone(phone: str) -> dict[str, Any] | None:
     """Lookup a user via Supabase GoTrue Admin by phone.
 
     Requires service role key configured in settings.SUPABASE_SECRET_KEY.
-    Returns a minimal user dict if found, else None.
+    Returns a minimal user dict if found, ``None`` if not found / bad
+    response, or a tagged failure dict if the provider is unreachable.
     """
     return await _manager.admin_find_user_by_phone(phone)
 
@@ -273,6 +452,25 @@ async def admin_get_user_by_email(email: str) -> dict[str, Any] | None:
     return await _manager.admin_get_user_by_email(email)
 
 
-async def admin_link_identity(user_id: str, provider: str, id_token: str) -> bool:
-    """Link an OAuth identity to an existing Supabase user."""
+async def admin_link_identity(user_id: str, provider: str, id_token: str) -> bool | dict[str, Any]:
+    """Link an OAuth identity to an existing Supabase Auth user.
+
+    Returns ``True`` on success, ``False`` on a non-retryable failure,
+    or a tagged failure dict on a transient network / DNS error.
+    """
     return await _manager.admin_link_identity(user_id, provider, id_token)
+
+
+async def admin_create_user(
+    email: str,
+    password: str,
+    email_confirm: bool = True,
+    user_metadata: dict | None = None,
+) -> dict[str, Any] | None:
+    """Create a new Supabase Auth user via GoTrue Admin API."""
+    return await _manager.admin_create_user(
+        email=email,
+        password=password,
+        email_confirm=email_confirm,
+        user_metadata=user_metadata,
+    )

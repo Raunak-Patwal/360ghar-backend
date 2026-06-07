@@ -130,6 +130,11 @@ class Settings(BaseSettings):
         """Return the key used for non-privileged Supabase auth flows."""
         return self.SUPABASE_PUBLISHABLE_KEY.strip()
 
+    # ── Google OAuth client IDs (surfaced to clients via /api/v1/auth/config) ───
+    GOOGLE_WEB_CLIENT_ID: str | None = None
+    GOOGLE_IOS_CLIENT_ID: str | None = None
+    GOOGLE_ANDROID_CLIENT_ID: str | None = None
+
     # ── Cache ────────────────────────────────────────────────────────────────────
     CACHE_BACKEND: str = "disk"  # "disk", "memory", or "redis"
     CACHE_DEFAULT_TTL: int = 300  # 5 minutes default

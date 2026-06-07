@@ -3,7 +3,7 @@ External service mocks for testing.
 
 Provides fixtures that mock external API calls to:
 - Firebase Cloud Messaging (FCM)
-- Supabase Storage
+- Cloudinary Storage
 - Perplexity AI (blog generation)
 - SerpAPI (image search)
 - Gemini/GLM (Vastu analysis)
@@ -101,35 +101,37 @@ def mock_fcm_failure():
 
 
 # =============================================================================
-# Supabase Storage
+# Cloudinary Storage
 # =============================================================================
 
 @pytest.fixture
-def mock_supabase_storage():
+def mock_cloudinary_storage():
     """
-    Mock Supabase Storage for file upload tests.
+    Mock Cloudinary for file upload tests.
 
     Returns a mock client that simulates successful file uploads.
     """
-    with patch("app.services.storage.get_supabase_storage_client") as mock:
+    with patch("app.services.cloudinary.service.cloudinary_service") as mock:
         mock_client = MagicMock()
-        mock_storage = MagicMock()
-        mock_client.storage = mock_storage
 
         # Mock upload method
-        mock_storage.from_.return_value.upload.return_value = MagicMock(
-            path="uploads/test_file.jpg"
-        )
+        mock_client.upload_file.return_value = {
+            "public_id": "360ghar/uploads/test_file.jpg",
+            "secure_url": "https://res.cloudinary.com/ddbhzlzy1/image/upload/v1/360ghar/uploads/test_file.jpg",
+            "bytes": 1024,
+            "width": 512,
+            "height": 512,
+            "format": "jpg",
+            "original_filename": "test_file.jpg",
+        }
 
-        # Mock get public URL
-        mock_storage.from_.return_value.get_public_url.return_value = (
-            "https://storage.supabase.co/test_bucket/uploads/test_file.jpg"
-        )
+        # Mock local file upload
+        mock_client.upload_local_file.return_value = {
+            "public_id": "360ghar/uploads/test_file.jpg",
+            "secure_url": "https://res.cloudinary.com/ddbhzlzy1/image/upload/v1/360ghar/uploads/test_file.jpg",
+            "bytes": 1024,
+        }
 
-        # Mock delete method
-        mock_storage.from_.return_value.remove.return_value = None
-
-        mock.return_value = mock_client
         yield mock_client
 
 
