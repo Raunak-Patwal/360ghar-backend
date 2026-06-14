@@ -147,6 +147,10 @@ async def create_property(
         if image_urls and not property_dict.get("main_image_url"):
             property_dict["main_image_url"] = image_urls[0]
         property_dict["owner_id"] = owner_id
+        # properties.owner_name is a denormalized cache of the owner's
+        # full_name. Populate it from the owner so the column is correct on
+        # creation (the DB sync trigger also covers this, but set it explicitly).
+        property_dict["owner_name"] = owner.full_name if owner and owner.full_name else None
 
         if property_data.property_type in PG_FLATMATE_TYPES:
             preferences = dict(property_dict.get("listing_preferences") or {})

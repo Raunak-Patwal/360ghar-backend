@@ -182,6 +182,21 @@ def _build_peer_payload(
             if amenity and getattr(amenity, "title", None):
                 amenities.append(amenity.title)
 
+        # UI-facing aliases derived from columns + listing_preferences so the
+        # keys consumed by the swipe card / profile sheet line up with real
+        # data. All additive (added via setdefault below) — never overwrite.
+        listing_prefs = (
+            property_obj.listing_preferences
+            if isinstance(property_obj.listing_preferences, dict)
+            else {}
+        )
+        sharing_type = listing_prefs.get("sharing_type")
+        available_from_iso = (
+            property_obj.available_from.isoformat()
+            if property_obj.available_from is not None
+            else None
+        )
+
         enrichment: dict[str, Any] = {
             "property_id": property_obj.id,
             "property_title": property_obj.title,
@@ -218,7 +233,29 @@ def _build_peer_payload(
             "floor_number": property_obj.floor_number,
             "total_floors": property_obj.total_floors,
             "area_sqft": property_obj.area_sqft,
-            "listing_preferences": property_obj.listing_preferences or {},
+            "listing_preferences": listing_prefs,
+            # ── UI-consumed aliases (additive) ────────────────────────────
+            "maintenance": (
+                float(property_obj.maintenance_charges)
+                if property_obj.maintenance_charges is not None
+                else None
+            ),
+            "floor": (
+                str(property_obj.floor_number)
+                if property_obj.floor_number is not None
+                else None
+            ),
+            "flat_config": (
+                f"{property_obj.bedrooms} BHK"
+                if property_obj.bedrooms is not None
+                else None
+            ),
+            "furnishing": list(property_obj.features or []),
+            "flat_amenities": amenities,
+            "society_amenities": [],
+            "room_type": str(sharing_type) if sharing_type is not None else None,
+            "society_name": property_obj.sub_locality or property_obj.landmark or None,
+            "available_from": available_from_iso,
         }
 
         # Only ADD new keys - never overwrite anything already on the payload

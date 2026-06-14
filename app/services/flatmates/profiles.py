@@ -68,7 +68,32 @@ async def get_profile_by_id(
     if user is None:
         raise BadRequestException(detail="User not found")
     current_user = await db.get(User, current_user_id) if current_user_id else None
-    return _build_peer_payload(user, current_user=current_user)
+
+    # Load the peer's most recent active flatmate/PG listing so the peer payload
+    # carries the same listing context (photos, rent, amenities, room config)
+    # as the swipe deck. Mirrors the batched query in list_discoverable_profiles.
+    property_stmt = (
+        select(Property)
+        .options(
+            selectinload(Property.images),
+            selectinload(Property.property_amenities).selectinload(PropertyAmenity.amenity),
+        )
+        .where(
+            Property.owner_id == user_id,
+            Property.property_type.in_([PropertyType.flatmate, PropertyType.pg]),
+            Property.purpose == PropertyPurpose.rent,
+            Property.is_available.is_(True),
+        )
+        .order_by(Property.created_at.desc())
+        .limit(1)
+    )
+    property_obj = (await db.execute(property_stmt)).scalar_one_or_none()
+
+    return _build_peer_payload(
+        user,
+        current_user=current_user,
+        property_obj=property_obj,
+    )
 
 
 async def list_discoverable_profiles(

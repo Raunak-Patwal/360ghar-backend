@@ -83,6 +83,31 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+    delete:
+      tags: [Auth]
+      summary: Delete my account
+      description: >-
+        Permanently delete the authenticated user's account. Calls the Supabase
+        Admin API to hard-delete the auth user, then soft-deletes the local row
+        (sets is_active = False) to preserve referential integrity with
+        properties/visits/bookings. This action is irreversible.
+      operationId: deleteCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Account deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /users/location:
     get:
       tags: [Auth]
