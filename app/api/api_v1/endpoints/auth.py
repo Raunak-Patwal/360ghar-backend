@@ -25,7 +25,7 @@ from app.core.logging import get_logger
 from app.middleware.rate_limit import EndpointRateLimiter
 from app.models.enums import AuthMethod
 from app.models.users import User
-from app.services.user import get_identifier_status, set_last_auth_method
+from app.services.user import delete_user_account, get_identifier_status, set_last_auth_method
 
 logger = get_logger(__name__)
 
@@ -155,3 +155,21 @@ async def auth_config() -> AuthConfigResponse:
         google_ios_client_id=settings.GOOGLE_IOS_CLIENT_ID,
         google_android_client_id=settings.GOOGLE_ANDROID_CLIENT_ID,
     )
+
+
+@router.post(
+    "/delete-account",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Permanently delete the current user's account",
+)
+async def delete_account(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """AUTH required. Permanently delete the caller's own account.
+
+    Hard-deletes the Supabase Auth user (revoking all sessions) and
+    anonymizes + soft-deletes the local record. App Store Guideline
+    5.1.1(v) compliance: the account becomes permanently unusable.
+    """
+    await delete_user_account(db, current_user)

@@ -448,7 +448,7 @@ Dev dependencies (pytest, ruff, mypy) are in the `dev` optional group: `uv sync 
 - Phone as primary identifier
 - Role-based access: user, agent, admin
 - Backend does not provide `/api/v1/auth/*` user-session endpoints; clients own login/refresh/logout via Supabase SDK
-- Account deletion is `DELETE /api/v1/users/me` (`delete_user_account` in `app/api/api_v1/endpoints/users.py`): hard-deletes the Supabase auth user via the Admin API, then **soft-deletes** the local row (`is_active = False`) to preserve referential integrity with properties/visits/bookings. Returns `MessageResponse`. There is no `/users/me/delete` route — the canonical path is `DELETE /users/me`.
+- Account deletion: `delete_user_account` in `app/services/user.py` hard-deletes the Supabase Auth user, anonymizes all PII, and soft-deletes the local row. Two routes expose it: **`DELETE /api/v1/users/me`** (canonical, returns `MessageResponse`) and **`POST /api/v1/auth/delete-account`** (alternate for mobile clients, returns 204). There is no `/users/me/delete` route.
 - Rate limiting: 500 req/min global per IP (sliding window via `app/middleware/rate_limit.py`). Tighter per-route limits applied via `EndpointRateLimiter` on sensitive endpoints (e.g. 60 req/min for the public identifier-status probe). SSE streaming endpoints are exempt (held-open connections would otherwise consume a client's per-IP budget).
 - Input validation via Pydantic schemas
 - API key validation via `VALID_API_KEYS` setting

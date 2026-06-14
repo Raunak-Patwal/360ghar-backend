@@ -120,9 +120,7 @@ class SupabaseClientManager:
         if self._auth_client is None:
             key = settings.SUPABASE_CLIENT_KEY
             if not key:
-                raise ValueError(
-                    "Missing Supabase publishable key. Set SUPABASE_PUBLISHABLE_KEY."
-                )
+                raise ValueError("Missing Supabase publishable key. Set SUPABASE_PUBLISHABLE_KEY.")
             # ``create_client`` resolves to the module-level lazy wrapper above,
             # which imports the heavy ``supabase`` package only on first use and
             # stays patchable as ``app.core.auth.create_client``.
@@ -182,9 +180,7 @@ class SupabaseClientManager:
         """Build a GoTrue Admin API URL."""
         return f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1{path}"
 
-    async def _admin_find_user_by_field(
-        self, field: str, value: str
-    ) -> dict[str, Any] | None:
+    async def _admin_find_user_by_field(self, field: str, value: str) -> dict[str, Any] | None:
         """Lookup a user via Supabase GoTrue Admin by a single field.
 
         Returns the user dict on success, ``None`` on a "not found" /
@@ -225,7 +221,10 @@ class SupabaseClientManager:
         if response.status_code == 404:
             return None
         logger.warning(
-            "Admin user lookup by %s failed: %s %s", field, response.status_code, response.text[:200]
+            "Admin user lookup by %s failed: %s %s",
+            field,
+            response.status_code,
+            response.text[:200],
         )
         return None
 
@@ -238,12 +237,16 @@ class SupabaseClientManager:
         return await client.get(url, headers=self._admin_headers(), params=params)
 
     @_retry_on_transient_network()
-    async def _post_with_retry(
-        self, url: str, *, json: dict[str, Any]
-    ) -> httpx.Response:
+    async def _post_with_retry(self, url: str, *, json: dict[str, Any]) -> httpx.Response:
         """POST against the shared Supabase auth client with transient-error retry."""
         client = get_supabase_auth_http_client()
         return await client.post(url, headers=self._admin_headers(json=True), json=json)
+
+    @_retry_on_transient_network()
+    async def _delete_with_retry(self, url: str) -> httpx.Response:
+        """DELETE against the shared Supabase auth client with transient-error retry."""
+        client = get_supabase_auth_http_client()
+        return await client.delete(url, headers=self._admin_headers())
 
     async def verify_token(self, token: str) -> dict[str, Any] | None:
         """Verify Supabase JWT.
@@ -258,9 +261,7 @@ class SupabaseClientManager:
         try:
             claims = await verify_jwt_locally(token)
         except JWKSUnavailable as exc:
-            logger.info(
-                "JWKS unavailable (%s); falling back to introspection", exc
-            )
+            logger.info("JWKS unavailable (%s); falling back to introspection", exc)
             claims = None  # fall through to introspection
         except Exception as exc:  # noqa: BLE001 — never crash auth on JWT util
             logger.warning("Local JWT verification error: %s", exc)
@@ -272,9 +273,7 @@ class SupabaseClientManager:
         # ── Fallback: Supabase Auth introspection ───────────────────────────
         return await self._verify_via_introspection(token)
 
-    def _claims_to_user_dict(
-        self, token: str, claims: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    def _claims_to_user_dict(self, token: str, claims: dict[str, Any]) -> dict[str, Any] | None:
         """Convert decoded JWT claims to the canonical user dict shape.
 
         The claims from a Supabase access token contain ``sub`` (user id),
@@ -328,9 +327,7 @@ class SupabaseClientManager:
         try:
             response = await self._verify_get(url, headers=headers)
         except _RETRYABLE_NETWORK_ERRORS as exc:
-            logger.warning(
-                "Supabase auth host unreachable for token verify: %s", exc
-            )
+            logger.warning("Supabase auth host unreachable for token verify: %s", exc)
             return _make_failure(AuthFailureReason.PROVIDER_UNREACHABLE, str(exc))
         except Exception as exc:  # noqa: BLE001
             logger.error("Supabase API token verification failed: %s", exc, exc_info=True)
@@ -449,7 +446,9 @@ class SupabaseClientManager:
             return created
         logger.warning(
             "Admin create user failed for %s: %s %s",
-            email, resp.status_code, resp.text[:300],
+            email,
+            resp.status_code,
+            resp.text[:300],
         )
         return None
 
@@ -475,6 +474,37 @@ class SupabaseClientManager:
             logger.info("Successfully linked %s identity to user %s", provider, user_id)
             return True
         logger.warning("Failed to link identity: %s %s", resp.status_code, resp.text[:200])
+        return False
+
+    async def admin_delete_user(self, user_id: str) -> bool | dict[str, Any]:
+        """Hard-delete a Supabase Auth user via the GoTrue Admin API.
+
+        Hard-deleting the user immediately invalidates ALL of that user's
+        sessions and refresh tokens (session revocation) and removes the
+        identity from Supabase Auth. A ``404`` (user already absent) is
+        treated as success for idempotency. Returns ``True`` on success,
+        ``False`` on a non-retryable failure, or a tagged failure dict
+        (:func:`_make_failure`) on a transient network / DNS error.
+        """
+        url = self._admin_url(f"/admin/users/{user_id}")
+        try:
+            resp = await self._delete_with_retry(url)
+        except _RETRYABLE_NETWORK_ERRORS as exc:
+            logger.warning("Admin delete user unreachable for %s: %s", user_id, exc)
+            return _make_failure(AuthFailureReason.PROVIDER_UNREACHABLE, str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Admin delete user error for %s: %s", user_id, exc, exc_info=True)
+            return _make_failure(AuthFailureReason.PROVIDER_ERROR, str(exc))
+
+        if resp.status_code in (200, 204, 404):
+            logger.info("Supabase auth user %s deleted (or already absent)", user_id)
+            return True
+        logger.warning(
+            "Admin delete user failed for %s: %s %s",
+            user_id,
+            resp.status_code,
+            resp.text[:200],
+        )
         return False
 
     # -- Internal ---------------------------------------------------------------
@@ -519,6 +549,7 @@ close_supabase_auth_http_client = close_supabase_clients
 
 
 # -- Auth functions ------------------------------------------------------------
+
 
 async def verify_supabase_token(token: str) -> dict[str, Any] | None:
     """Verify Supabase JWT by calling the Supabase Auth API.
@@ -573,3 +604,13 @@ async def admin_create_user(
         email_confirm=email_confirm,
         user_metadata=user_metadata,
     )
+
+
+async def admin_delete_user(user_id: str) -> bool | dict[str, Any]:
+    """Hard-delete a Supabase Auth user via the GoTrue Admin API.
+
+    Returns ``True`` on success (a 404 / already-absent is treated as
+    success for idempotency), ``False`` on a non-retryable failure, or a
+    tagged failure dict on a transient network / DNS error.
+    """
+    return await _manager.admin_delete_user(user_id)

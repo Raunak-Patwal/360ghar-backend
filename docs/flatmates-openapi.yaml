@@ -88,9 +88,10 @@ paths:
       summary: Delete my account
       description: >-
         Permanently delete the authenticated user's account. Calls the Supabase
-        Admin API to hard-delete the auth user, then soft-deletes the local row
-        (sets is_active = False) to preserve referential integrity with
+        Admin API to hard-delete the auth user, then anonymizes PII and
+        soft-deletes the local row to preserve referential integrity with
         properties/visits/bookings. This action is irreversible.
+        App Store Guideline 5.1.1(v) compliance.
       operationId: deleteCurrentUser
       security:
         - BearerAuth: []
@@ -107,6 +108,39 @@ paths:
                     example: Account deleted successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Identity provider temporarily unavailable
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                example: 30
+
+  /auth/delete-account:
+    post:
+      tags: [Auth]
+      summary: Delete my account (alternate)
+      description: >-
+        Permanently delete the authenticated user's account (alternate route).
+        Same behavior as `DELETE /users/me` — hard-deletes the Supabase Auth
+        user, anonymizes PII, and soft-deletes the local row. Returns 204 No
+        Content on success. Provided for mobile clients that prefer POST over
+        DELETE. App Store Guideline 5.1.1(v) compliance.
+      operationId: deleteAccountViaPost
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Account deleted (no content)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Identity provider temporarily unavailable
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                example: 30
 
   /users/location:
     get:

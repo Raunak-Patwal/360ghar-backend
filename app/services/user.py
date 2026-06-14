@@ -7,6 +7,7 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import _is_failure, admin_delete_user
 from app.core.exceptions import (
     BadRequestException,
     BaseAPIException,
@@ -37,6 +38,7 @@ def _normalize_phone(phone: str | None) -> str | None:
         digits = digits[-10:]
     return digits if digits else None
 
+
 async def get_user_by_phone(db: AsyncSession, phone: str) -> User | None:
     """Fetch a user by phone number, if present.
 
@@ -46,7 +48,11 @@ async def get_user_by_phone(db: AsyncSession, phone: str) -> User | None:
     """
     logger.debug("Fetching user by phone: %s", phone)
     try:
-        stmt = select(User).where(User.phone == phone).order_by(User.is_active.desc(), User.created_at.desc())
+        stmt = (
+            select(User)
+            .where(User.phone == phone)
+            .order_by(User.is_active.desc(), User.created_at.desc())
+        )
         result = await db.execute(stmt)
         user = result.scalars().first()
         if user:
@@ -55,13 +61,21 @@ async def get_user_by_phone(db: AsyncSession, phone: str) -> User | None:
         # Fallback: match on normalized phone (last 10 digits)
         norm = _normalize_phone(phone)
         if norm:
-            stmt_norm = select(User).where(
-                func.replace(func.replace(func.replace(User.phone, "+", ""), "-", ""), " ", "").like(f"%{norm}")
-            ).order_by(User.is_active.desc(), User.created_at.desc())
+            stmt_norm = (
+                select(User)
+                .where(
+                    func.replace(
+                        func.replace(func.replace(User.phone, "+", ""), "-", ""), " ", ""
+                    ).like(f"%{norm}")
+                )
+                .order_by(User.is_active.desc(), User.created_at.desc())
+            )
             result_norm = await db.execute(stmt_norm)
             user = result_norm.scalars().first()
             if user:
-                logger.debug("User found via normalized phone match: ID %s for phone %s", user.id, phone)
+                logger.debug(
+                    "User found via normalized phone match: ID %s for phone %s", user.id, phone
+                )
                 return user
         logger.debug("No user found with phone %s", phone)
         return None
@@ -69,10 +83,15 @@ async def get_user_by_phone(db: AsyncSession, phone: str) -> User | None:
         logger.error("Failed to fetch user by phone %s: %s", phone, e, exc_info=True)
         raise
 
+
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     logger.debug("Fetching user by email: %s", email)
     try:
-        stmt = select(User).where(User.email == email).order_by(User.is_active.desc(), User.created_at.desc())
+        stmt = (
+            select(User)
+            .where(User.email == email)
+            .order_by(User.is_active.desc(), User.created_at.desc())
+        )
         result = await db.execute(stmt)
         user = result.scalars().first()
         if user:
@@ -83,6 +102,7 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     except Exception as e:
         logger.error("Failed to fetch user by email %s: %s", email, e, exc_info=True)
         raise
+
 
 async def get_user_by_supabase_id(db: AsyncSession, supabase_user_id: str) -> User | None:
     logger.debug("Fetching user by Supabase ID: %s", supabase_user_id)
@@ -96,10 +116,15 @@ async def get_user_by_supabase_id(db: AsyncSession, supabase_user_id: str) -> Us
             logger.debug("No user found with Supabase ID %s", supabase_user_id)
         return user
     except Exception as e:
-        logger.error("Failed to fetch user by Supabase ID %s: %s", supabase_user_id, e, exc_info=True)
+        logger.error(
+            "Failed to fetch user by Supabase ID %s: %s", supabase_user_id, e, exc_info=True
+        )
         raise
 
-async def get_or_create_user_from_supabase(db: AsyncSession, supabase_user_data: dict[str, Any]) -> User:
+
+async def get_or_create_user_from_supabase(
+    db: AsyncSession, supabase_user_data: dict[str, Any]
+) -> User:
     """Get or create a local user mirroring a Supabase auth user.
 
     Email is the canonical linking key (email-linked, multi-method identity).
@@ -114,7 +139,9 @@ async def get_or_create_user_from_supabase(db: AsyncSession, supabase_user_data:
     row's ``supabase_user_id`` to the incoming id (logged) rather than creating
     a second row. This preserves ownership of properties/visits.
     """
-    logger.debug("Getting or creating user from Supabase data for user %s", supabase_user_data['id'])
+    logger.debug(
+        "Getting or creating user from Supabase data for user %s", supabase_user_data["id"]
+    )
 
     try:
         # Normalize incoming fields
@@ -163,7 +190,8 @@ async def get_or_create_user_from_supabase(db: AsyncSession, supabase_user_data:
                             User.is_active.is_(True),
                             func.replace(
                                 func.replace(func.replace(User.phone, "+", ""), "-", ""),
-                                " ", "",
+                                " ",
+                                "",
                             ).like(f"%{norm}"),
                         )
                     )
@@ -308,6 +336,102 @@ async def set_last_auth_method(db: AsyncSession, user: User, method: AuthMethod)
     await db.flush()
     await db.refresh(user)
     return user
+
+
+async def delete_user_account(db: AsyncSession, user: User) -> None:
+    """Permanently delete ``user``'s account (App Store Guideline 5.1.1(v)).
+
+    The account becomes **permanently unusable**:
+
+    1. The Supabase Auth user is **hard-deleted** via the GoTrue Admin API,
+       which immediately invalidates all of the user's sessions and refresh
+       tokens (session revocation) and removes the identity from Supabase
+       Auth. ``device_tokens`` / ``notifications`` referencing ``auth.users``
+       are nullified by their ``ON DELETE SET NULL`` rules.
+    2. The local ``users`` row is **anonymized and soft-deleted** —
+       ``is_active = False``, all PII nulled, ``supabase_user_id`` tombstoned.
+       Soft-delete preserves referential integrity with properties/visits/
+       bookings; the PII scrub satisfies the data-removal requirement.
+
+    Raises :class:`ServiceUnavailableException` (503) if the identity provider
+    is unreachable, or :class:`BaseAPIException` (500) if deletion fails for
+    another reason — the local row is left untouched in either case so the
+    caller can retry. ``admin_delete_user`` is idempotent (404 → success), so
+    retries after a partial failure are safe.
+    """
+    supabase_user_id = user.supabase_user_id
+
+    result = await admin_delete_user(supabase_user_id)
+    if _is_failure(result):
+        # Transient network/DNS error → advise the client to retry; do NOT
+        # touch the local row so the account stays intact until success.
+        logger.warning(
+            "Account deletion aborted for user %s: identity provider unreachable",
+            user.id,
+        )
+        raise ServiceUnavailableException(
+            detail="Identity provider is temporarily unavailable, please retry",
+            headers={"Retry-After": "30"},
+        )
+    if result is not True:
+        # GoTrue returned a non-success, non-404 status — unexpected infra
+        # error. Surface a retryable error; the local row is unchanged.
+        logger.error(
+            "Account deletion failed for user %s: Supabase auth delete unsuccessful",
+            user.id,
+        )
+        raise BaseAPIException(detail="Failed to delete account, please try again")
+
+    # Anonymize PII + soft-delete locally. The ``__deleted__`` tombstone on
+    # ``supabase_user_id`` releases the unique claim and marks the row clearly
+    # (mirrors the existing ``__migrated__`` convention in user reconciliation).
+    user.is_active = False
+    user.supabase_user_id = f"__deleted__{user.id}"
+    # Identity & contact PII
+    user.email = None
+    user.phone = None
+    user.full_name = None
+    user.profile_image_url = None
+    user.date_of_birth = None
+    user.email_verified = False
+    user.phone_verified = False
+    # Location PII
+    user.current_latitude = None
+    user.current_longitude = None
+    # Preference payloads (may carry personal data)
+    user.preferences = None
+    user.notification_settings = None
+    user.privacy_settings = None
+    # Flatmates profile PII (shared backend also serves the flatmates app)
+    user.flatmates_mode = None
+    user.flatmates_bio = None
+    user.flatmates_city = None
+    user.flatmates_locality = None
+    user.flatmates_budget_min = None
+    user.flatmates_budget_max = None
+    user.flatmates_move_in_timeline = None
+    user.flatmates_sleep_schedule = None
+    user.flatmates_cleanliness = None
+    user.flatmates_food_habits = None
+    user.flatmates_smoking_drinking = None
+    user.flatmates_guests_policy = None
+    user.flatmates_work_style = None
+    # Verification & status fields
+    user.is_verified = False
+    user.flatmates_profile_status = None
+    user.flatmates_onboarding_completed = False
+    user.flatmates_last_active_at = None
+    # Auth metadata & cross-app onboarding
+    user.last_auth_method = None
+    user.last_auth_method_at = None
+    user.stays_onboarding_completed = False
+    user.estate_onboarding_completed = False
+    user.ghar360_onboarding_completed = False
+    await db.flush()
+    logger.info(
+        "User %s account deleted (Supabase auth user removed, local PII anonymized)",
+        user.id,
+    )
 
 
 def _normalize_phone_to_e164(identifier: str) -> str:
@@ -540,11 +664,7 @@ async def compute_auth_gate_state(
 
     # ── PROFILE_COMPLETION: are all mandatory fields present? ────────────
     profile_fields = _APP_PROFILE_FIELDS.get(app, _PROFILE_REQUIRED_FIELDS)
-    missing = [
-        field
-        for field in profile_fields
-        if not getattr(user, field, None)
-    ]
+    missing = [field for field in profile_fields if not getattr(user, field, None)]
     if missing:
         return {
             "stage": "profile_completion",
@@ -610,6 +730,7 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
         logger.error("Failed to fetch user by id %s: %s", user_id, e)
         raise
 
+
 async def get_all_users(
     db: AsyncSession,
     *,
@@ -626,7 +747,9 @@ async def get_all_users(
             conditions.append(User.agent_id == filter_agent_id)
         if search_query:
             q = f"%{search_query}%"
-            conditions.append(or_(User.full_name.ilike(q), User.email.ilike(q), User.phone.ilike(q)))
+            conditions.append(
+                or_(User.full_name.ilike(q), User.email.ilike(q), User.phone.ilike(q))
+            )
 
         stmt = select(User)
         count_stmt = select(func.count()).select_from(User)
@@ -644,7 +767,10 @@ async def get_all_users(
         logger.error("Failed to list users: %s", e)
         raise
 
-async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate, actor: User | None = None) -> User | None:
+
+async def update_user(
+    db: AsyncSession, user_id: int, user_update: UserUpdate, actor: User | None = None
+) -> User | None:
     logger.info("Updating user %s", user_id)
 
     try:
@@ -664,25 +790,34 @@ async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate, a
             if actor.agent_id is None or user.agent_id != actor.agent_id:
                 raise ForbiddenException(detail="Agent not authorized to update this user")
             allowed_fields = {
-                'email', 'full_name', 'phone', 'profile_image_url',
-                'preferences', 'notification_settings', 'privacy_settings'
+                "email",
+                "full_name",
+                "phone",
+                "profile_image_url",
+                "preferences",
+                "notification_settings",
+                "privacy_settings",
             }
             update_data = {k: v for k, v in update_data.items() if k in allowed_fields}
             logger.debug("Agent update filtered fields: %s", list(update_data.keys()))
         # Admins can update any fields; end-users can update their own profile via API
 
         # Handle email update (no uniqueness validation needed since emails are now non-unique)
-        if 'email' in update_data:
-            new_email = update_data['email']
+        if "email" in update_data:
+            new_email = update_data["email"]
 
             # Skip update if email is the same as current
             if new_email == user.email:
                 logger.debug("Email unchanged for user %s, skipping email update", user_id)
-                del update_data['email']
+                del update_data["email"]
 
         # Apply updates
         for field, value in update_data.items():
-            if field == "profile_image_url" and value is not None and not ValidationUtils.is_absolute_url(value):
+            if (
+                field == "profile_image_url"
+                and value is not None
+                and not ValidationUtils.is_absolute_url(value)
+            ):
                 logger.warning("Non-absolute profile_image_url for user %s: %s", user_id, value)
             setattr(user, field, value)
 
@@ -699,7 +834,10 @@ async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate, a
         raise BadRequestException(detail="Data integrity constraint violated") from None
     except Exception as e:
         logger.error("Failed to update user %s: %s", user_id, e, exc_info=True)
-        raise BaseAPIException(detail="Internal server error occurred while updating user") from None
+        raise BaseAPIException(
+            detail="Internal server error occurred while updating user"
+        ) from None
+
 
 async def update_user_preferences(db: AsyncSession, user_id: int, preferences: dict) -> User | None:
     logger.info("Updating preferences for user %s", user_id)
@@ -720,7 +858,10 @@ async def update_user_preferences(db: AsyncSession, user_id: int, preferences: d
         logger.error("Failed to update preferences for user %s: %s", user_id, e, exc_info=True)
         raise
 
-async def update_user_location(db: AsyncSession, user_id: int, latitude: float, longitude: float) -> User | None:
+
+async def update_user_location(
+    db: AsyncSession, user_id: int, latitude: float, longitude: float
+) -> User | None:
     logger.info("Updating location for user %s: (%s, %s)", user_id, latitude, longitude)
 
     try:
@@ -756,7 +897,12 @@ async def update_user_notification_settings(
             logger.warning("User %s not found for notification settings update", user_id)
         return user
     except Exception as e:
-        logger.error("Failed to update notification settings for user %s: %s", user_id, e, exc_info=True,)
+        logger.error(
+            "Failed to update notification settings for user %s: %s",
+            user_id,
+            e,
+            exc_info=True,
+        )
         raise
 
 
@@ -777,5 +923,10 @@ async def update_user_privacy_settings(
             logger.warning("User %s not found for privacy settings update", user_id)
         return user
     except Exception as e:
-        logger.error("Failed to update privacy settings for user %s: %s", user_id, e, exc_info=True,)
+        logger.error(
+            "Failed to update privacy settings for user %s: %s",
+            user_id,
+            e,
+            exc_info=True,
+        )
         raise

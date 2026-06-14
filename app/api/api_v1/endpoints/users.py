@@ -25,6 +25,7 @@ from app.services.storage import storage_service
 from app.services.user import (
     complete_app_onboarding,
     compute_auth_gate_state,
+    delete_user_account,
     get_all_users,
     get_user_by_id,
     update_user,
@@ -37,6 +38,7 @@ from app.services.user import (
 logger = get_logger(__name__)
 
 router = APIRouter()
+
 
 @router.get("/me", response_model=UserSchema)
 async def get_user_me(current_user: User = Depends(get_current_active_user)):
@@ -104,44 +106,17 @@ async def get_linked_identities(
 
 
 @router.delete("/me", response_model=MessageResponse)
-async def delete_user_account(
+async def delete_my_account(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete the current user's account.
 
-    Calls the Supabase Admin API to delete the auth user, then soft-deletes
-    the local row (sets ``is_active = False`` and preserves the record for
-    referential integrity with properties/visits/bookings).
+    Hard-deletes the Supabase Auth user (revoking all sessions) and
+    anonymizes + soft-deletes the local record. Shares the same logic as
+    ``POST /auth/delete-account``.
     """
-    import httpx
-
-    from app.config import settings
-
-    supabase_user_id = current_user.supabase_user_id
-    admin_url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{supabase_user_id}"
-    headers = {
-        "apikey": settings.SUPABASE_SECRET_KEY,
-        "Authorization": f"Bearer {settings.SUPABASE_SECRET_KEY}",
-    }
-    try:
-        client = httpx.AsyncClient(timeout=10.0)
-        resp = await client.delete(admin_url, headers=headers)
-        await client.aclose()
-        if resp.status_code not in (200, 204):
-            logger.warning(
-                "Supabase admin delete failed for %s: %s %s",
-                supabase_user_id,
-                resp.status_code,
-                resp.text[:200],
-            )
-    except Exception:
-        logger.warning("Supabase admin delete error for %s", supabase_user_id, exc_info=True)
-
-    # Soft-delete the local row (preserve referential integrity).
-    current_user.is_active = False
-    await db.flush()
-    logger.info("User %s account deleted (soft-deleted locally)", current_user.id)
+    await delete_user_account(db, current_user)
     return MessageResponse(message="Account deleted successfully")
 
 
@@ -170,7 +145,9 @@ async def update_user_phone(
         updated_user = await update_user(db, current_user.id, user_update, actor=current_user)
     except IntegrityError:
         await db.rollback()
-        raise ConflictException(detail="Phone number is already associated with another account") from None
+        raise ConflictException(
+            detail="Phone number is already associated with another account"
+        ) from None
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
     return UserSchema.model_validate(updated_user)
@@ -250,11 +227,12 @@ async def get_user_profile(current_user: User = Depends(get_current_active_user)
     """Get current user profile"""
     return UserSchema.model_validate(current_user)
 
+
 @router.put("/profile", response_model=UserSchema)
 async def update_user_profile(
     user_update: UserUpdate,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Update user profile"""
     updated_user = await update_user(db, current_user.id, user_update, actor=current_user)
@@ -262,11 +240,12 @@ async def update_user_profile(
         raise HTTPException(status_code=404, detail="User not found")
     return UserSchema.model_validate(updated_user)
 
+
 @router.put("/preferences", response_model=MessageResponse)
 async def update_preferences(
     preferences: UserPreferences,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Update user preferences"""
     await update_user_preferences(
@@ -276,18 +255,16 @@ async def update_preferences(
     )
     return MessageResponse(message="Preferences updated successfully")
 
+
 @router.put("/location", response_model=MessageResponse)
 async def update_location(
     location_update: LocationUpdate,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Update user's current location"""
     await update_user_location(
-        db,
-        current_user.id,
-        location_update.latitude,
-        location_update.longitude
+        db, current_user.id, location_update.latitude, location_update.longitude
     )
     return MessageResponse(message="Location updated successfully")
 
@@ -382,7 +359,7 @@ async def list_users(
     q: str | None = Query(None, description="Search by name/email/phone"),
     agent_id: int | None = Query(None, description="Filter by agent id (admin only)"),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """List users. Admins see all (optionally filter by agent). Agents see their assigned users."""
     # Resolve effective agent filter based on role
@@ -405,7 +382,9 @@ async def list_users(
     else:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    users, total = await get_all_users(db, page=page, limit=limit, search_query=q, filter_agent_id=effective_agent_id)
+    users, total = await get_all_users(
+        db, page=page, limit=limit, search_query=q, filter_agent_id=effective_agent_id
+    )
     items = [UserSchema.model_validate(u) for u in users]
     total_pages = (total + limit - 1) // limit
     return {
@@ -423,7 +402,7 @@ async def list_users(
 async def get_user_details(
     user_id: int,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     user = await get_user_by_id(db, user_id)
     if not user:
@@ -444,7 +423,7 @@ async def update_user_details(
     user_id: int,
     user_update: UserUpdate,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     # Admin can update any user; Agent can update limited fields for assigned users
     updated_user = await update_user(db, user_id, user_update, actor=current_user)
@@ -458,7 +437,7 @@ async def assign_agent_to_specific_user(
     user_id: int,
     payload: AssignAgentPayload,
     current_user: User = Depends(get_current_admin),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     assignment = await assign_agent_to_user(db, user_id, payload.agent_id)
     if not assignment:
