@@ -283,6 +283,26 @@ async def test_payments_invalid_cursor_400(rent_client: AsyncClient) -> None:
     assert r.json()["error"]["code"] == "INVALID_CURSOR"
 
 
+async def test_payments_desc_order_newest_first(
+    rent_client: AsyncClient, seeded_rent_payments: list[RentPayment]
+) -> None:
+    """Page 1 should contain the newest paid_at items (DESC order)."""
+    r = await rent_client.get("/api/v1/pm/rent/payments?limit=2")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    items = body["items"]
+    assert len(items) == 2
+    # Newest paid_at should be first
+    paid_ats = [item["paid_at"] for item in items]
+    assert paid_ats == sorted(paid_ats, reverse=True)
+    # Should be the two newest of the 3 seeded payments
+    seeded_paid_ats = sorted(
+        (p.paid_at.isoformat() for p in seeded_rent_payments), reverse=True
+    )
+    assert paid_ats[0] == seeded_paid_ats[0]
+    assert paid_ats[1] == seeded_paid_ats[1]
+
+
 async def test_payments_include_total(
     rent_client: AsyncClient, seeded_rent_payments: list[RentPayment]
 ) -> None:
