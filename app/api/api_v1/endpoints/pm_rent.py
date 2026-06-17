@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.api_v1.dependencies.auth import get_current_active_user
 from app.core.database import get_db
 from app.models.enums import RentChargeStatus
+from app.schemas.pagination import CursorPage, CursorParams, build_cursor_page
 from app.schemas.pm_rent import (
     RentChargeGenerateRequest,
     RentChargeWithTotals,
@@ -41,19 +42,18 @@ async def generate_charges(
     )
 
 
-@router.get("/charges", response_model=list[RentChargeWithTotals])
+@router.get("/charges", response_model=CursorPage[RentChargeWithTotals])
 async def get_charges(
     as_tenant: bool = Query(False, description="If true, return charges for the current tenant user"),
     owner_id: int | None = Query(None, description="Owner id (agent/admin only)"),
     lease_id: int | None = Query(None),
     property_id: int | None = Query(None),
     status: RentChargeStatus | None = Query(None),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    page: CursorParams = Depends(),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    items = await list_rent_charges(
+    items, next_payload, total = await list_rent_charges(
         db,
         actor=current_user,  # type: ignore[arg-type]
         as_tenant=as_tenant,
@@ -61,19 +61,24 @@ async def get_charges(
         lease_id=lease_id,
         property_id=property_id,
         status=status,
-        limit=limit,
-        offset=offset,
+        cursor_payload=page.decoded(),
+        limit=page.limit,
+        with_total=page.include_total,
     )
-    # items already shaped for RentChargeWithTotals
-    return [
-        {
-            "charge": it["charge"],
-            "amount_paid_total": it["amount_paid_total"],
-            "amount_due_total": it["amount_due_total"],
-            "outstanding": it["outstanding"],
-        }
-        for it in items
-    ]
+    return build_cursor_page(
+        [
+            {
+                "charge": it["charge"],
+                "amount_paid_total": it["amount_paid_total"],
+                "amount_due_total": it["amount_due_total"],
+                "outstanding": it["outstanding"],
+            }
+            for it in items
+        ],
+        limit=page.limit,
+        next_payload=next_payload,
+        total=total,
+    )
 
 
 @router.post("/payments", response_model=RentPaymentSchema)
@@ -117,25 +122,30 @@ async def tenant_payment_intent(
     return RentPaymentSchema.model_validate(payment)
 
 
-@router.get("/payments", response_model=list[RentPaymentSchema])
+@router.get("/payments", response_model=CursorPage[RentPaymentSchema])
 async def list_payments(
     as_tenant: bool = Query(False),
     owner_id: int | None = Query(None, description="Owner id (agent/admin only)"),
     lease_id: int | None = Query(None),
     property_id: int | None = Query(None),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    page: CursorParams = Depends(),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    payments = await list_rent_payments(
+    payments, next_payload, total = await list_rent_payments(
         db,
         actor=current_user,  # type: ignore[arg-type]
         as_tenant=as_tenant,
         owner_id=owner_id,
         lease_id=lease_id,
         property_id=property_id,
-        limit=limit,
-        offset=offset,
+        cursor_payload=page.decoded(),
+        limit=page.limit,
+        with_total=page.include_total,
     )
-    return [RentPaymentSchema.model_validate(p) for p in payments]
+    return build_cursor_page(
+        [RentPaymentSchema.model_validate(p) for p in payments],
+        limit=page.limit,
+        next_payload=next_payload,
+        total=total,
+    )

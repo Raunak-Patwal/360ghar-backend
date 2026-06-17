@@ -70,27 +70,27 @@ async def owner_rent_status(
             # list_rent_charges accepts a single RentChargeStatus, not a list.
             # When excluding paid charges, query each unpaid status and merge.
             if include_paid:
-                charges = await list_rent_charges(
+                charges, _next, _total = await list_rent_charges(
                     db,
                     actor=user,
                     owner_id=user.id,
                     property_id=property_id,
                     status=None,
+                    cursor_payload={},
                     limit=limit,
-                    offset=(page - 1) * limit,
                 )
             else:
                 unpaid_statuses = [RentChargeStatus.pending, RentChargeStatus.partial, RentChargeStatus.overdue]
                 all_charges: list = []
                 for s in unpaid_statuses:
-                    batch = await list_rent_charges(
+                    batch, _next, _total = await list_rent_charges(
                         db,
                         actor=user,
                         owner_id=user.id,
                         property_id=property_id,
                         status=s,
+                        cursor_payload={},
                         limit=limit,
-                        offset=0,
                     )
                     all_charges.extend(batch)
                 # Sort by due_date ascending (matching service default) and paginate
@@ -266,14 +266,14 @@ async def owner_rent_history(
                     message="To view payment history, please log in to your 360Ghar account.",
                 )
 
-            payments = await list_rent_payments(
+            payments, _next, _total = await list_rent_payments(
                 db,
                 actor=user,
                 owner_id=user.id,
                 property_id=property_id,
                 lease_id=lease_id,
+                cursor_payload={},
                 limit=limit,
-                offset=(page - 1) * limit,
             )
 
             serialized = [_serialize_rent_payment(p) for p in payments]

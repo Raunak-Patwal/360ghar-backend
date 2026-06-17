@@ -5,7 +5,6 @@ These tests verify PM-related API endpoints work correctly.
 They mock the service layer to isolate endpoint testing.
 """
 
-from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -97,7 +96,7 @@ class TestPMRentEndpoints:
             "app.services.pm_rent.list_rent_charges",
             new_callable=AsyncMock,
         ) as mock_list:
-            mock_list.return_value = []
+            mock_list.return_value = ([], None, None)
 
             response = await authenticated_client.get(
                 "/api/v1/pm/rent/charges"
