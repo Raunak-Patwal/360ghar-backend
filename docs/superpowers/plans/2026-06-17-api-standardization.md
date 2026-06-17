@@ -252,11 +252,11 @@ Phase 2 converts every list endpoint + its service function from `page/limit`, `
 
 ### Conversion recipe (reference — do not skip reading)
 
-**Service layer (keyset):** the service currently ends with `.order_by(<sort>.desc()).offset(offset).limit(limit)` and returns a `list`. Change its signature from `limit, offset` to `*, cursor_payload: dict, limit: int, with_total: bool = False` and return `(rows, next_payload, total)`:
+**Service layer (keyset):** the service currently ends with `.order_by(<sort>.desc()).offset(offset).limit(limit)` and returns a `list`. Change its signature from `limit, offset` to `*, cursor_payload: dict, limit: int, with_total: bool = False` and return `(rows, next_payload, total)`. Use the shared `keyset_filter` helper from `pagination.py` — it casts the cursor's bound value to the sort column's own type, which is **required** for timestamp columns (a raw ISO string fails with `operator does not exist: timestamp with time zone < character varying`):
 
 ```python
-from app.schemas.pagination import keyset_payload, read_keyset
-from sqlalchemy import func, select, tuple_
+from app.schemas.pagination import keyset_filter, keyset_sort_value, keyset_payload
+from sqlalchemy import func, select
 
 # inside the service, after building `stmt` with all filters but BEFORE order/limit:
 count_total = None
@@ -264,10 +264,9 @@ if with_total:
     count_stmt = select(func.count()).select_from(stmt.subquery())
     count_total = (await db.execute(count_stmt)).scalar_one()
 
-keyset = read_keyset(cursor_payload)
-if keyset is not None:
-    last_sort, last_id = keyset
-    stmt = stmt.where(tuple_(Model.created_at, Model.id) < (last_sort, last_id))
+predicate = keyset_filter(Model.created_at, Model.id, cursor_payload, descending=True)
+if predicate is not None:
+    stmt = stmt.where(predicate)
 
 stmt = stmt.order_by(Model.created_at.desc(), Model.id.desc()).limit(limit + 1)
 rows = list((await db.execute(stmt)).scalars().all())
@@ -276,9 +275,11 @@ next_payload = None
 if len(rows) > limit:
     rows = rows[:limit]
     last = rows[-1]
-    next_payload = keyset_payload(last.created_at.isoformat(), last.id)
+    next_payload = keyset_payload(keyset_sort_value(last.created_at), last.id)
 return rows, next_payload, count_total
 ```
+
+> `keyset_sort_value(v)` returns a JSON-safe representation of the sort value (`.isoformat()` for date/datetime, the value itself for str/int/float). `keyset_filter(sort_col, id_col, cursor_payload, *, descending=True)` returns a SQLAlchemy predicate (or `None` when there is no cursor) that casts the bound value to `sort_col.type`. For a string sort key (e.g. blog `name`) or numeric key (e.g. `price`), pass that column instead of `created_at`.
 
 **Service layer (offset-fallback):** keep internal `OFFSET`; derive offset from the cursor:
 
