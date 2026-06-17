@@ -37,10 +37,10 @@ from app.schemas.flatmates import (
     ReportOut,
     SocietyTagVoteCreate,
     SocietyTagVoteOut,
-    SwipeDeckResponse,
     SwipeRequest,
     SwipeResult,
 )
+from app.schemas.pagination import CursorPage, CursorParams, build_cursor_page
 from app.schemas.user import User as UserSchema
 from app.services.flatmates import (
     create_block,
@@ -182,7 +182,7 @@ async def get_user_profile(
     return await get_profile_by_id(db, user_id, current_user_id=current_user.id)
 
 
-@router.get("/profiles", response_model=SwipeDeckResponse)
+@router.get("/profiles", response_model=CursorPage[FlatmatesPeer])
 async def get_discoverable_profiles(
     city: str | None = Query(default=None),
     budget_min: int | None = Query(default=None),
@@ -198,15 +198,14 @@ async def get_discoverable_profiles(
         default=None,
         description="Comma-separated non-negotiable deal-breakers",
     ),
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    page: CursorParams = Depends(),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     parsed_non_neg: list[str] | None = None
     if non_negotiables:
         parsed_non_neg = [n.strip() for n in non_negotiables.split(",") if n.strip()]
-    profiles, total = await list_discoverable_profiles(
+    profiles, next_payload, total = await list_discoverable_profiles(
         db,
         current_user.id,
         city=city,
@@ -217,10 +216,16 @@ async def get_discoverable_profiles(
         lng=lng,
         radius=radius,
         non_negotiables_override=parsed_non_neg,
-        limit=limit,
-        offset=offset,
+        cursor_payload=page.decoded(),
+        limit=page.limit,
+        with_total=page.include_total,
     )
-    return SwipeDeckResponse(profiles=profiles, total=total)
+    return build_cursor_page(
+        [FlatmatesPeer.model_validate(p) for p in profiles],
+        limit=page.limit,
+        next_payload=next_payload,
+        total=total,
+    )
 
 
 @router.post("/swipes", response_model=SwipeResult)
@@ -232,24 +237,46 @@ async def swipe(
     return await record_swipe(db, current_user.id, payload)
 
 
-@router.get("/likes", response_model=list[IncomingLikeSummary])
+@router.get("/likes", response_model=CursorPage[IncomingLikeSummary])
 async def get_incoming_likes(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    page: CursorParams = Depends(),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await list_incoming_likes(db, current_user.id, limit=limit, offset=offset)
+    rows, next_payload, total = await list_incoming_likes(
+        db,
+        current_user.id,
+        cursor_payload=page.decoded(),
+        limit=page.limit,
+        with_total=page.include_total,
+    )
+    return build_cursor_page(
+        [IncomingLikeSummary.model_validate(r) for r in rows],
+        limit=page.limit,
+        next_payload=next_payload,
+        total=total,
+    )
 
 
-@router.get("/outgoing-likes", response_model=list[IncomingLikeSummary])
+@router.get("/outgoing-likes", response_model=CursorPage[IncomingLikeSummary])
 async def get_outgoing_likes(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    page: CursorParams = Depends(),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await list_outgoing_likes(db, current_user.id, limit=limit, offset=offset)
+    rows, next_payload, total = await list_outgoing_likes(
+        db,
+        current_user.id,
+        cursor_payload=page.decoded(),
+        limit=page.limit,
+        with_total=page.include_total,
+    )
+    return build_cursor_page(
+        [IncomingLikeSummary.model_validate(r) for r in rows],
+        limit=page.limit,
+        next_payload=next_payload,
+        total=total,
+    )
 
 
 @router.post("/profile-views", response_model=ProfileViewEventOut)
@@ -317,12 +344,25 @@ async def post_conversation_message(
     return await send_message(db, conversation_id, current_user.id, payload)
 
 
-@router.get("/matches", response_model=list[MatchSummary])
+@router.get("/matches", response_model=CursorPage[MatchSummary])
 async def get_matches(
+    page: CursorParams = Depends(),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await list_matches(db, current_user.id)
+    rows, next_payload, total = await list_matches(
+        db,
+        current_user.id,
+        cursor_payload=page.decoded(),
+        limit=page.limit,
+        with_total=page.include_total,
+    )
+    return build_cursor_page(
+        [MatchSummary.model_validate(r) for r in rows],
+        limit=page.limit,
+        next_payload=next_payload,
+        total=total,
+    )
 
 
 @router.put("/matches/{match_id}/unmatch")

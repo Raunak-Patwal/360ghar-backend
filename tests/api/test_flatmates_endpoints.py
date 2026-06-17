@@ -158,32 +158,36 @@ class TestFlatmatesLikesEndpoint:
             "app.api.api_v1.endpoints.flatmates.list_incoming_likes",
             new_callable=AsyncMock,
         ) as mock_list:
-            mock_list.return_value = [
-                {
-                    "id": 31,
-                    "peer": {
-                        "id": 44,
-                        "full_name": "Incoming User",
-                        "profile_image_url": None,
-                        "mode": "seeker",
-                        "match_percentage": 82,
-                    },
-                    "context_property": {
-                        "id": 99,
-                        "title": "Sunny room",
-                        "monthly_rent": 18000,
-                    },
-                    "created_at": datetime.now(timezone.utc),
-                }
-            ]
+            mock_list.return_value = (
+                [
+                    {
+                        "id": 31,
+                        "peer": {
+                            "id": 44,
+                            "full_name": "Incoming User",
+                            "profile_image_url": None,
+                            "mode": "seeker",
+                            "match_percentage": 82,
+                        },
+                        "context_property": {
+                            "id": 99,
+                            "title": "Sunny room",
+                            "monthly_rent": 18000,
+                        },
+                        "created_at": datetime.now(timezone.utc),
+                    }
+                ],
+                None,
+                None,
+            )
 
             response = await authenticated_client.get("/api/v1/flatmates/likes")
 
             assert response.status_code == 200
             data = response.json()
-            assert data[0]["id"] == 31
-            assert data[0]["peer"]["id"] == 44
-            assert data[0]["context_property"]["id"] == 99
+            assert data["items"][0]["id"] == 31
+            assert data["items"][0]["peer"]["id"] == 44
+            assert data["items"][0]["context_property"]["id"] == 99
             mock_list.assert_awaited_once()
 
 

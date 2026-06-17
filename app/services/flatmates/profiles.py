@@ -22,6 +22,7 @@ from app.models.properties import Property, PropertyAmenity
 from app.models.social import AppCatalog, UserConversation, UserMessage
 from app.models.users import User, UserSwipe
 from app.schemas.flatmates import FlatmatesProfileUpdate
+from app.schemas.pagination import offset_payload, read_offset
 from app.services.flatmates.helpers import (
     _build_peer_payload,
     _build_profile_payload,
@@ -108,9 +109,10 @@ async def list_discoverable_profiles(
     lng: float | None = None,
     radius: float | None = None,
     non_negotiables_override: list[str] | None = None,
+    cursor_payload: dict[str, Any] | None = None,
     limit: int = 20,
-    offset: int = 0,
-) -> tuple[list[dict[str, Any]], int]:
+    with_total: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None, int | None]:
     from app.models.social import UserBlock  # noqa: WPS433 – avoid top-level circular risk
     from app.utils.distance import get_bounding_box
 
@@ -249,17 +251,26 @@ async def list_discoverable_profiles(
             User.current_longitude.between(min_lon, max_lon),
         ])
 
-    count_stmt = select(func.count(User.id)).where(*filters)
-    total = int((await db.execute(count_stmt)).scalar() or 0)
+    _payload: dict[str, Any] = cursor_payload if cursor_payload is not None else {}
+    _offset = read_offset(_payload)
+
+    count_total: int | None = None
+    if with_total:
+        count_stmt = select(func.count(User.id)).where(*filters)
+        count_total = int((await db.execute(count_stmt)).scalar() or 0)
 
     stmt = (
         select(User)
         .where(*filters)
         .order_by(User.flatmates_last_active_at.desc().nulls_last())
-        .limit(limit)
-        .offset(offset)
+        .offset(_offset)
+        .limit(limit + 1)
     )
     users = list((await db.execute(stmt)).scalars().all())
+    next_payload: dict[str, Any] | None = None
+    if len(users) > limit:
+        users = users[:limit]
+        next_payload = offset_payload(_offset + limit)
 
     # --- Batch load active flatmate/PG listings for all matched users (single query, no N+1) ---
     prop_map: dict[int, Property] = {}
@@ -292,7 +303,7 @@ async def list_discoverable_profiles(
         )
         for u in users
     ]
-    return profiles, total
+    return profiles, next_payload, count_total
 
 
 async def update_flatmates_profile(
