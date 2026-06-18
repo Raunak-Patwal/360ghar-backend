@@ -28,6 +28,7 @@ from app.core.db_resilience import execute_with_transient_retry
 from app.core.logging import get_logger
 from app.models.enums import PG_FLATMATE_TYPES, BookingStatus
 from app.models.properties import Amenity, Property, PropertyAmenity, PropertyImage
+from app.schemas.pagination import offset_payload, read_offset
 from app.schemas.property import Property as PropertySchema
 from app.schemas.property import SortBy, UnifiedPropertyFilter
 from app.vector.embedding_client import embed_query
@@ -138,18 +139,25 @@ def _available_from_minimum(available_from: str | None) -> datetime | None:
 
 
 async def get_unified_properties_optimized(
-    db: AsyncSession, filters: UnifiedPropertyFilter, user_id: int | None, page: int, limit: int
-):
+    db: AsyncSession,
+    filters: UnifiedPropertyFilter,
+    user_id: int | None,
+    cursor_payload: dict,
+    limit: int,
+    *,
+    with_total: bool = False,
+) -> tuple[list[PropertySchema], dict | None, int | None]:
     """Unified property search with comprehensive filtering and geospatial optimization."""
+    skip = read_offset(cursor_payload)
     logger.info(
-        "Searching properties for user %s, page %s, limit %s, filters: %s",
+        "Searching properties for user %s, offset %s, limit %s, filters: %s",
         user_id,
-        page,
+        skip,
         limit,
         filters,
         extra={
             "user_id": user_id,
-            "page": page,
+            "offset": skip,
             "limit": limit,
             "property_type": [t.value if hasattr(t, "value") else t for t in filters.property_type]
             if filters.property_type
@@ -171,21 +179,24 @@ async def get_unified_properties_optimized(
     try:
         cache_filters = filters.model_dump(exclude_none=True, mode="json")
         cache_user_id = user_id or 0
-        should_cache = user_id is None
+        # Only cache unauthenticated first-page results (offset == 0)
+        should_cache = user_id is None and skip == 0
         if should_cache:
             cached = await PropertyCacheManager.get_cached_properties(
-                cache_filters, cache_user_id, page, limit
+                cache_filters, cache_user_id, 1, limit
             )
             if cached:
                 try:
                     cached_items = [
                         PropertySchema.model_validate(item) for item in cached.get("items", [])
                     ]
-                    return {**cached, "items": cached_items}
+                    # Return as 3-tuple: (items, next_payload, total)
+                    cached_total = cached.get("total")
+                    cached_has_more = len(cached_items) >= limit
+                    next_p = offset_payload(limit) if cached_has_more else None
+                    return cached_items[:limit], next_p, cached_total
                 except Exception as cache_exc:  # noqa: BLE001
                     logger.warning("Ignoring invalid property search cache: %s", cache_exc)
-
-        skip = (page - 1) * limit
 
         # Base query with eager loading
         query = select(Property).options(
@@ -607,22 +618,24 @@ async def get_unified_properties_optimized(
             # Default sorting
             query = query.order_by(Property.created_at.desc())
 
-        # Add pagination
-        query = query.offset(skip).limit(limit)
+        # Count only when requested (avoids extra query on every page)
+        count_total: int | None = None
+        if with_total:
+            count_result = await execute_with_transient_retry(
+                db,
+                lambda: db.execute(count_query),
+                operation_name="property_search_count",
+            )
+            count_total = count_result.scalar()
 
-        # Execute queries
+        # Fetch limit+1 to detect has_more
+        query = query.offset(skip).limit(limit + 1)
+
         result = await execute_with_transient_retry(
             db,
             lambda: db.execute(query),
             operation_name="property_search_query",
         )
-        count_result = await execute_with_transient_retry(
-            db,
-            lambda: db.execute(count_query),
-            operation_name="property_search_count",
-        )
-
-        total_count = count_result.scalar()
 
         # Build PropertySchema list directly, avoiding ORM attribute corruption
         # when add_columns() returns Row tuples instead of pure ORM objects.
@@ -648,14 +661,20 @@ async def get_unified_properties_optimized(
             properties = list(result.scalars().all())
             property_list = [PropertySchema.model_validate(prop) for prop in properties]
 
+        # Detect has_more and compute next cursor
+        has_more = len(property_list) > limit
+        if has_more:
+            property_list = property_list[:limit]
+        next_payload: dict | None = offset_payload(skip + limit) if has_more else None
+
         logger.info(
             "Found %s properties out of %s total",
             len(property_list),
-            total_count,
+            count_total,
             extra={
                 "result_count": len(property_list),
-                "total_count": total_count,
-                "page": page,
+                "total_count": count_total,
+                "offset": skip,
                 "limit": limit,
                 "user_id": user_id,
                 "search_query": filters.search_query,
@@ -664,22 +683,16 @@ async def get_unified_properties_optimized(
             },
         )
 
-        # Calculate total pages
-        total_pages = ((total_count or 0) + limit - 1) // limit
-
-        result_payload = {"items": property_list, "total": total_count, "total_pages": total_pages}
-
         if should_cache:
             try:
                 cache_payload = {
                     "items": [p.model_dump(mode="json") for p in property_list],
-                    "total": total_count,
-                    "total_pages": total_pages,
+                    "total": count_total,
                 }
                 await PropertyCacheManager.cache_properties(
                     cache_filters,
                     cache_user_id,
-                    page,
+                    1,
                     limit,
                     cache_payload,
                     ttl=settings.CACHE_TTL_PROPERTIES_LIST,
@@ -687,7 +700,7 @@ async def get_unified_properties_optimized(
             except Exception as cache_exc:  # noqa: BLE001
                 logger.warning("Failed to cache property search: %s", cache_exc)
 
-        return result_payload
+        return property_list, next_payload, count_total
     except Exception as e:
         logger.error("Failed to search properties: %s", e, exc_info=True)
         raise
