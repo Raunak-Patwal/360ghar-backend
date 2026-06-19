@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
-from app.core.exceptions import BadRequestException
+from app.config import settings
+from app.core.exceptions import BadRequestException, ConflictException
+from app.core.logging import get_logger
 from app.models.enums import ConversationStatus, UserMatchStatus, VisitContext, VisitStatus
 from app.models.properties import Property, Visit
 from app.models.social import UserConversation, UserMatch
@@ -14,6 +16,8 @@ from app.models.users import User
 from app.schemas.pagination import keyset_filter, keyset_payload, keyset_sort_value
 from app.schemas.visit import Visit as VisitSchema
 from app.schemas.visit import VisitCreate, VisitUpdate
+
+logger = get_logger(__name__)
 
 
 def _visit_load_options():
@@ -107,6 +111,56 @@ async def _validate_flatmate_visit_context(
     raise BadRequestException(detail="Flatmate meeting requires an active conversation or match")
 
 
+async def _ensure_no_visit_conflict(
+    db: AsyncSession,
+    user_id: int,
+    property_id: int,
+    scheduled_date: datetime,
+) -> None:
+    """Raise ConflictException if the user already has an active visit overlapping
+    the requested window **for the same property**.
+
+    The Visit model has no explicit duration column, so each visit is treated as
+    occupying a fixed-duration window (VISIT_DEFAULT_DURATION_MINUTES) starting at
+    its scheduled_date. A configurable buffer (VISIT_CONFLICT_BUFFER_MINUTES) is
+    applied to both sides of the overlap check. Cancelled and completed visits
+    never conflict.
+
+    Overlap is scoped to (user_id, property_id): a user may have concurrent
+    visits for *different* properties, and an agent may show the same property
+    to multiple users at the same time.
+    """
+    duration = timedelta(minutes=settings.VISIT_DEFAULT_DURATION_MINUTES)
+    buffer = timedelta(minutes=settings.VISIT_CONFLICT_BUFFER_MINUTES)
+
+    new_start = scheduled_date
+    new_end = new_start + duration
+    # Coarse window to limit the candidate set; the precise check runs in Python.
+    window_start = new_start - duration - buffer
+    window_end = new_end + buffer
+
+    stmt = select(Visit).where(
+        Visit.user_id == user_id,
+        Visit.property_id == property_id,
+        Visit.status.notin_([VisitStatus.cancelled, VisitStatus.completed]),
+        Visit.scheduled_date >= window_start,
+        Visit.scheduled_date <= window_end,
+    )
+    result = await db.execute(stmt)
+    existing_visits = result.scalars().all()
+
+    for existing in existing_visits:
+        existing_start = existing.scheduled_date
+        existing_end = existing_start + duration
+        # Two intervals [a, b) and [c, d) overlap iff a < d and c < b.
+        # Apply the buffer to both sides so back-to-back visits still conflict.
+        if (existing_start - buffer) < new_end and (existing_end + buffer) > new_start:
+            raise ConflictException(
+                detail="You already have a visit scheduled that overlaps this time",
+                error_code="VISIT_CONFLICT",
+            )
+
+
 async def create_visit(db: AsyncSession, user_id: int, visit: VisitCreate):
     """Create a new visit"""
     visit_data = visit.model_dump()
@@ -128,9 +182,12 @@ async def create_visit(db: AsyncSession, user_id: int, visit: VisitCreate):
     elif visit_data.get("counterparty_user_id") is not None:
         raise BadRequestException(detail="counterparty_user_id is only supported for flatmate meetings")
 
+    # --- Overlap detection: prevent double-booking the user ---
+    property_id = visit_data["property_id"]
+    await _ensure_no_visit_conflict(db, user_id, property_id, scheduled_date)
+
     db_visit = Visit(**visit_data)
     db.add(db_visit)
-    # Flush to assign PK, then re-select with eager-loaded relationships
     await db.flush()
     stmt = (
         select(Visit)
