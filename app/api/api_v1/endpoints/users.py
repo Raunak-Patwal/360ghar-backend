@@ -243,6 +243,15 @@ async def update_user_profile(
     return UserSchema.model_validate(updated_user)
 
 
+@router.get("/preferences", response_model=UserPreferences, summary="Get user preferences")
+async def get_preferences(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get user preferences"""
+    prefs = current_user.preferences if isinstance(current_user.preferences, dict) else {}
+    return UserPreferences(**prefs)
+
+
 @router.put("/preferences", response_model=MessageResponse, summary="Update user preferences")
 async def update_preferences(
     preferences: UserPreferences,

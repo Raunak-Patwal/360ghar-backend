@@ -17,7 +17,7 @@ from app.models.enums import (
     VisitContext,
     VisitStatus,
 )
-from app.models.properties import Property, Visit
+from app.models.properties import Property, PropertyAmenity, Visit
 from app.models.social import UserMatch
 from app.models.users import User
 from app.schemas.pagination import keyset_filter, keyset_payload, keyset_sort_value
@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 def _visit_load_options():
     return (
         selectinload(Visit.property).selectinload(Property.images),
-        selectinload(Visit.property).selectinload(Property.property_amenities),
+        selectinload(Visit.property).selectinload(Property.property_amenities).selectinload(PropertyAmenity.amenity),
         selectinload(Visit.counterparty_user),
         selectinload(Visit.agent),
     )

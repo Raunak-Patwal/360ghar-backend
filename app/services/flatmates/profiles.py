@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -415,6 +416,10 @@ async def mark_flatmates_notification_read(
     user = await db.get(User, user_id)
     if user is None:
         raise BadRequestException(detail="User not found")
+    try:
+        UUID(notification_id)
+    except (ValueError, AttributeError):
+        raise BadRequestException(detail="Notification not found") from None
     supa = _supa()
 
     def _sync_mark_read():

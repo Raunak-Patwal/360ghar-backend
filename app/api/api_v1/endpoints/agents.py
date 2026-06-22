@@ -9,6 +9,7 @@ from app.api.api_v1.dependencies.auth import (
     get_current_agent,
 )
 from app.core.database import get_db
+from app.models.enums import AgentType
 from app.schemas.agent import (
     Agent,
     AgentAssignment,
@@ -109,6 +110,9 @@ async def get_agents_by_agent_type(
     db: AsyncSession = Depends(get_db),
 ):
     """Get agents by type (general, specialist, senior)"""
+    valid_types = {t.value for t in AgentType}
+    if agent_type not in valid_types:
+        raise HTTPException(status_code=422, detail=f"Invalid agent_type. Must be one of: {', '.join(sorted(valid_types))}")
     rows, next_payload, total = await get_agents_by_type_paginated(
         db, cursor_payload=page.decoded(), limit=page.limit, with_total=page.include_total, agent_type=agent_type
     )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Literal
+from uuid import UUID
 
 from app.core.logging import get_logger
 from app.core.utils import utc_now_iso
@@ -113,6 +114,10 @@ async def mark_delivery_opened(
     """Mark a notification delivery as opened, verifying user ownership when possible."""
     if not user_supabase_id:
         return {"ok": False, "error": "unauthenticated"}
+    try:
+        UUID(delivery_id)
+    except (ValueError, AttributeError):
+        return {"ok": False, "error": "not_found"}
 
     def _sync_mark_opened():
         supa = _supa()
