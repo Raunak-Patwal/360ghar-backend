@@ -54,6 +54,7 @@ class VisitUpdate(BaseModel):
     counterparty_user_id: int | None = None
     conversation_id: int | None = None
     match_id: int | None = None
+    status: VisitStatus | None = None
 
 class VisitReschedule(BaseModel):
     new_date: datetime
