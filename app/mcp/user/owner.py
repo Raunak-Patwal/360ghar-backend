@@ -33,15 +33,11 @@ from app.mcp.errors import (
 from app.mcp.tool_ops import (
     TOOL_OPS_FORBIDDEN,
     TOOL_OPS_NOT_FOUND,
+    create_property,
     get_property_detail,
+    list_properties_enriched,
     toggle_property_availability,
     update_property_fields,
-)
-from app.mcp.tool_ops import (
-    create_property,
-)
-from app.mcp.tool_ops import (
-    list_properties_enriched,
 )
 
 # Import the user MCP server instance to register tools

@@ -9,7 +9,7 @@ from app.api.api_v1.dependencies.auth import (
     get_current_admin,
 )
 from app.core.database import get_db
-from app.core.exceptions import ConflictException
+from app.core.exceptions import BaseAPIException, ConflictException
 from app.core.logging import get_logger
 from app.models.enums import UserRole
 from app.models.users import User
@@ -22,7 +22,6 @@ from app.schemas.common import (
 from app.schemas.pagination import CursorPage, CursorParams, build_cursor_page
 from app.schemas.user import LocationUpdate, PhoneUpdate, UserPreferences, UserUpdate
 from app.schemas.user import User as UserSchema
-from app.core.exceptions import BaseAPIException
 from app.services.agent import assign_agent_to_user
 from app.services.storage import storage_service
 from app.services.user import (
