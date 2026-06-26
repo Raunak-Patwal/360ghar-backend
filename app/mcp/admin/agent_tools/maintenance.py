@@ -68,8 +68,9 @@ async def agent_maintenance_list(
         cursor_payload = decode_cursor(cursor) if cursor else {}
         offset = read_offset(cursor_payload)
 
-        async for db in get_db():
-            user = await _get_user(db)
+        from app.mcp.admin import agent
+        async for db in agent.get_db():
+            user = await agent._get_user(db)
             if not user:
                 _require_auth(
                     action="agent_maintenance_list",
@@ -188,8 +189,9 @@ async def agent_maintenance_update_status(
 
         status_norm = status.lower().strip()
 
-        async for db in get_db():
-            user = await _get_user(db)
+        from app.mcp.admin import agent
+        async for db in agent.get_db():
+            user = await agent._get_user(db)
             if not user:
                 _require_auth(
                     action="agent_maintenance_update_status",

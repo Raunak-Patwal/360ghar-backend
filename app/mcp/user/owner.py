@@ -33,9 +33,9 @@ from app.mcp.errors import (
 from app.mcp.tool_ops import (
     TOOL_OPS_FORBIDDEN,
     TOOL_OPS_NOT_FOUND,
-    create_property,
+    create_property as create_managed_property,
     get_property_detail,
-    list_properties_enriched,
+    list_properties_enriched as list_managed_properties,
     toggle_property_availability,
     update_property_fields,
 )
@@ -102,7 +102,7 @@ async def owner_properties_list(
 
             clamped_limit = min(max(1, limit), 100)
             cursor_payload = decode_cursor(cursor) if cursor else None
-            result = await list_properties_enriched(
+            result = await list_managed_properties(
                 db,
                 actor=user,
                 owner_id=user.id,
@@ -191,7 +191,7 @@ async def owner_properties_create(
             elif amenity_ids is not None and not isinstance(amenity_ids, list):
                 amenity_ids = [int(amenity_ids)] if str(amenity_ids).isdigit() else None
 
-            result = await create_property(
+            result = await create_managed_property(
                 db,
                 actor=user,
                 owner_id=user.id,

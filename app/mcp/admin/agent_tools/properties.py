@@ -64,8 +64,9 @@ async def agent_properties_list(
         limit = min(max(1, limit), 100)
         cursor_payload = decode_cursor(cursor) if cursor else {}
 
-        async for db in get_db():
-            user = await _get_user(db)
+        from app.mcp.admin import agent
+        async for db in agent.get_db():
+            user = await agent._get_user(db)
             if not user:
                 _require_auth(
                     action="agent_properties_list",
@@ -137,8 +138,9 @@ async def agent_properties_get(
         property_id: ID of the property
     """
     try:
-        async for db in get_db():
-            user = await _get_user(db)
+        from app.mcp.admin import agent
+        async for db in agent.get_db():
+            user = await agent._get_user(db)
             if not user:
                 _require_auth(
                     action="agent_properties_get",
@@ -261,8 +263,9 @@ async def agent_properties_create_for_owner(
         except ValueError:
             return invalid_input_response(f"Invalid purpose: {purpose}")
 
-        async for db in get_db():
-            user = await _get_user(db)
+        from app.mcp.admin import agent
+        async for db in agent.get_db():
+            user = await agent._get_user(db)
             if not user:
                 _require_auth(
                     action="agent_properties_create_for_owner",
@@ -356,8 +359,9 @@ async def agent_properties_verify(
         verification_notes: Notes about verification
     """
     try:
-        async for db in get_db():
-            user = await _get_user(db)
+        from app.mcp.admin import agent
+        async for db in agent.get_db():
+            user = await agent._get_user(db)
             if not user:
                 _require_auth(
                     action="agent_properties_verify",

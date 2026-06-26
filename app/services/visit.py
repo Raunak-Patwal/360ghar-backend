@@ -218,6 +218,13 @@ async def create_visit(db: AsyncSession, user_id: int, visit: VisitCreate):
                 property_title=visit_obj.property.title if visit_obj.property and visit_obj.property.title else "the property",
                 scheduled_date=visit_obj.scheduled_date.isoformat(),
             )
+        elif visit_obj.property and visit_obj.property.owner_id:
+            await notify_visit_scheduled(
+                db,
+                recipient_db_id=visit_obj.property.owner_id,
+                property_title=visit_obj.property.title if visit_obj.property.title else "the property",
+                scheduled_date=visit_obj.scheduled_date.isoformat(),
+            )
     except Exception:
         pass  # best-effort; never block visit creation
 

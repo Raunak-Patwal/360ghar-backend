@@ -47,8 +47,9 @@ async def agent_dashboard_overview(
         from app.models.pm_maintenance import MaintenanceRequest
         from app.models.properties import Property
 
-        async for db in get_db():
-            user = await _get_user(db)
+        from app.mcp.admin import agent
+        async for db in agent.get_db():
+            user = await agent._get_user(db)
             if not user:
                 _require_auth(
                     action="agent_dashboard_overview",
