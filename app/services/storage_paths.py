@@ -88,7 +88,7 @@ def generate_cloudinary_public_id(
     if user_id is None:
         # Fallback if somehow user_id isn't provided but it's user scoped
         return f"{folder_path}/{file_name}"
-    
+
     # All other paths are user-scoped
     return f"users/{user_id}/{folder_path}/{file_name}"
 

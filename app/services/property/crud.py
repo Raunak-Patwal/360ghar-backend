@@ -1,5 +1,6 @@
 """Create, read, update, delete operations for properties."""
 
+import inspect
 from datetime import datetime, timezone
 
 from sqlalchemy import delete as sa_delete

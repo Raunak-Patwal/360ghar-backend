@@ -7,11 +7,11 @@ from app.mcp.admin.agent_tools.common import (
     AuthRequiredError,
     MCPErrorCode,
     MCPResponse,
-    _get_user,
+    _get_user,  # noqa: F401
     _require_agent_or_admin,
     _require_auth,
     admin_mcp,
-    get_db,
+    get_db,  # noqa: F401
     get_user_role,
     internal_error_response,
     logger,
@@ -47,9 +47,8 @@ async def agent_dashboard_overview(
         from app.models.pm_maintenance import MaintenanceRequest
         from app.models.properties import Property
 
-        from app.mcp.admin import agent
-        async for db in agent.get_db():
-            user = await agent._get_user(db)
+        async for db in get_db():
+            user = await _get_user(db)
             if not user:
                 _require_auth(
                     action="agent_dashboard_overview",

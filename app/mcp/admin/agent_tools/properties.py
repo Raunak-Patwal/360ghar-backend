@@ -12,11 +12,11 @@ from app.mcp.admin.agent_tools.common import (
     AuthRequiredError,
     MCPErrorCode,
     MCPResponse,
-    _get_user,
+    _get_user,  # noqa: F401
     _require_agent_or_admin,
     _require_auth,
     admin_mcp,
-    get_db,
+    get_db,  # noqa: F401
     internal_error_response,
     invalid_input_response,
     logger,
@@ -64,9 +64,8 @@ async def agent_properties_list(
         limit = min(max(1, limit), 100)
         cursor_payload = decode_cursor(cursor) if cursor else {}
 
-        from app.mcp.admin import agent
-        async for db in agent.get_db():
-            user = await agent._get_user(db)
+        async for db in get_db():
+            user = await _get_user(db)
             if not user:
                 _require_auth(
                     action="agent_properties_list",
@@ -138,9 +137,8 @@ async def agent_properties_get(
         property_id: ID of the property
     """
     try:
-        from app.mcp.admin import agent
-        async for db in agent.get_db():
-            user = await agent._get_user(db)
+        async for db in get_db():
+            user = await _get_user(db)
             if not user:
                 _require_auth(
                     action="agent_properties_get",
@@ -263,9 +261,8 @@ async def agent_properties_create_for_owner(
         except ValueError:
             return invalid_input_response(f"Invalid purpose: {purpose}")
 
-        from app.mcp.admin import agent
-        async for db in agent.get_db():
-            user = await agent._get_user(db)
+        async for db in get_db():
+            user = await _get_user(db)
             if not user:
                 _require_auth(
                     action="agent_properties_create_for_owner",
@@ -359,9 +356,8 @@ async def agent_properties_verify(
         verification_notes: Notes about verification
     """
     try:
-        from app.mcp.admin import agent
-        async for db in agent.get_db():
-            user = await agent._get_user(db)
+        async for db in get_db():
+            user = await _get_user(db)
             if not user:
                 _require_auth(
                     action="agent_properties_verify",

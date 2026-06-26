@@ -217,7 +217,7 @@ async def update_booking_details(
 
     return await update_booking(db, booking_id, booking_update)
 
-@router.post("/cancel/", response_model=MessageResponse, summary="Cancel booking")
+@router.post("/cancel", response_model=MessageResponse, summary="Cancel booking")
 async def cancel_booking_request(
     cancel_data: BookingCancel,
     current_user: User = Depends(get_current_active_user),

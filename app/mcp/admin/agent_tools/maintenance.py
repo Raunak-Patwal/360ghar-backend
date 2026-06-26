@@ -12,11 +12,11 @@ from app.mcp.admin.agent_tools.common import (
     AuthRequiredError,
     MCPErrorCode,
     MCPResponse,
-    _get_user,
+    _get_user,  # noqa: F401
     _require_agent_or_admin,
     _require_auth,
     admin_mcp,
-    get_db,
+    get_db,  # noqa: F401
     get_user_role,
     internal_error_response,
     invalid_input_response,
@@ -68,9 +68,8 @@ async def agent_maintenance_list(
         cursor_payload = decode_cursor(cursor) if cursor else {}
         offset = read_offset(cursor_payload)
 
-        from app.mcp.admin import agent
-        async for db in agent.get_db():
-            user = await agent._get_user(db)
+        async for db in get_db():
+            user = await _get_user(db)
             if not user:
                 _require_auth(
                     action="agent_maintenance_list",
@@ -189,9 +188,8 @@ async def agent_maintenance_update_status(
 
         status_norm = status.lower().strip()
 
-        from app.mcp.admin import agent
-        async for db in agent.get_db():
-            user = await agent._get_user(db)
+        async for db in get_db():
+            user = await _get_user(db)
             if not user:
                 _require_auth(
                     action="agent_maintenance_update_status",

@@ -8,11 +8,11 @@ from app.mcp.admin.agent_tools.common import (
     AuthRequiredError,
     MCPErrorCode,
     MCPResponse,
-    _get_user,
+    _get_user,  # noqa: F401
     _require_agent_or_admin,
     _require_auth,
     admin_mcp,
-    get_db,
+    get_db,  # noqa: F401
     get_user_role,
     internal_error_response,
     invalid_input_response,
@@ -52,9 +52,8 @@ async def agent_bookings_list_all(
         limit = min(max(1, limit), 100)
         cursor_payload = decode_cursor(cursor) if cursor else {}
 
-        from app.mcp.admin import agent
-        async for db in agent.get_db():
-            user = await agent._get_user(db)
+        async for db in get_db():
+            user = await _get_user(db)
             if not user:
                 _require_auth(
                     action="agent_bookings_list_all",
@@ -133,9 +132,8 @@ async def agent_bookings_update_status(
         if status.lower() not in valid_statuses:
             return invalid_input_response(f"status must be one of: {', '.join(valid_statuses)}")
 
-        from app.mcp.admin import agent
-        async for db in agent.get_db():
-            user = await agent._get_user(db)
+        async for db in get_db():
+            user = await _get_user(db)
             if not user:
                 _require_auth(
                     action="agent_bookings_update_status",

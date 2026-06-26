@@ -22,6 +22,7 @@ from app.schemas.common import (
 from app.schemas.pagination import CursorPage, CursorParams, build_cursor_page
 from app.schemas.user import LocationUpdate, PhoneUpdate, UserPreferences, UserUpdate
 from app.schemas.user import User as UserSchema
+from app.core.exceptions import BaseAPIException
 from app.services.agent import assign_agent_to_user
 from app.services.storage import storage_service
 from app.services.user import (
@@ -118,7 +119,12 @@ async def delete_my_account(
     anonymizes + soft-deletes the local record. Shares the same logic as
     ``POST /auth/delete-account``.
     """
-    await delete_user_account(db, current_user)
+    try:
+        await delete_user_account(db, current_user)
+    except BaseAPIException:
+        raise
+    except Exception as e:
+        raise BaseAPIException(detail="An unexpected error occurred during account deletion") from e
     return MessageResponse(message="Account deleted successfully")
 
 

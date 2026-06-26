@@ -68,7 +68,7 @@ class TestDeleteAccountViaUsersMe:
         ):
             response = await user_client.delete("/api/v1/users/me")
 
-        assert response.status_code == 500
+        print(fSTATUS: {response.status_code} {response.text}); assert response.status_code == 500
 
 
 # =============================================================================
