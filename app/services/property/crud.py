@@ -593,7 +593,7 @@ async def delete_property(db: AsyncSession, property_id: int, actor: UserSchema)
 
         # Pre-check: block deletion if active bookings, visits, or leases reference this property
         from app.models.bookings import Booking
-        from app.models.visits import Visit
+        from app.models.properties import Visit
 
         active_booking = (
             await db.execute(
