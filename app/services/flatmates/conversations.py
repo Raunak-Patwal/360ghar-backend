@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+import asyncio
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -623,7 +624,7 @@ async def send_message(
 
             @event.listens_for(db.sync_session, "after_commit", once=True)
             def receive_after_commit(session) -> None:
-                import asyncio
+
 
                 async def _bg_notify() -> None:
                     from app.core.database import AsyncSessionLocal
