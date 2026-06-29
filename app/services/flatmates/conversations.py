@@ -7,9 +7,9 @@ participants table, but flatmates usage is always 1:1.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
-import asyncio
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
