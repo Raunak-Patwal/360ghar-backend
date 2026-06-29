@@ -268,9 +268,10 @@ async def create_conversation_from_payload(
 
         # --- Push notification to peer for the initial message ---
         try:
-            from app.services.push_notification import notify_new_message
-            from app.core.database import AsyncSessionLocalBG
             import asyncio
+
+            from app.core.database import AsyncSessionLocalBG
+            from app.services.push_notification import notify_new_message
 
             async def _send_initial_message_notification():
                 # Brief delay to allow the endpoint transaction to commit
