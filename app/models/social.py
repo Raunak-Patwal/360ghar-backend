@@ -220,7 +220,10 @@ class AppCatalog(Base):
 
 class MatchQnAAnswer(Base):
     __tablename__ = "match_qna_answers"
-    __table_args__ = (Index("idx_match_qna_match", "match_id"),)
+    __table_args__ = (
+        Index("idx_match_qna_match", "match_id"),
+        UniqueConstraint("match_id", "user_id", name="uq_match_qna_match_user"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("user_matches.id", ondelete="CASCADE"))

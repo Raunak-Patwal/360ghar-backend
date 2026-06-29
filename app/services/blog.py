@@ -100,7 +100,8 @@ def _serialize_seo_metadata(seo_metadata: dict[str, Any] | None = None) -> dict[
         return seo_metadata
     if hasattr(seo_metadata, "model_dump"):
         return dict(seo_metadata.model_dump(exclude_none=True))
-    return dict(seo_metadata) if isinstance(seo_metadata, dict) else {}
+    logger.warning("Unsupported seo_metadata type %s; storing empty metadata", type(seo_metadata).__name__)
+    return {}
 
 
 def _coerce_status(value: Any) -> BlogPostStatus:

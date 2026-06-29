@@ -246,6 +246,22 @@ async def record_rent_payment(
         if charge.owner_id != actor.id and charge.tenant_user_id != actor.id:
             raise InsufficientPermissionsError("Not authorized to record payment for this charge")
 
+    # Guard against overpayment: compute current outstanding before recording
+    existing_paid_res = await db.execute(
+        select(func.coalesce(func.sum(RentPayment.amount_paid), 0.0)).where(
+            RentPayment.charge_id == charge.id
+        )
+    )
+    existing_paid = float(existing_paid_res.scalar_one() or 0.0)
+    due_total = float(charge.amount_due or 0) + float(charge.late_fee_assessed or 0)
+    outstanding = max(due_total - existing_paid, 0.0)
+    if outstanding <= 0:
+        raise BadRequestException(detail="This charge is already fully paid")
+    if amount_paid > outstanding:
+        raise BadRequestException(
+            detail=f"Payment amount ({amount_paid}) exceeds outstanding balance ({outstanding:.2f})"
+        )
+
     payment = RentPayment(
         charge_id=charge.id,
         lease_id=charge.lease_id,

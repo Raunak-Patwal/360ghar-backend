@@ -241,6 +241,18 @@ async def renew_lease(
 
     new_status = LeaseStatus.active if make_active else LeaseStatus.draft
 
+    # Prevent creating a second active lease for the same property when renewing
+    if new_status == LeaseStatus.active:
+        existing_active = await db.execute(
+            select(Lease.id).where(
+                Lease.property_id == old.property_id,
+                Lease.status == LeaseStatus.active,
+                Lease.id != old.id,
+            )
+        )
+        if existing_active.scalar_one_or_none() is not None:
+            raise BadRequestException(detail="Property already has another active lease")
+
     new = Lease(
         property_id=old.property_id,
         owner_id=old.owner_id,

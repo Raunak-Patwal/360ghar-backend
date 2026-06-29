@@ -7,6 +7,7 @@ from app.api.api_v1.dependencies.auth import get_current_active_user
 from app.core.database import get_db
 from app.models.enums import ManagedPropertyStatus, UserRole
 from app.schemas.pagination import CursorPage, CursorParams, build_cursor_page
+from app.schemas.pm_lease import Lease as LeaseSchema
 from app.schemas.pm_property import ManagedPropertyDetail, ManagedPropertyUpdate
 from app.schemas.property import Property as PropertySchema
 from app.schemas.property import PropertyCreate
@@ -116,7 +117,7 @@ async def get_pm_property(
     res = await get_managed_property_detail(db, actor=current_user, property_id=property_id)
     return {
         "property": PropertySchema.model_validate(res["property"]),
-        "active_lease": (res["active_lease"] and res["active_lease"]),
+        "active_lease": LeaseSchema.model_validate(res["active_lease"]) if res["active_lease"] else None,
     }
 
 

@@ -14,10 +14,50 @@ class TestRecordSwipe:
     async def test_record_swipe_like(
         self,
         db_session: AsyncSession,
+        test_user_2,
+        test_property,
+    ):
+        """Test recording a like swipe (test_property is owned by test_user)."""
+        from app.schemas.property import PropertySwipe
+        from app.services.swipe import record_swipe
+
+        swipe_data = PropertySwipe(
+            property_id=test_property.id,
+            is_liked=True,
+        )
+
+        result = await record_swipe(db_session, test_user_2.id, swipe_data)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_record_swipe_dislike(
+        self,
+        db_session: AsyncSession,
+        test_user_2,
+        test_property,
+    ):
+        """Test recording a dislike swipe (test_property is owned by test_user)."""
+        from app.schemas.property import PropertySwipe
+        from app.services.swipe import record_swipe
+
+        swipe_data = PropertySwipe(
+            property_id=test_property.id,
+            is_liked=False,
+        )
+
+        result = await record_swipe(db_session, test_user_2.id, swipe_data)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_record_swipe_own_property_blocked(
+        self,
+        db_session: AsyncSession,
         test_user,
         test_property,
     ):
-        """Test recording a like swipe."""
+        """A user cannot swipe their own property."""
         from app.schemas.property import PropertySwipe
         from app.services.swipe import record_swipe
 
@@ -28,27 +68,7 @@ class TestRecordSwipe:
 
         result = await record_swipe(db_session, test_user.id, swipe_data)
 
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_record_swipe_dislike(
-        self,
-        db_session: AsyncSession,
-        test_user,
-        test_property,
-    ):
-        """Test recording a dislike swipe."""
-        from app.schemas.property import PropertySwipe
-        from app.services.swipe import record_swipe
-
-        swipe_data = PropertySwipe(
-            property_id=test_property.id,
-            is_liked=False,
-        )
-
-        result = await record_swipe(db_session, test_user.id, swipe_data)
-
-        assert result is True
+        assert result is False
 
     @pytest.mark.asyncio
     async def test_record_swipe_nonexistent_property(
@@ -73,21 +93,29 @@ class TestRecordSwipe:
     async def test_record_swipe_update_existing(
         self,
         db_session: AsyncSession,
-        test_user,
+        test_user_2,
         test_property,
-        test_swipe,
     ):
-        """Test updating existing swipe."""
+        """Test updating existing swipe (test_property is owned by test_user)."""
         from app.schemas.property import PropertySwipe
         from app.services.swipe import record_swipe
+        from tests.fixtures.factories import SwipeFactory
+
+        # Create an initial swipe by a different user than the owner
+        existing = await SwipeFactory.create(
+            db_session,
+            user=test_user_2,
+            property_obj=test_property,
+            is_liked=True,
+        )
 
         # Toggle from like to dislike
         swipe_data = PropertySwipe(
             property_id=test_property.id,
-            is_liked=not test_swipe.is_liked,
+            is_liked=not existing.is_liked,
         )
 
-        result = await record_swipe(db_session, test_user.id, swipe_data)
+        result = await record_swipe(db_session, test_user_2.id, swipe_data)
 
         assert result is True
 

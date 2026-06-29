@@ -487,6 +487,11 @@ class TourGenerationRequest(BaseModel):
     suggest_hotspots: bool | None = False
     apply_to_scenes: bool | None = True
     language: str | None = None
+    # When true, build Matterport-style spatial navigation: place each navigation
+    # hotspot on the actual doorway leading to the correct adjacent room (vision +
+    # graph), instead of naive consecutive-scene linking. See
+    # app/services/tour_ai/spatial.py.
+    spatial: bool | None = False
 
     model_config = ConfigDict(extra="allow")
 

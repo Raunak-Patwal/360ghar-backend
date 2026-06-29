@@ -20,7 +20,7 @@ from app.mcp.admin.agent_tools.common import (
     not_found_response,
     serialize_booking,
 )
-from app.models.enums import UserRole
+from app.models.enums import BookingStatus, UserRole
 from app.schemas.pagination import decode_cursor, encode_cursor
 
 
@@ -153,18 +153,16 @@ async def agent_bookings_update_status(
             if not booking:
                 return not_found_response("Booking", booking_id)
 
-            # Update booking status
-            from app.schemas.booking import BookingUpdate
-            update_data = BookingUpdate(booking_status=status.lower())
+            booking.booking_status = BookingStatus(status.lower())
             if notes:
-                update_data.notes = notes
-
-            updated = await booking_svc.update_booking(db, booking_id, update_data)
+                booking.internal_notes = notes
+            await db.flush()
+            await db.refresh(booking)
             await db.commit()
 
             return MCPResponse.success({
                 "message": f"Booking status updated to {status}",
-                "booking": serialize_booking(updated) if updated else None,
+                "booking": serialize_booking(booking),
             }).model_dump()
     except AuthRequiredError:
         raise

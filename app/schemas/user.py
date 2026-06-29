@@ -75,9 +75,8 @@ class UserUpdate(BaseModel):
     preferences: dict[str, Any] | None = None
     current_latitude: float | None = None
     current_longitude: float | None = None
-    notification_settings: dict[str, bool] | None = None
+    notification_settings: dict[str, Any] | None = None
     privacy_settings: dict[str, Any] | None = None
-    phone_verified: bool | None = None
 
     @field_validator('full_name')
     @classmethod

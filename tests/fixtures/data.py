@@ -3,9 +3,11 @@ Sample data fixtures for testing.
 
 Provides pre-built test data scenarios for common testing needs.
 """
+from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 import pytest_asyncio
 
@@ -33,6 +35,11 @@ from tests.fixtures.factories import (
     PropertyFactory,
     UserFactory,
 )
+
+if TYPE_CHECKING:
+    from app.models.agents import Agent
+    from app.models.properties import Visit
+    from app.models.users import UserSwipe
 
 # =============================================================================
 # Property Fixtures
@@ -739,7 +746,7 @@ async def test_maintenance_requests(
 # =============================================================================
 
 @pytest_asyncio.fixture
-async def test_agent(db_session, test_agent_user) -> "Agent":
+async def test_agent(db_session, test_agent_user) -> Agent:
     """
     Create a test agent.
 
@@ -760,7 +767,7 @@ async def test_agent(db_session, test_agent_user) -> "Agent":
 
 
 @pytest_asyncio.fixture
-async def test_agents(db_session, test_agent_user) -> list["Agent"]:
+async def test_agents(db_session, test_agent_user) -> list[Agent]:
     """
     Create multiple test agents.
 
@@ -816,7 +823,7 @@ async def test_user_with_agent(db_session, test_user, test_agent) -> User:
 # =============================================================================
 
 @pytest_asyncio.fixture
-async def test_visit(db_session, test_user, test_property, test_agent) -> "Visit":
+async def test_visit(db_session, test_user, test_property, test_agent) -> Visit:
     """
     Create a test visit.
 
@@ -837,7 +844,7 @@ async def test_visit(db_session, test_user, test_property, test_agent) -> "Visit
 
 
 @pytest_asyncio.fixture
-async def test_visits(db_session, test_user, test_property, test_agent) -> list["Visit"]:
+async def test_visits(db_session, test_user, test_property, test_agent) -> list[Visit]:
     """
     Create multiple test visits.
 
@@ -868,7 +875,7 @@ async def test_visits(db_session, test_user, test_property, test_agent) -> list[
 
 
 @pytest_asyncio.fixture
-async def cancelled_visit(db_session, test_user, test_property, test_agent) -> "Visit":
+async def cancelled_visit(db_session, test_user, test_property, test_agent) -> Visit:
     """
     Create a cancelled visit.
 
@@ -893,7 +900,7 @@ async def cancelled_visit(db_session, test_user, test_property, test_agent) -> "
 # =============================================================================
 
 @pytest_asyncio.fixture
-async def test_swipe(db_session, test_user, test_property) -> "UserSwipe":
+async def test_swipe(db_session, test_user, test_property) -> UserSwipe:
     """
     Create a test swipe.
 
@@ -911,7 +918,7 @@ async def test_swipe(db_session, test_user, test_property) -> "UserSwipe":
 
 
 @pytest_asyncio.fixture
-async def test_swipes(db_session, test_user, test_properties) -> list["UserSwipe"]:
+async def test_swipes(db_session, test_user, test_properties) -> list[UserSwipe]:
     """
     Create multiple test swipes.
 

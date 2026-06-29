@@ -274,23 +274,39 @@ async def send_to_topic(
             ttl_seconds=ttl,
         )
         resp = await fcm.send_message(msg)
+
+        def _sync_record_delivery():
+            supa = _supa()
+            supa.table("notification_deliveries").insert(
+                {
+                    "notification_id": notif["id"],
+                    "status": "sent",
+                    "fcm_message_id": resp.get("name"),
+                    "sent_at": utc_now_iso(),
+                }
+            ).execute()
+
+        await _run_sync(_sync_record_delivery)
+        return {"ok": True, "fcm": resp}
     except RuntimeError as e:
         logger.error("FCM send skipped — credentials not available: %s", e)
         return {"ok": False, "error": "FCM not configured"}
+    except httpx.HTTPStatusError as e:
+        err_text = e.response.text
+        logger.error("FCM topic send failed", extra={"status": e.response.status_code, "error": err_text}, exc_info=True)
 
-    def _sync_record_delivery():
-        supa = _supa()
-        supa.table("notification_deliveries").insert(
-            {
-                "notification_id": notif["id"],
-                "status": "sent",
-                "fcm_message_id": resp.get("name"),
-                "sent_at": utc_now_iso(),
-            }
-        ).execute()
+        def _sync_record_failure():
+            supa = _supa()
+            supa.table("notification_deliveries").insert(
+                {
+                    "notification_id": notif["id"],
+                    "status": "failed",
+                    "error_code": err_text,
+                }
+            ).execute()
 
-    await _run_sync(_sync_record_delivery)
-    return {"ok": True, "fcm": resp}
+        await _run_sync(_sync_record_failure)
+        raise
 
 
 async def send_bulk(

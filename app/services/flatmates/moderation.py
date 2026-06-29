@@ -367,20 +367,16 @@ async def create_block(db: AsyncSession, user_id: int, blocked_user_id: int) -> 
 
 
 async def _active_reporter_count(db: AsyncSession, reported_user_id: int) -> int:
-    rows = (
-        await db.execute(
-            select(UserReport.reporter_user_id).where(
-                UserReport.reported_user_id == reported_user_id,
-                UserReport.status.in_(
-                    [
-                        UserReportStatus.open.value,
-                        UserReportStatus.reviewed.value,
-                    ]
-                ),
-            )
-        )
-    ).scalars()
-    return len({int(reporter_id) for reporter_id in rows.all()})
+    stmt = select(func.count(func.distinct(UserReport.reporter_user_id))).where(
+        UserReport.reported_user_id == reported_user_id,
+        UserReport.status.in_(
+            [
+                UserReportStatus.open.value,
+                UserReportStatus.reviewed.value,
+            ]
+        ),
+    )
+    return int((await db.execute(stmt)).scalar() or 0)
 
 
 def apply_report_auto_pause(
@@ -544,9 +540,9 @@ async def create_report(db: AsyncSession, user_id: int, payload: ReportCreate) -
             UserReport.reporter_user_id == user_id,
             UserReport.reported_user_id == payload.reported_user_id,
             UserReport.status == UserReportStatus.open.value
-        )
+        ).limit(1)
     )
-    if existing_report.scalar_one_or_none():
+    if existing_report.scalars().first():
         raise BadRequestException(detail="You already have an open report against this user")
 
     report = UserReport(

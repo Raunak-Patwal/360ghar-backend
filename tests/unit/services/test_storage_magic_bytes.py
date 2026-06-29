@@ -77,7 +77,6 @@ class TestValidateMagicBytes:
             (VALID_MP3_FRAME, "mp3"),
             (VALID_WAV, "wav"),
             (VALID_JPEG, "image"),
-            (b"", "image"),  # images short-circuit regardless of content
         ],
     )
     def test_valid_magic_bytes_accepted(self, content, expected_type):
@@ -100,6 +99,13 @@ class TestValidateMagicBytes:
     def test_empty_content_rejected_for_non_image(self):
         assert validate_magic_bytes(b"", "pdf") is False
         assert validate_magic_bytes(b"", "mp4") is False
+
+    def test_empty_content_rejected_for_image(self):
+        assert validate_magic_bytes(b"", "image") is False
+
+    def test_spoofed_image_rejected(self):
+        # Non-image content with image content_type should be rejected.
+        assert validate_magic_bytes(b"not an image at all", "image") is False
 
     def test_unknown_expected_type_allows(self):
         # No magic-byte rule defined → allow (don't break valid-but-unmapped types).

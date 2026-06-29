@@ -88,10 +88,16 @@ class PresignedUploadResponseItem(BaseModel):
     """Response item with signed URL for direct client upload.
 
     The upload_id can be used to confirm the upload after completion.
+    The client should POST a multipart form to ``signed_url`` with the
+    file plus ``api_key``, ``signature``, ``timestamp``, and ``public_id``
+    fields.
     """
     upload_id: str  # MediaFile ID for confirmation
     signed_url: str
-    token: str
+    token: str  # Cloudinary upload signature
+    api_key: str | None = None
+    timestamp: int | None = None
+    public_id: str | None = None
     path: str
     public_url: str
 
@@ -127,4 +133,8 @@ class BatchDeleteResponse(BaseModel):
     failed: list[str] = Field(
         default_factory=list,
         description="IDs that could not be deleted (not found or not owned by the caller)",
+    )
+    storage_warnings: list[str] = Field(
+        default_factory=list,
+        description="IDs whose DB record was deleted but the underlying storage object could not be removed",
     )

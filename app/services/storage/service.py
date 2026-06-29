@@ -122,7 +122,7 @@ class StorageService:
                 )
 
             content_type = file.content_type
-            is_image = content_type and content_type.startswith("image/")
+            is_image = bool(content_type and content_type.startswith("image/"))
             if is_image:
                 try:
                     # Use folder-specific settings if available, otherwise defaults
@@ -396,7 +396,12 @@ class StorageService:
             else:
                 raise InvalidFileException(detail="Invalid file type")
 
-        public_id = generate_cloudinary_public_id(
+        # Use ONE public_id (rooted) end-to-end: sign it, store it on the
+        # media row, and return it to the client. Previously the code signed a
+        # rooted id but stored/returned the unrooted one, so confirm_upload's
+        # get_file_info() looked up a nonexistent id and marked every direct
+        # upload as failed.
+        file_name_part = generate_cloudinary_public_id(
             folder=folder,
             original_filename=filename,
             user_id=user_id,
@@ -404,14 +409,23 @@ class StorageService:
             tour_id=tour_id,
             scene_id=scene_id,
         )
+        # Join folder + filename into the rooted public_id; generate_signed_upload_params
+        # re-prefixes the cloudinary root internally, so we pass the UNROOTED id there.
+        resource_type = self.cloudinary._resource_type(normalized_content_type)
+        signed_params = self.cloudinary.generate_signed_upload_params(
+            public_id=file_name_part.split("/")[-1],
+            folder="/".join(file_name_part.split("/")[:-1]),
+            resource_type=resource_type,
+        )
+        full_public_id = signed_params["public_id"]
 
-        public_url = self.cloudinary.get_url(public_id)
+        public_url = self.cloudinary.get_url(full_public_id)
 
         media = await self._create_media_record(
             db=db,
             user_id=user_id,
             upload_result={
-                "file_path": public_id,
+                "file_path": full_public_id,
                 "public_url": public_url,
                 "file_type": folder.name.lower(),
                 "file_size": file_size or 0,
@@ -425,9 +439,12 @@ class StorageService:
 
         return {
             "upload_id": media.id,
-            "signed_url": None,
-            "token": None,
-            "path": public_id,
+            "signed_url": signed_params["upload_url"],
+            "token": signed_params["signature"],
+            "api_key": signed_params["api_key"],
+            "timestamp": signed_params["timestamp"],
+            "public_id": full_public_id,
+            "path": full_public_id,
             "public_url": public_url,
         }
 
@@ -451,7 +468,15 @@ class StorageService:
         if media.upload_status == "complete":
             return media
 
-        file_info = self.cloudinary.get_file_info(media.storage_path or media.file_url)
+        lookup_id = media.storage_path
+        if not lookup_id and media.file_url:
+            lookup_id = self.cloudinary.extract_public_id_from_url(media.file_url)
+        if not lookup_id:
+            logger.warning("Upload confirmation failed: no storage path or URL for media %s", upload_id)
+            media.upload_status = "failed"
+            await db.flush()
+            raise NotFoundException(detail="File not found in storage")
+        file_info = self.cloudinary.get_file_info(lookup_id)
         if not file_info:
             logger.warning("Upload confirmation failed: file not found at %s", media.storage_path)
             media.upload_status = "failed"
@@ -676,9 +701,10 @@ class StorageService:
 
         deleted: list[str] = []
         failed: list[str] = []
+        storage_warnings: list[str] = []
 
         if not media_ids:
-            return BatchDeleteResponse(deleted=deleted, failed=failed).model_dump()
+            return BatchDeleteResponse(deleted=deleted, failed=failed, storage_warnings=storage_warnings).model_dump()
 
         # Deduplicate while preserving order.
         unique_ids: list[str] = []
@@ -713,11 +739,12 @@ class StorageService:
                     self.delete_file(file_path, bucket_name=bucket_name)
                 except Exception as e:  # noqa: BLE001
                     logger.error("Storage deletion failed for media %s: %s", mid, e)
+                    storage_warnings.append(mid)
             await db.delete(media)
             deleted.append(mid)
 
         await db.flush()
-        return BatchDeleteResponse(deleted=deleted, failed=failed).model_dump()
+        return BatchDeleteResponse(deleted=deleted, failed=failed, storage_warnings=storage_warnings).model_dump()
 
 
 storage_service = StorageService()

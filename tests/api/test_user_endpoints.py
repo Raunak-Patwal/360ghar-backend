@@ -213,7 +213,6 @@ class TestNotificationSettingsEndpoint:
             "app.api.api_v1.endpoints.users.get_user_by_id",
             new_callable=AsyncMock,
         ) as mock_get:
-            mock_user = create_mock_user()
             mock_user_model = type(
                 "MockUserModel",
                 (),
@@ -345,7 +344,6 @@ class TestGetUserByIdEndpoint:
             "app.api.api_v1.endpoints.users.get_user_by_id",
             new_callable=AsyncMock,
         ) as mock_get:
-            mock_user = create_mock_user(user_id=42)
             # Create a mock that has model_validate compatible structure
             mock_user_model = type(
                 "MockUserModel",

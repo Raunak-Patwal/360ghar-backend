@@ -122,7 +122,10 @@ async def get_tour(
         raise TourNotFoundException()
 
     is_owner = user_id is not None and tour.user_id == user_id
-    is_publicly_accessible = tour.status == TourStatus.published and bool(tour.is_public)
+    is_publicly_accessible = (
+        tour.status == TourStatus.published
+        and tour.visibility != TourVisibility.private
+    )
 
     if not is_owner and not is_publicly_accessible:
         if user_id is not None:
@@ -215,6 +218,7 @@ async def publish_tour(db: AsyncSession, tour_id: str, user_id: int) -> Tour:
 
     tour.status = TourStatus.published
     tour.published_at = utc_now()
+    tour.visibility = TourVisibility.public
     tour.is_public = True
 
     await db.commit()
@@ -229,6 +233,7 @@ async def unpublish_tour(db: AsyncSession, tour_id: str, user_id: int) -> Tour:
     _ensure_tour_ownership(tour, user_id, "unpublish")
 
     tour.status = TourStatus.draft
+    tour.visibility = TourVisibility.private
     tour.is_public = False
 
     await db.commit()

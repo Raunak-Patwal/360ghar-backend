@@ -378,16 +378,27 @@ async def semantic_property_search(
     )
 
     try:
+        await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
         cursor_payload = page.decoded()
-        await pause_stale_flatmate_listings(db)
+        try:
+            await pause_stale_flatmate_listings(db)
+        except Exception as cleanup_exc:
+            logger.warning(
+                "Skipping stale-listing pause during semantic search: %s", cleanup_exc
+            )
+            await db.rollback()
+            await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
+
         rows, next_payload, total = await get_unified_properties_optimized(
             db, filters, user_id, cursor_payload, page.limit,
             with_total=page.include_total,
         )
         return build_cursor_page(rows, limit=page.limit, next_payload=next_payload, total=total)
     except Exception as e:
-        if is_transient_db_error(e):
-            error_code = extract_db_error_code(e) or "TRANSIENT_DB_ERROR"
+        if is_transient_db_error(e) or is_statement_timeout(e):
+            error_code = extract_db_error_code(e) or (
+                "STATEMENT_TIMEOUT" if is_statement_timeout(e) else "TRANSIENT_DB_ERROR"
+            )
             logger.error(
                 "Semantic property search transient DB failure",
                 extra={"endpoint": "semantic_property_search", "error_code": error_code},
@@ -418,16 +429,27 @@ async def get_recommendations(
     """
     user_id = current_user.id if current_user else None
     try:
+        await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
         cursor_payload = page.decoded()
-        await pause_stale_flatmate_listings(db)
+        try:
+            await pause_stale_flatmate_listings(db)
+        except Exception as cleanup_exc:
+            logger.warning(
+                "Skipping stale-listing pause during recommendations: %s", cleanup_exc
+            )
+            await db.rollback()
+            await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
+
         rows, next_payload, total = await get_property_recommendations(
             db, user_id, cursor_payload, page.limit,
             with_total=page.include_total,
         )
         return build_cursor_page(rows, limit=page.limit, next_payload=next_payload, total=total)
     except Exception as e:
-        if is_transient_db_error(e):
-            error_code = extract_db_error_code(e) or "TRANSIENT_DB_ERROR"
+        if is_transient_db_error(e) or is_statement_timeout(e):
+            error_code = extract_db_error_code(e) or (
+                "STATEMENT_TIMEOUT" if is_statement_timeout(e) else "TRANSIENT_DB_ERROR"
+            )
             logger.error(
                 "Property recommendations transient DB failure",
                 extra={

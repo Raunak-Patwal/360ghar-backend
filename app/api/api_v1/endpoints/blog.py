@@ -3,7 +3,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.api_v1.dependencies.auth import get_current_active_user, get_current_user_optional
+from app.api.api_v1.dependencies.auth import (
+    get_current_admin,
+    get_current_user_optional,
+)
 from app.core.cache import CacheKeyPatterns, invalidate_cache
 from app.core.database import get_db
 from app.core.db_resilience import extract_db_error_code, is_transient_db_error
@@ -84,7 +87,7 @@ logger = get_logger(__name__)
 async def create_post(
     payload: BlogPostCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Create a new blog post (admin only)."""
     try:
@@ -199,11 +202,9 @@ async def get_post_by_preview(
 async def create_preview_token(
     post_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Generate (or rotate) a preview token for a blog post. Admin only."""
-    if getattr(current_user, "role", None) != UserRole.admin.value:
-        raise HTTPException(status_code=403, detail="Only admins can generate preview tokens")
     try:
         post = await generate_preview_token(db, post_id)
         preview_url = f"/api/v1/blog/posts/preview/{post.preview_token}"
@@ -276,7 +277,7 @@ async def update_post(
     identifier: str,
     payload: BlogPostUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Update a blog post by ID or slug (admin only)."""
     try:
@@ -293,7 +294,7 @@ async def update_post(
 async def delete_post(
     identifier: str,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Delete a blog post by ID or slug (admin only)."""
     try:
@@ -311,7 +312,7 @@ async def delete_post(
 async def generate_from_topic(
     payload: BlogGenerateFromTopicRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Generate a draft blog from a given topic using Perplexity and fetch images via Google Images (SerpAPI). Admin only."""
     try:
@@ -328,7 +329,7 @@ async def generate_from_topic(
 async def generate_bulk(
     payload: BlogGenerateBulkRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Generate multiple draft blogs by first researching topics, then generating each one. Admin only."""
     try:
@@ -347,7 +348,7 @@ async def generate_bulk(
 async def create_category_endpoint(
     payload: BlogCategoryCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Create a new blog category (admin only). Invalidates category cache."""
     try:
@@ -410,7 +411,7 @@ async def update_category_endpoint(
     identifier: str,
     payload: BlogCategoryUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Update a category by ID or slug (admin only). Invalidates category cache."""
     try:
@@ -427,7 +428,7 @@ async def update_category_endpoint(
 async def delete_category_endpoint(
     identifier: str,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Delete a category by ID or slug (admin only). Invalidates category cache."""
     try:
@@ -446,7 +447,7 @@ async def delete_category_endpoint(
 async def create_tag_endpoint(
     payload: BlogTagCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Create a new blog tag (admin only). Invalidates tag cache."""
     try:
@@ -509,11 +510,13 @@ async def update_tag_endpoint(
     identifier: str,
     payload: BlogTagUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Update a tag by ID or slug (admin only). Invalidates tag cache."""
     try:
-        return await update_tag(db, identifier, payload.name or "")
+        if not payload.name:
+            raise HTTPException(status_code=400, detail="Tag name is required")
+        return await update_tag(db, identifier, payload.name)
     except HTTPException:
         raise
     except Exception as e:
@@ -526,7 +529,7 @@ async def update_tag_endpoint(
 async def delete_tag_endpoint(
     identifier: str,
     db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_admin),
 ):
     """Delete a tag by ID or slug (admin only). Invalidates tag cache."""
     try:

@@ -83,7 +83,7 @@ class TestCreateExpense:
 
         with patch("app.services.pm_expenses.assert_can_manage_owner_portfolio", new_callable=AsyncMock):
             with patch("app.services.pm_expenses.assert_can_access_property", new_callable=AsyncMock, return_value=mock_prop):
-                expense = await create_expense(
+                await create_expense(
                     db,
                     actor=actor,
                     owner_id=1,
@@ -115,7 +115,7 @@ class TestCreateExpense:
 
         with patch("app.services.pm_expenses.assert_can_manage_owner_portfolio", new_callable=AsyncMock):
             with patch("app.services.pm_expenses.assert_can_access_property", new_callable=AsyncMock, return_value=mock_prop):
-                expense = await create_expense(
+                await create_expense(
                     db,
                     actor=actor,
                     owner_id=1,

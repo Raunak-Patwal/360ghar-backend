@@ -80,7 +80,7 @@ async def upload_file(
 
 @router.post("/batch", response_model=dict[str, Any], summary="Upload files in batch")
 async def upload_batch(
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] = File(..., max_length=20),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
     folder: str = Form("uploads"),
@@ -187,6 +187,9 @@ async def create_presigned_uploads(
             "upload_id": result["upload_id"],
             "signed_url": result["signed_url"],
             "token": result["token"],
+            "api_key": result.get("api_key"),
+            "timestamp": result.get("timestamp"),
+            "public_id": result.get("public_id"),
             "path": result["path"],
             "public_url": result["public_url"],
         })

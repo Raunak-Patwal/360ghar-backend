@@ -378,7 +378,7 @@ async def test_faqs_public_cache_path_page_walk(
 async def three_ai_jobs(db_session, _regular_user) -> list[AIJob]:
     """Seed 3 AI jobs for the regular user."""
     jobs = []
-    for i in range(3):
+    for _i in range(3):
         job = AIJob(
             id=str(uuid.uuid4()),
             user_id=_regular_user.id,

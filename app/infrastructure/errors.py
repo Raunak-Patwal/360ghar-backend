@@ -173,8 +173,9 @@ def register_exception_handlers(app: FastAPI) -> None:
 
 
 def _is_mcp_tool_route(path: str) -> bool:
-    return (path.startswith("/mcp") and not path.startswith("/mcp/oauth")) or path.startswith(
-        "/mcp-admin"
+    return (
+        (path.startswith("/mcp") and not path.startswith("/mcp/oauth"))
+        or (path.startswith("/mcp-admin") and not path.startswith("/mcp-admin/oauth"))
     )
 
 

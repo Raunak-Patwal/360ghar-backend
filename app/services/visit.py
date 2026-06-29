@@ -319,56 +319,84 @@ async def get_user_past_visits(
         next_payload = keyset_payload(keyset_sort_value(rows[-1].scheduled_date), rows[-1].id)
     return rows, next_payload, count_total
 
+# Valid status transitions: only these changes are allowed via the generic update.
+_VALID_STATUS_TRANSITIONS: dict[VisitStatus, set[VisitStatus]] = {
+    VisitStatus.scheduled: {VisitStatus.confirmed, VisitStatus.cancelled},
+    VisitStatus.confirmed: {VisitStatus.cancelled},
+    VisitStatus.rescheduled: {VisitStatus.confirmed, VisitStatus.cancelled},
+    # terminal states -- no further transitions allowed via update
+    VisitStatus.completed: set(),
+    VisitStatus.cancelled: set(),
+}
+
+
 async def update_visit(db: AsyncSession, visit_id: int, visit_update: VisitUpdate):
-    """Update a visit"""
+    """Update a visit.
+
+    Status transitions are validated: cancelled/completed visits are terminal
+    and cannot be changed, and only pre-defined transitions are allowed from
+    active states.
+    """
     stmt = select(Visit).where(Visit.id == visit_id)
     result = await db.execute(stmt)
     visit = result.scalar_one_or_none()
 
-    if visit:
-        old_status = visit.status
-        update_data = visit_update.model_dump(exclude_unset=True)
-        for field, value in update_data.items():
-            setattr(visit, field, value)
+    if not visit:
+        return None
 
-        await db.flush()
-        # Re-select with eager-loaded relationships to avoid async lazy-loads during serialization
-        stmt = (
-            select(Visit)
-            .options(*_visit_load_options())
-            .where(Visit.id == visit_id)
-        )
-        result = await db.execute(stmt)
-        updated_visit = result.scalar_one_or_none()
+    update_data = visit_update.model_dump(exclude_unset=True)
 
-        # --- Push notification on visit confirmation ---
-        new_status = update_data.get("status")
-        if new_status == VisitStatus.confirmed and old_status != VisitStatus.confirmed and updated_visit:
-            try:
-                from app.services.push_notification import notify_visit_confirmed
-                scheduled_str = updated_visit.scheduled_date.isoformat() if updated_visit.scheduled_date else "TBD"
-                prop_title = updated_visit.property.title if updated_visit.property and updated_visit.property.title else "the property"
-                # Notify the visiting user
+    # --- Validate status transition ---
+    new_status = update_data.get("status")
+    if new_status is not None:
+        # Allow idempotent updates (same status) — clients may re-confirm, etc.
+        if new_status != visit.status:
+            allowed = _VALID_STATUS_TRANSITIONS.get(visit.status, set())
+            if new_status not in allowed:
+                new_label = getattr(new_status, "value", new_status)
+                raise BadRequestException(
+                    detail=f"Cannot transition from '{visit.status.value}' to '{new_label}'"
+                )
+
+    old_status = visit.status
+    for field, value in update_data.items():
+        setattr(visit, field, value)
+
+    await db.flush()
+    # Re-select with eager-loaded relationships to avoid async lazy-loads during serialization
+    stmt = (
+        select(Visit)
+        .options(*_visit_load_options())
+        .where(Visit.id == visit_id)
+    )
+    result = await db.execute(stmt)
+    updated_visit = result.scalar_one_or_none()
+
+    # --- Push notification on visit confirmation ---
+    if new_status == VisitStatus.confirmed and old_status != VisitStatus.confirmed and updated_visit:
+        try:
+            from app.services.push_notification import notify_visit_confirmed
+            scheduled_str = updated_visit.scheduled_date.isoformat() if updated_visit.scheduled_date else "TBD"
+            prop_title = updated_visit.property.title if updated_visit.property and updated_visit.property.title else "the property"
+            # Notify the visiting user
+            await notify_visit_confirmed(
+                db,
+                recipient_db_id=updated_visit.user_id,
+                property_title=prop_title,
+                scheduled_date=scheduled_str,
+            )
+            # Notify the counterparty if present
+            if updated_visit.counterparty_user_id:
                 await notify_visit_confirmed(
                     db,
-                    recipient_db_id=updated_visit.user_id,
+                    recipient_db_id=updated_visit.counterparty_user_id,
                     property_title=prop_title,
                     scheduled_date=scheduled_str,
                 )
-                # Notify the counterparty if present
-                if updated_visit.counterparty_user_id:
-                    await notify_visit_confirmed(
-                        db,
-                        recipient_db_id=updated_visit.counterparty_user_id,
-                        property_title=prop_title,
-                        scheduled_date=scheduled_str,
-                    )
-            except Exception:
-                pass  # best-effort; never block visit update
+        except Exception:
+            pass  # best-effort; never block visit update
 
-        return updated_visit
-
-    return None
+    return updated_visit
 
 async def cancel_visit(db: AsyncSession, visit_id: int, reason: str):
     """Cancel a visit and return the updated visit with relationships.
@@ -477,22 +505,34 @@ async def get_agent_visits(
     return items, next_payload, count_total
 
 async def mark_visit_completed(db: AsyncSession, visit_id: int, notes: str | None = None, feedback: str | None = None):
-    """Mark a visit as completed"""
+    """Mark a visit as completed.
+
+    Only visits in *scheduled*, *confirmed*, or *rescheduled* state may be
+    marked as completed.  Already-completed or cancelled visits are rejected.
+
+    Returns:
+        True on success, False if the visit was not found or is in an
+        invalid state.
+    """
     stmt = select(Visit).where(Visit.id == visit_id)
     result = await db.execute(stmt)
     visit = result.scalar_one_or_none()
 
-    if visit:
-        visit.status = VisitStatus.completed
-        visit.actual_date = datetime.now(timezone.utc)
-        if notes:
-            visit.visit_notes = notes
-        if feedback:
-            visit.visitor_feedback = feedback
-        await db.flush()
-        return True
+    if not visit:
+        return False
 
-    return False
+    completable_statuses = {VisitStatus.scheduled, VisitStatus.confirmed, VisitStatus.rescheduled}
+    if visit.status not in completable_statuses:
+        return False
+
+    visit.status = VisitStatus.completed
+    visit.actual_date = datetime.now(timezone.utc)
+    if notes:
+        visit.visit_notes = notes
+    if feedback:
+        visit.visitor_feedback = feedback
+    await db.flush()
+    return True
 
 async def get_user_property_visit_stats(db: AsyncSession, user_id: int, property_id: int):
     """Return upcoming scheduled visit stats for a user on a given property.
@@ -544,7 +584,7 @@ async def get_all_visits(
 
     if filter_agent_id is not None:
         stmt = stmt.outerjoin(User, Visit.user_id == User.id).outerjoin(Property, Visit.property_id == Property.id).outerjoin(Owner, Property.owner_id == Owner.id)
-        filters.append(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+        filters.append(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id, Visit.agent_id == filter_agent_id))
 
     if filters:
         stmt = stmt.where(and_(*filters))

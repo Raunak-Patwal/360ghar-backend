@@ -110,9 +110,7 @@ def mock_cloudinary_storage():
 
     Returns a mock client that simulates successful file uploads.
     """
-    with patch("app.services.cloudinary.service.cloudinary_service") as mock:
-        mock_client = MagicMock()
-
+    with patch("app.services.cloudinary.service.cloudinary_service") as mock_client:
         # Mock upload method
         mock_client.upload_file.return_value = {
             "public_id": "360ghar/uploads/test_file.jpg",

@@ -3,6 +3,8 @@ Validation helpers for the storage service.
 
 MIME type checks, file size checks, and extension inference.
 """
+from __future__ import annotations
+
 import os
 
 from fastapi import UploadFile
@@ -110,6 +112,16 @@ def infer_content_type_from_extension(ext: str) -> str | None:
         return "audio/wav"
     if ext == ".ogg":
         return "audio/ogg"
+    if ext == ".mov":
+        return "video/quicktime"
+    if ext == ".mkv":
+        return "video/x-matroska"
+    if ext == ".aac":
+        return "audio/aac"
+    if ext == ".doc":
+        return "application/msword"
+    if ext == ".docx":
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     return None
 
 
@@ -154,8 +166,27 @@ def validate_magic_bytes(content: bytes, expected_type: str) -> bool:
         ``True`` if the magic bytes match, ``False`` otherwise.
     """
     if expected_type == "image":
-        # PIL validates image bytes downstream via image_processing.optimize_for_web.
-        return True
+        if not content or len(content) < 4:
+            return False
+        # JPEG: FF D8 FF
+        if content[:3] == b"\xff\xd8\xff":
+            return True
+        # PNG: 89 50 4E 47
+        if content[:4] == b"\x89PNG":
+            return True
+        # GIF: GIF8
+        if content[:4] == b"GIF8":
+            return True
+        # WebP: RIFF....WEBP
+        if content[:4] == b"RIFF" and len(content) >= 12 and content[8:12] == b"WEBP":
+            return True
+        # BMP: BM
+        if content[:2] == b"BM":
+            return True
+        # TIFF: II (little-endian) or MM (big-endian)
+        if content[:2] in (b"II", b"MM"):
+            return True
+        return False
     if not content:
         return False
     if expected_type == "pdf":
@@ -193,8 +224,18 @@ def get_file_extension(filename: str, *, content_type: str | None = None) -> str
 
     if content_type == "application/pdf":
         return ".pdf"
+    if content_type == "application/msword":
+        return ".doc"
+    if content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        return ".docx"
     if content_type in VALID_AUDIO_TYPES:
         return ".mp3"
+    if content_type == "video/webm":
+        return ".webm"
+    if content_type == "video/quicktime":
+        return ".mov"
+    if content_type == "video/x-matroska":
+        return ".mkv"
     if content_type in VALID_VIDEO_TYPES:
         return ".mp4"
     return ".jpg"

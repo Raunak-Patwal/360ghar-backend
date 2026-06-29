@@ -35,8 +35,8 @@ from app.schemas.property import PropertyCreate, PropertyUpdate
 from app.schemas.user import User as UserSchema
 from app.services.flatmates.helpers import geocode_listing
 from app.services.flatmates.moderation import (
-    apply_stale_listing_pause,
     apply_listing_prescreen_metadata,
+    apply_stale_listing_pause,
 )
 from app.services.pm_authz import _get_actor_role
 from app.services.property.helpers import _validate_listing_contract, build_location_wkt
@@ -570,7 +570,9 @@ async def delete_property(db: AsyncSession, property_id: int, actor: UserSchema)
 
         # Pre-check: block deletion if active bookings, visits, or leases reference this property
         from app.models.bookings import Booking
-        from app.models.visits import Visit
+        from app.models.enums import LeaseStatus
+        from app.models.pm_leases import Lease
+        from app.models.properties import Visit
 
         active_booking = (
             await db.execute(
@@ -598,10 +600,27 @@ async def delete_property(db: AsyncSession, property_id: int, actor: UserSchema)
         if active_visit:
             raise BadRequestException(detail="Cannot delete property with upcoming visits")
 
+        active_lease = (
+            await db.execute(
+                select(Lease.id)
+                .where(
+                    Lease.property_id == property_id,
+                    Lease.status.in_([
+                        LeaseStatus.draft,
+                        LeaseStatus.pending_signature,
+                        LeaseStatus.active,
+                        LeaseStatus.expiring_soon,
+                    ]),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if active_lease:
+            raise BadRequestException(detail="Cannot delete property with active leases")
+
         # Clean up swipes referencing this property
         from app.models.users import UserSwipe
 
-        await db.execute(select(UserSwipe).where(UserSwipe.property_id == property_id))
         await db.execute(sa_delete(UserSwipe).where(UserSwipe.property_id == property_id))
 
         await db.delete(property_obj)

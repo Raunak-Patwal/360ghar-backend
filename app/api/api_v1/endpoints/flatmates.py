@@ -356,12 +356,26 @@ async def get_conversation_detail(
 @router.get("/conversations/{conversation_id}/messages", response_model=MessageListResponse, summary="List conversation messages")
 async def get_conversation_messages(
     conversation_id: int,
+    limit: int = Query(50, ge=1, le=200, description="Page size (1-200)"),
+    before_id: int | None = Query(None, ge=1, description="Cursor: return messages with id < before_id"),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List conversation messages."""
-    messages = await list_messages(db, conversation_id, current_user.id)
-    return MessageListResponse(messages=messages, total=len(messages), has_more=False)
+    """List conversation messages with cursor-based pagination.
+
+    ``limit`` is bounded to [1, 200] and ``before_id`` must be a positive
+    message id — without these constraints a client can request ``?limit=0``
+    or ``?limit=-1`` and the SQL would run with LIMIT 1, returning an empty
+    page with has_more=True and hammering the DB in an infinite loop.
+    """
+    messages, has_more = await list_messages(
+        db, conversation_id, current_user.id, limit=limit, before_id=before_id
+    )
+    return MessageListResponse(
+        messages=[MessageOut.model_validate(m) for m in messages],
+        total=len(messages),
+        has_more=has_more,
+    )
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageOut, summary="Send conversation message")

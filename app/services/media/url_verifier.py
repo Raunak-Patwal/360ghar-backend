@@ -127,7 +127,7 @@ async def verify_image_urls(
     )
     kept: list[str] = []
     dropped: list[str] = []
-    for url, ok in zip(urls, results, strict=False):
+    for url, ok in zip(urls, results, strict=True):
         if ok:
             kept.append(url)
         else:

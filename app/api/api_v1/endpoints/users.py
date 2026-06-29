@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,24 +86,24 @@ async def complete_onboarding(
 
 @router.get("/me/identities", summary="List linked identities")
 async def get_linked_identities(
+    request: Request,
     current_user: User = Depends(get_current_active_user),
 ):
     """Return the OAuth identities linked to the current Supabase user.
 
-    Reads from the app_metadata on the current user (populated during login
-    by the dependency layer).  Returns a list of ``{provider, identity_id}``.
+    Reads the ``identities`` array from the Supabase auth response that the
+    auth dependency stashes on ``request.state.supabase_user_data``.
+    Returns a list of ``{provider, identity_id}``.
     """
-    identities = []
-    # The dependency layer stores app_metadata on the User model's
-    # supabase_user_id-linked auth record.  We read the raw app_metadata
-    # from the current request's resolved user if available.
-    raw = getattr(current_user, "_supabase_app_metadata", None)
-    if isinstance(raw, dict):
-        for provider, id_data in (raw.get("provider") or raw.get("providers") or {}).items():
-            if isinstance(id_data, dict):
-                identities.append({"provider": provider, "identity_id": id_data.get("id")})
-            else:
-                identities.append({"provider": provider})
+    identities: list[dict[str, str | None]] = []
+    supabase_data = getattr(request.state, "supabase_user_data", None)
+    if isinstance(supabase_data, dict):
+        for identity in supabase_data.get("identities") or []:
+            if isinstance(identity, dict):
+                identities.append({
+                    "provider": identity.get("provider"),
+                    "identity_id": identity.get("identity_id"),
+                })
     return {"identities": identities}
 
 
@@ -141,8 +141,14 @@ async def update_user_phone(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update current user's phone number. Phone is saved but NOT verified."""
-    user_update = UserUpdate(phone=phone_update.phone, phone_verified=False)
+    """Update current user's phone number. Phone is saved but NOT verified.
+
+    Changing the phone resets ``phone_verified`` (the new number must be
+    confirmed via OTP before it is trusted).  ``phone_verified`` is intentionally
+    not a field on :class:`UserUpdate` (it must never be client-settable), so we
+    apply it directly on the user row after the update.
+    """
+    user_update = UserUpdate(phone=phone_update.phone)
     try:
         updated_user = await update_user(db, current_user.id, user_update, actor=current_user)
     except IntegrityError:

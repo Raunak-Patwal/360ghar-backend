@@ -145,7 +145,7 @@ async def run_image_integrity_sweep(
         *(verify_image_url(u) for u in urls), return_exceptions=False
     )
 
-    for (source_tag, url), ok in zip(samples, results, strict=False):
+    for (source_tag, url), ok in zip(samples, results, strict=True):
         if not ok:
             report.broken.append(url)
             logger.warning(

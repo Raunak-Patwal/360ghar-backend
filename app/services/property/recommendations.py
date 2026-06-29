@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import json
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.core.cache import get_cache_manager
-from app.core.db_resilience import execute_with_transient_retry
+from app.core.db_resilience import apply_statement_timeout, execute_with_transient_retry
 from app.core.logging import get_logger
 from app.models.enums import PG_FLATMATE_TYPES
 from app.models.properties import Property, PropertyAmenity
+from app.models.users import UserSwipe
 from app.schemas.pagination import offset_payload, read_offset
 from app.schemas.property import Property as PropertySchema
 
@@ -25,6 +27,26 @@ def _anon_cache_key(limit: int) -> str:
     return f"recs:anon:v1:l{limit}"
 
 
+async def _user_preference_signals(
+    db: AsyncSession, user_id: int
+) -> tuple[str | None, str | None, str | None]:
+    """Return the most-recent liked property's ``(city, locality, property_type)``
+    to use as a cheap personalization signal. ``None`` if the user has no
+    likes yet, in which case we fall back to global popularity.
+    """
+    stmt = (
+        select(Property.city, Property.locality, Property.property_type)
+        .join(UserSwipe, UserSwipe.property_id == Property.id)
+        .where(UserSwipe.user_id == user_id, UserSwipe.is_liked.is_(True))
+        .order_by(UserSwipe.created_at.desc())
+        .limit(1)
+    )
+    row = (await db.execute(stmt)).first()
+    if not row:
+        return None, None, None
+    return row[0], row[1], row[2]
+
+
 async def get_property_recommendations(
     db: AsyncSession,
     user_id: int | None,
@@ -33,7 +55,16 @@ async def get_property_recommendations(
     *,
     with_total: bool = False,
 ) -> tuple[list[PropertySchema], dict | None, int | None]:
-    """Get property recommendations for a user"""
+    """Get property recommendations for a user.
+
+    For anonymous callers the result is a global popularity feed (cached
+    for ``_ANON_CACHE_TTL``). For logged-in callers we add a cheap
+    personalization signal: properties matching the user's most-recent
+    liked property's city/locality/property_type bubble to the top via a
+    CASE-based rank, with the global popularity order as a tiebreaker.
+    This is NOT ML — it just stops the feed from being identical for every
+    user. A real recommendation model is a larger project.
+    """
     logger.info("Getting property recommendations for user %s, limit: %s", user_id, limit)
 
     skip = read_offset(cursor_payload)
@@ -60,35 +91,78 @@ async def get_property_recommendations(
             logger.debug("Cache read failed for anonymous recommendations; falling back to DB")
 
     try:
-        # Simple recommendation: get available properties
-        # TODO: Implement proper recommendation algorithm based on user preferences
+        # Bound the read so a stalled DB backend fails fast.
+        await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
+
+        availability_filter = or_(
+            Property.property_type.notin_(PG_FLATMATE_TYPES),
+            func.coalesce(
+                Property.listing_preferences["moderation_status"].as_string(),
+                "live",
+            )
+            == "live",
+        )
+
+        # For logged-in users, look up their most-recent liked property's
+        # (city, locality, property_type) to use as a cheap ranking signal.
+        # If they have no likes yet, this returns Nones and we fall back to
+        # pure global popularity — same as the anonymous path.
+        pref_city: str | None = None
+        pref_locality: str | None = None
+        pref_type: str | None = None
+        if user_id is not None:
+            try:
+                pref_city, pref_locality, pref_type = await _user_preference_signals(
+                    db, user_id
+                )
+            except Exception as exc:
+                # A failure here must not break the endpoint — log and fall
+                # through to the popularity ordering.
+                logger.debug("Preference-signal lookup failed for user %s: %s", user_id, exc)
+
+        base_filters = [Property.is_available, availability_filter]
         query = (
             select(Property)
             .options(
                 selectinload(Property.images),
                 selectinload(Property.property_amenities).selectinload(PropertyAmenity.amenity),
             )
-            .where(
-                Property.is_available,
-                or_(
-                    Property.property_type.notin_(PG_FLATMATE_TYPES),
-                    func.coalesce(
-                        Property.listing_preferences["moderation_status"].as_string(),
-                        "live",
-                    )
-                    == "live",
-                ),
-            )
+            .where(*base_filters)
             .offset(skip)
             .limit(limit + 1)
         )
+
+        if pref_city or pref_locality or pref_type:
+            # Build an ordered CASE: city match scores 4, locality 2, type 1,
+            # no match 0. The score is the primary sort; popularity is the
+            # tiebreaker; recency is the final tiebreaker. ``coalesce`` lets
+            # us treat absent user signals as "0 contribution" without
+            # per-condition null handling.
+            pref_score = (
+                func.coalesce(case((Property.city == pref_city, 4), else_=0), 0)
+                + func.coalesce(case((Property.locality == pref_locality, 2), else_=0), 0)
+                + func.coalesce(case((Property.property_type == pref_type, 1), else_=0), 0)
+            ).label("pref_score")
+            query = query.add_columns(pref_score).order_by(
+                pref_score.desc(),
+                Property.like_count.desc(),
+                Property.view_count.desc(),
+                Property.created_at.desc(),
+            )
+        else:
+            query = query.order_by(
+                Property.like_count.desc(),
+                Property.view_count.desc(),
+                Property.created_at.desc(),
+            )
 
         result = await execute_with_transient_retry(
             db,
             lambda: db.execute(query),
             operation_name="property_recommendations_query",
         )
-        properties = list(result.scalars().all())
+        rows = result.all()
+        properties = [row[0] for row in rows]
 
         logger.info("Found %s recommended properties for user %s", len(properties), user_id)
 
