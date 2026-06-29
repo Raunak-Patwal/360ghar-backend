@@ -30,6 +30,8 @@ MIN_REVIEW_PHOTO_COUNT = 2
 SUSPICIOUS_RENT_CEILING = 1_000_000
 REPORT_AUTO_PAUSE_THRESHOLD = 3
 EXPIRED_MOVE_IN_PAUSE_REASON = "expired_move_in_date"
+STALE_LISTING_PAUSE_REASON = "stale_listing"
+STALE_LISTING_DAYS = 60
 
 _SPAM_PATTERNS: tuple[tuple[str, str, str], ...] = (
     ("adult_content", "high", r"\b(escort|call\s*girl|xxx|porn|nude|sexual\s+service)\b"),
@@ -466,6 +468,59 @@ def apply_expired_move_in_pause(
             "auto_paused_reason": EXPIRED_MOVE_IN_PAUSE_REASON,
             "auto_paused_at": effective_now.isoformat(),
             "expired_move_in_date": move_in_at.isoformat(),
+            "room_poster_review_required": True,
+        }
+    )
+    if current_status:
+        preferences.setdefault("previous_moderation_status", current_status)
+
+    listing.listing_preferences = preferences
+    listing.is_available = False
+    return True
+
+
+def apply_stale_listing_pause(
+    listing: Property,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Pause a flatmate listing that has not been updated in STALE_LISTING_DAYS days.
+
+    Returns True if the listing was paused, False otherwise.
+    Only applies to flatmate-type properties with moderation_status == 'live'.
+    """
+    if getattr(listing, "property_type", None) not in PG_FLATMATE_TYPES:
+        return False
+
+    preferences = _listing_preferences(listing)
+    current_status = preferences.get("moderation_status", "live")
+    if current_status != "live" and not getattr(listing, "is_available", False):
+        return False
+    if current_status not in {"live", None}:
+        return False
+
+    effective_now = now or datetime.now(timezone.utc)
+    if effective_now.tzinfo is None:
+        effective_now = effective_now.replace(tzinfo=timezone.utc)
+
+    # Use updated_at, falling back to created_at
+    last_active = getattr(listing, "updated_at", None) or getattr(listing, "created_at", None)
+    if last_active is None:
+        return False
+
+    last_active_aware = _as_aware_datetime(last_active)
+    if last_active_aware is None:
+        return False
+
+    staleness_days = (effective_now - last_active_aware).days
+    if staleness_days < STALE_LISTING_DAYS:
+        return False
+
+    preferences.update(
+        {
+            "moderation_status": "paused",
+            "auto_paused_reason": STALE_LISTING_PAUSE_REASON,
+            "auto_paused_at": effective_now.isoformat(),
             "room_poster_review_required": True,
         }
     )

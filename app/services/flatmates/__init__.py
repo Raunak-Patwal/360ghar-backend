@@ -26,9 +26,11 @@ from app.services.flatmates.matching import (
     unmatch_user_pair,
 )
 from app.services.flatmates.moderation import (
+    STALE_LISTING_PAUSE_REASON,
     apply_expired_move_in_pause,
     apply_listing_prescreen_metadata,
     apply_report_auto_pause,
+    apply_stale_listing_pause,
     build_listing_prescreen_result,
     create_block,
     create_report,
@@ -87,6 +89,8 @@ __all__ = [
     "create_report",
     "build_listing_prescreen_result",
     "apply_expired_move_in_pause",
+    "apply_stale_listing_pause",
+    "STALE_LISTING_PAUSE_REASON",
     "apply_listing_prescreen_metadata",
     "apply_report_auto_pause",
     "pause_stale_flatmate_listings",
