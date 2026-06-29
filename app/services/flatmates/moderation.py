@@ -536,10 +536,7 @@ async def create_report(db: AsyncSession, user_id: int, payload: ReportCreate) -
     reported_user = await db.get(User, payload.reported_user_id)
     if reported_user is None:
         raise BadRequestException(detail="Reported user not found")
-<<<<<<< Updated upstream
 
-=======
->>>>>>> Stashed changes
     # Prevent infinite duplicate reports from the same reporter against the same user
     # to avoid database bloat and moderation queue spam.
     existing_report = await db.execute(
