@@ -572,3 +572,8 @@ async def create_report(db: AsyncSession, user_id: int, payload: ReportCreate) -
 
     await db.refresh(report)
     return report
+
+
+# Backwards-compatible alias: older code imports pause_stale_flatmate_listings
+# The function was renamed to pause_expired_flatmate_listings.
+pause_stale_flatmate_listings = pause_expired_flatmate_listings
