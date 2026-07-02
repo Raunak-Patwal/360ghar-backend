@@ -132,45 +132,37 @@ class PydanticAIAgentService:
 
     def __init__(self, model: str | None = None):
         self.model_name = model or settings.AI_AGENT_MODEL
-        self._primary_provider = OpenAIProvider(
-            base_url=settings.AI_AGENT_API_BASE,
-            api_key=settings.AI_AGENT_API_KEY or settings.GLM_API_KEY,
-        )
 
-    def _create_model(self) -> OpenAIChatModel:
-        """Create the primary GLM model with OpenAI-compatible provider."""
+    @staticmethod
+    def _create_model(cfg: dict[str, str]) -> OpenAIChatModel:
+        """Create an OpenAIChatModel from a provider config dict."""
         return OpenAIChatModel(
-            self.model_name,
-            provider=self._primary_provider,
+            cfg["model"],
+            provider=OpenAIProvider(
+                base_url=cfg["api_base"],
+                api_key=cfg["api_key"],
+            ),
         )
 
-    def _get_fallback_model(self) -> OpenAIChatModel | None:
-        """Create the Gemini fallback model if configured."""
-        fb_model = settings.AI_AGENT_FALLBACK_MODEL
-        if not fb_model:
-            return None
-        fb_key = settings.AI_AGENT_FALLBACK_API_KEY or settings.GOOGLE_API_KEY
-        if not fb_key:
-            return None
-        provider = OpenAIProvider(
-            base_url=settings.AI_AGENT_FALLBACK_API_BASE,
-            api_key=fb_key,
-        )
-        return OpenAIChatModel(fb_model, provider=provider)
+    def _build_providers(self) -> list[tuple[str, OpenAIChatModel]]:
+        """Build ordered (label, model) pairs from the provider map.
 
-    def _get_fallback2_model(self) -> OpenAIChatModel | None:
-        """Create the Groq fallback model if configured."""
-        fb2_model = settings.AI_AGENT_FALLBACK2_MODEL
-        if not fb2_model:
-            return None
-        fb2_key = settings.AI_AGENT_FALLBACK2_API_KEY or settings.GROQ_API_KEY
-        if not fb2_key:
-            return None
-        provider = OpenAIProvider(
-            base_url=settings.AI_AGENT_FALLBACK2_API_BASE,
-            api_key=fb2_key,
-        )
-        return OpenAIChatModel(fb2_model, provider=provider)
+        The first entry is the primary model. If ``self.model_name`` was
+        overridden in ``__init__``, it replaces the primary provider's model.
+        """
+        configs = list(settings.AI_AGENT_PROVIDERS)
+        if not configs:
+            logger.warning("No AI providers configured")
+            return []
+
+        # Apply model override (from __init__) to the primary provider
+        if self.model_name and configs:
+            configs[0] = {**configs[0], "model": self.model_name}
+
+        return [
+            (cfg["label"], self._create_model(cfg))
+            for cfg in configs
+        ]
 
     def _build_agent(self, user_role: str, model: OpenAIChatModel) -> Agent[AgentDeps, str]:
         """Build an Agent with the given model and role-specific tools."""
@@ -317,20 +309,11 @@ class PydanticAIAgentService:
         deps = AgentDeps(user=user, db=db, user_role=role)
         message_history = _build_message_history(conversation_history)
 
-        # Build the fallback chain of (label, agent) pairs
-        candidates: list[tuple[str, Agent[AgentDeps, str]]] = []
-        primary_model = self._create_model()
-        candidates.append((self.model_name, self._build_agent(role, primary_model)))
-
-        fb1_model = self._get_fallback_model()
-        if fb1_model:
-            fb1_name = str(settings.AI_AGENT_FALLBACK_MODEL)
-            candidates.append((fb1_name, self._build_agent(role, fb1_model)))
-
-        fb2_model = self._get_fallback2_model()
-        if fb2_model:
-            fb2_name = str(settings.AI_AGENT_FALLBACK2_MODEL)
-            candidates.append((fb2_name, self._build_agent(role, fb2_model)))
+        # Build the fallback chain of (label, agent) pairs from the provider map
+        candidates: list[tuple[str, Agent[AgentDeps, str]]] = [
+            (label, self._build_agent(role, model))
+            for label, model in self._build_providers()
+        ]
 
         last_error: str | None = None
 

@@ -36,9 +36,9 @@ Active contributors: Saksham, Ravi
 | `GLM_API_KEY`, `GLM_API_URL`, `GLM_MODEL` | ZhipuAI GLM for vastu and AI agent. |
 | `VASTU_DEFAULT_PROVIDER` | Default vastu provider (`glm`). |
 | `GROQ_API_KEY`, `GROQ_MODEL` | Groq for the AI agent fallback chain. |
-| `AI_AGENT_MODEL`, `AI_AGENT_API_BASE`, `AI_AGENT_API_KEY` | Primary AI agent model (GLM). |
-| `AI_AGENT_FALLBACK_MODEL`, `..._API_BASE`, `..._API_KEY` | First fallback (Gemini). |
-| `AI_AGENT_FALLBACK2_MODEL`, `..._API_BASE`, `..._API_KEY` | Second fallback (Groq). |
+| `AI_AGENT_MODEL`, `AI_AGENT_API_BASE` | Primary AI agent model (GLM); API key from `GLM_API_KEY`. |
+| `AI_AGENT_FALLBACK_MODEL`, `..._API_BASE` | First fallback (Gemini); API key from `GOOGLE_API_KEY`. |
+| `AI_AGENT_FALLBACK2_MODEL` | Second fallback (Groq); model + key from `GROQ_MODEL` / `GROQ_API_KEY`. |
 
 ## Notifications
 
