@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 
 import sentry_sdk
 from fastapi import HTTPException
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy import event
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -67,13 +68,17 @@ def _validate_database_pooler_config(
         db_bg_max_overflow,
     )
 
+    if is_production and is_supabase_pooler and not is_transaction_pooler:
+        raise RuntimeError(
+            "Production Supabase pooler URLs must use the transaction pooler "
+            f"on port 6543; got port {port or 'unknown'}"
+        )
+
     if serverless_enabled and is_session_pooler:
         message = (
             "SERVERLESS_ENABLED=true must use the Supabase transaction pooler "
             "on port 6543, not the session pooler on port 5432"
         )
-        if is_production:
-            raise RuntimeError(message)
         logger.warning(message)
 
     if not serverless_enabled and is_session_pooler and budget > _SESSION_POOLER_SAFE_CLIENT_BUDGET:
@@ -82,8 +87,6 @@ def _validate_database_pooler_config(
             f"{budget} > {_SESSION_POOLER_SAFE_CLIENT_BUDGET}. Reduce DB_POOL_SIZE/"
             "DB_MAX_OVERFLOW/DB_BG_POOL_SIZE/DB_BG_MAX_OVERFLOW or use port 6543."
         )
-        if is_production:
-            raise RuntimeError(message)
         logger.warning(message)
 
     pooler_mode = "none"
@@ -265,6 +268,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
         except HTTPException:
             # Propagate HTTP errors without logging as DB errors
+            await session.rollback()
+            raise
+        except RequestValidationError:
+            # FastAPI request validation failures are user input errors, not
+            # database session failures. Roll back any implicit transaction
+            # and let the validation handler produce the 422 response.
             await session.rollback()
             raise
         except Exception as e:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from app.core.database import (
@@ -54,8 +56,8 @@ def test_serverless_accepts_supabase_transaction_pooler() -> None:
     )
 
 
-def test_production_non_serverless_rejects_oversized_session_pool_budget() -> None:
-    with pytest.raises(RuntimeError, match="client budget is too high"):
+def test_production_rejects_supabase_session_pooler_even_with_small_budget() -> None:
+    with pytest.raises(RuntimeError, match="transaction pooler"):
         _validate_database_pooler_config(
             database_url=(
                 "postgresql://postgres.ref:secret@"
@@ -63,8 +65,27 @@ def test_production_non_serverless_rejects_oversized_session_pool_budget() -> No
             ),
             serverless_enabled=False,
             environment="production",
-            db_pool_size=10,
-            db_max_overflow=20,
-            db_bg_pool_size=3,
-            db_bg_max_overflow=5,
+            db_pool_size=1,
+            db_max_overflow=0,
+            db_bg_pool_size=1,
+            db_bg_max_overflow=0,
         )
+
+
+def test_development_non_serverless_warns_oversized_session_pool_budget(caplog) -> None:
+    caplog.set_level(logging.WARNING, logger="app.core.database")
+
+    _validate_database_pooler_config(
+        database_url=(
+            "postgresql://postgres.ref:secret@"
+            "aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+        ),
+        serverless_enabled=False,
+        environment="development",
+        db_pool_size=10,
+        db_max_overflow=20,
+        db_bg_pool_size=3,
+        db_bg_max_overflow=5,
+    )
+
+    assert "client budget is too high" in caplog.text

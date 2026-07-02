@@ -16,7 +16,7 @@ Railway builds from the `Dockerfile` and runs `python run.py`. The healthcheck h
 
 Railway's PgBouncer handles server-side connection pooling, which is why the app can use `NullPool` in serverless mode without exhausting Postgres connections.
 
-For Supabase-backed Railway deployments, `DATABASE_URL` must use the transaction-pooler connection string on port `6543`. The shared pooler session-mode URL on port `5432` can exhaust the small Supavisor session client cap under bursty mobile traffic; production startup rejects that combination when `SERVERLESS_ENABLED=true`. Prepared statements remain disabled via psycopg `prepare_threshold=None`, which is required for transaction pooling.
+For Supabase-backed Railway deployments, `DATABASE_URL` must use the transaction-pooler connection string on port `6543`. The shared pooler session-mode URL on port `5432` can exhaust the small Supavisor session client cap under bursty mobile traffic; production startup rejects Supabase pooler URLs that are not transaction-pooler URLs. Prepared statements remain disabled via psycopg `prepare_threshold=None`, which is required for transaction pooling.
 
 ## Docker
 

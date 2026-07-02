@@ -239,6 +239,49 @@ class TestGetCurrentUserSSE503Path:
 
         assert exc_info.value.status_code == 401
 
+    @pytest.mark.asyncio
+    async def test_auth_db_pool_exhaustion_returns_503(self):
+        session = MagicMock()
+        session.rollback = AsyncMock()
+        session.commit = AsyncMock()
+        session.expunge = MagicMock()
+
+        class SessionContext:
+            async def __aenter__(self):
+                return session
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+        with patch(
+            "app.api.api_v1.dependencies.auth.verify_supabase_token",
+            new=AsyncMock(return_value=_user_payload()),
+        ), patch(
+            "app.api.api_v1.dependencies.auth.get_bg_session_factory",
+            return_value=MagicMock(return_value=SessionContext()),
+        ), patch(
+            "app.api.api_v1.dependencies.auth.get_or_create_user_from_supabase",
+            new=AsyncMock(
+                side_effect=Exception(
+                    "(psycopg.OperationalError) connection failed: FATAL: "
+                    "(EMAXCONNSESSION) max clients reached in session mode"
+                )
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user_sse(
+                    request=MagicMock(),
+                    authorization="Bearer valid_jwt_token",
+                    token=None,
+                )
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail["code"] == "AUTH_DB_UNAVAILABLE"
+        assert exc_info.value.detail["details"]["error_code"] == "EMAXCONNSESSION"
+        assert exc_info.value.headers == {"Retry-After": "5"}
+        session.rollback.assert_awaited_once()
+        session.commit.assert_not_awaited()
+
 
 class TestGetCurrentUserOptional503Path:
     """``get_current_user_optional`` returns ``None`` for unreachable / invalid.

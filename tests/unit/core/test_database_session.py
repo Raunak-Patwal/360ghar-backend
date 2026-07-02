@@ -8,9 +8,11 @@ GET paths should not force a write transaction against the database / PgBouncer.
 from __future__ import annotations
 
 import inspect
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -106,6 +108,45 @@ async def test_get_db_rolls_back_on_exception():
 
     fake_session.rollback.assert_awaited()
     fake_session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_db_does_not_log_request_validation_as_database_error(caplog):
+    """FastAPI 422 request validation must not be mislabeled as a DB error."""
+    from app.core import database as db_module
+
+    fake_session = MagicMock(spec=AsyncSession)
+    fake_session.new = set()
+    fake_session.dirty = set()
+    fake_session.deleted = set()
+    fake_session.commit = AsyncMock()
+    fake_session.rollback = AsyncMock()
+    fake_session.close = AsyncMock()
+
+    factory = MagicMock(return_value=fake_session)
+    factory.return_value.__aenter__ = AsyncMock(return_value=fake_session)
+    factory.return_value.__aexit__ = AsyncMock(return_value=None)
+    validation_exc = RequestValidationError([
+        {
+            "loc": ("body", "age"),
+            "msg": "Input should be less than or equal to 100",
+            "type": "less_than_equal",
+        }
+    ])
+
+    caplog.set_level(logging.ERROR, logger="app.core.database")
+
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setattr(db_module, "AsyncSessionLocal", factory)
+
+        gen = db_module.get_db()
+        await gen.__anext__()
+        with pytest.raises(RequestValidationError):
+            await gen.athrow(validation_exc)
+
+    fake_session.rollback.assert_awaited()
+    fake_session.commit.assert_not_awaited()
+    assert "Database session error" not in caplog.text
 
 
 @pytest.mark.asyncio

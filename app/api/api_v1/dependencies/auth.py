@@ -299,6 +299,17 @@ async def get_current_user_sse(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
+        if is_transient_db_error(exc) or is_statement_timeout(exc):
+            logger.warning(
+                "SSE authentication DB sync temporarily unavailable: %s",
+                exc,
+                exc_info=True,
+                extra={
+                    "reason": "authentication_db_unavailable",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            raise _auth_db_unavailable_response(exc) from exc
         logger.error(
             "SSE authentication error: %s",
             exc,

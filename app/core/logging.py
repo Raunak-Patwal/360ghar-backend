@@ -45,6 +45,13 @@ class RequestIDFilter(logging.Filter):
         return True
 
 
+class BelowErrorFilter(logging.Filter):
+    """Allow records below ERROR so stderr can own error-level events."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno < logging.ERROR
+
+
 class ColorFormatter(logging.Formatter):
     """Simple ANSI color formatter for terminal readability."""
 
@@ -196,7 +203,7 @@ def setup_logging() -> None:
     - Development + non-TTY (e.g. Docker): plain text
     - Log level based on DEBUG flag
     - Quiet noisy third-party loggers
-    - RequestIDFilter attached to root handler for correlation-id propagation
+    - RequestIDFilter attached to root handlers for correlation-id propagation
     """
     level = "DEBUG" if settings.DEBUG else "INFO"
     is_production = settings.ENVIRONMENT == "production"
@@ -206,14 +213,9 @@ def setup_logging() -> None:
     format_string = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
     date_format = "%H:%M:%S" if use_colors else "%Y-%m-%dT%H:%M:%S%z"
 
-    # Build handler config dynamically to select formatter
-    handlers = {
-        "console": {
-            "class": "logging.StreamHandler",
-            "level": level,
-            "stream": "ext://sys.stdout",
-        }
-    }
+    # Build handler config dynamically to select formatter and stream routing.
+    handlers: dict[str, dict[str, Any]] = {}
+    filters: dict[str, Any] = {}
 
     formatters: dict[str, Any] = {
         "standard": {
@@ -227,7 +229,21 @@ def setup_logging() -> None:
         formatters["structured"] = {
             "()": "app.core.logging.StructuredFormatter",
         }
-        handlers["console"]["formatter"] = "structured"
+        filters["below_error"] = {"()": "app.core.logging.BelowErrorFilter"}
+        handlers["stdout"] = {
+            "class": "logging.StreamHandler",
+            "level": level,
+            "formatter": "structured",
+            "stream": "ext://sys.stdout",
+            "filters": ["below_error"],
+        }
+        handlers["stderr"] = {
+            "class": "logging.StreamHandler",
+            "level": "ERROR",
+            "formatter": "structured",
+            "stream": "ext://sys.stderr",
+        }
+        root_handlers = ["stdout", "stderr"]
     elif use_colors:
         formatters["color"] = {
             "()": "app.core.logging.ColorFormatter",
@@ -235,17 +251,30 @@ def setup_logging() -> None:
             "datefmt": date_format,
             "use_colors": True,
         }
-        handlers["console"]["formatter"] = "color"
+        handlers["console"] = {
+            "class": "logging.StreamHandler",
+            "level": level,
+            "formatter": "color",
+            "stream": "ext://sys.stdout",
+        }
+        root_handlers = ["console"]
     else:
-        handlers["console"]["formatter"] = "standard"
+        handlers["console"] = {
+            "class": "logging.StreamHandler",
+            "level": level,
+            "formatter": "standard",
+            "stream": "ext://sys.stdout",
+        }
+        root_handlers = ["console"]
 
     dictConfig(
         {
             "version": 1,
             "disable_existing_loggers": False,
             "formatters": formatters,
+            "filters": filters,
             "handlers": handlers,
-            "root": {"handlers": ["console"], "level": level},
+            "root": {"handlers": root_handlers, "level": level},
             "loggers": {
                 # Quiet noisy libraries
                 "uvicorn": {"level": "INFO"},
