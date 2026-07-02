@@ -11,7 +11,11 @@ from typing import Any
 
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
-from app.mcp.apps_sdk import MCP_SECURITY_SCHEMES_MIXED, AuthRequiredError, build_widget_tool_meta
+from app.mcp.apps_sdk import (
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
+    AuthRequiredError,
+    build_widget_tool_meta,
+)
 from app.mcp.chatgpt import get_widget_for_tool
 from app.mcp.chatgpt.pm_shared import _get_optional_user
 from app.mcp.chatgpt.response_formatter import (
@@ -39,7 +43,7 @@ OWNER_DASHBOARD_META = build_widget_tool_meta(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=OWNER_DASHBOARD_META,
 )

@@ -19,7 +19,7 @@ from app.models.enums import BookingStatus, PaymentStatus
 from app.models.properties import Property
 from app.models.users import User
 from app.schemas.booking import BookingCreate, BookingPayment, BookingReview, BookingUpdate
-from app.schemas.pagination import keyset_filter, keyset_payload, keyset_sort_value
+from app.schemas.pagination import keyset_filter, trim_keyset_lookahead
 
 logger = get_logger(__name__)
 
@@ -119,10 +119,12 @@ async def get_user_bookings(
         stmt = stmt.where(predicate)
     stmt = stmt.order_by(Booking.created_at.desc(), Booking.id.desc()).limit(limit + 1)
     rows = list((await db.execute(stmt)).scalars().all())
-    next_payload = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].created_at), rows[-1].id)
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda booking: booking.created_at,
+        item_id=lambda booking: booking.id,
+    )
     return rows, next_payload, count_total
 
 async def get_user_upcoming_bookings(
@@ -147,10 +149,12 @@ async def get_user_upcoming_bookings(
         stmt = stmt.where(predicate)
     stmt = stmt.order_by(Booking.check_in_date.asc(), Booking.id.asc()).limit(limit + 1)
     rows = list((await db.execute(stmt)).scalars().all())
-    next_payload = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].check_in_date), rows[-1].id)
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda booking: booking.check_in_date,
+        item_id=lambda booking: booking.id,
+    )
     return rows, next_payload, count_total
 
 async def get_user_past_bookings(
@@ -174,10 +178,12 @@ async def get_user_past_bookings(
         stmt = stmt.where(predicate)
     stmt = stmt.order_by(Booking.check_out_date.desc(), Booking.id.desc()).limit(limit + 1)
     rows = list((await db.execute(stmt)).scalars().all())
-    next_payload = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].check_out_date), rows[-1].id)
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda booking: booking.check_out_date,
+        item_id=lambda booking: booking.id,
+    )
     return rows, next_payload, count_total
 
 async def update_booking(db: AsyncSession, booking_id: int, booking_update: BookingUpdate):
@@ -394,8 +400,10 @@ async def get_all_bookings(
         stmt = stmt.where(predicate)
     stmt = stmt.order_by(Booking.created_at.desc(), Booking.id.desc()).limit(limit + 1)
     rows = list((await db.execute(stmt)).scalars().all())
-    next_payload = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].created_at), rows[-1].id)
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda booking: booking.created_at,
+        item_id=lambda booking: booking.id,
+    )
     return rows, next_payload, count_total

@@ -5,9 +5,22 @@ import pytest
 from fastapi import UploadFile
 from starlette.datastructures import Headers
 
-from app.core.exceptions import FileTooLargeException, InvalidFileException
+from app.core.exceptions import BadRequestException, FileTooLargeException, InvalidFileException
 from app.services.storage import StorageService
+from app.services.storage.helpers import read_upload_file_limited
 from app.services.storage_paths import StorageFolder
+
+
+class _LimitedReadFile:
+    def __init__(self, content: bytes):
+        self._content = BytesIO(content)
+
+    async def read(self, size: int = -1) -> bytes:
+        return self._content.read(size)
+
+    @property
+    def position(self) -> int:
+        return self._content.tell()
 
 
 class TestStorageServiceErrors:
@@ -43,3 +56,87 @@ class TestStorageServiceErrors:
             )
 
         assert exc_info.value.status_code == 413
+
+    @pytest.mark.asyncio
+    async def test_limited_reader_reads_at_most_one_byte_past_limit(self):
+        file = _LimitedReadFile(b"abcdef")
+
+        with pytest.raises(FileTooLargeException):
+            await read_upload_file_limited(file, 3, chunk_size=10)  # type: ignore[arg-type]
+
+        assert file.position == 4
+
+    @pytest.mark.asyncio
+    async def test_upload_with_path_rejects_oversize_file_before_storage_upload(self):
+        service = StorageService()
+        service._max_upload_bytes = 4
+        service._cloudinary = MagicMock()
+
+        file = UploadFile(
+            filename="avatar.jpg",
+            file=BytesIO(b"\xff\xd8\xffabcdef"),
+            headers=Headers({"content-type": "image/jpeg"}),
+        )
+
+        with pytest.raises(FileTooLargeException):
+            await service.upload_with_path(
+                file,
+                user_id=1,
+                folder=StorageFolder.AVATAR,
+            )
+
+        service.cloudinary.upload_file.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_upload_agent_avatar_rejects_oversize_file_before_storage_upload(self):
+        service = StorageService()
+        service._max_upload_bytes = 4
+        service._cloudinary = MagicMock()
+
+        file = UploadFile(
+            filename="avatar.jpg",
+            file=BytesIO(b"\xff\xd8\xffabcdef"),
+            headers=Headers({"content-type": "image/jpeg"}),
+        )
+
+        with pytest.raises(FileTooLargeException):
+            await service.upload_agent_avatar(file, agent_id=1)
+
+        service.cloudinary.upload_file.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_legacy_upload_file_rejects_oversize_file_before_storage_upload(self):
+        service = StorageService()
+        service._max_upload_bytes = 4
+        service._cloudinary = MagicMock()
+
+        file = UploadFile(
+            filename="avatar.jpg",
+            file=BytesIO(b"\xff\xd8\xffabcdef"),
+            headers=Headers({"content-type": "image/jpeg"}),
+        )
+
+        with pytest.raises(FileTooLargeException):
+            await service._upload_file(file, "uploads", "generic")
+
+        service.cloudinary.upload_file.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_upload_batch_rejects_more_than_twenty_files(self):
+        service = StorageService()
+        files = [
+            UploadFile(
+                filename=f"{idx}.jpg",
+                file=BytesIO(b"\xff\xd8\xff"),
+                headers=Headers({"content-type": "image/jpeg"}),
+            )
+            for idx in range(21)
+        ]
+
+        with pytest.raises(BadRequestException) as exc_info:
+            await service.upload_batch(files, db=None, user_id=1)
+
+        assert exc_info.value.status_code == 400
+
+    def test_storage_service_does_not_expose_noop_list_files(self):
+        assert not hasattr(StorageService, "list_files")

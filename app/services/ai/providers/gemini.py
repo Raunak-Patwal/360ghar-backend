@@ -48,7 +48,14 @@ class GeminiProvider(AIProvider):
 
     def _build_url(self, action: str = "generateContent") -> str:
         """Build the API URL for the configured model."""
-        return f"{self.API_BASE_URL}/{self.config.model}:{action}?key={self.config.api_key}"
+        return f"{self.API_BASE_URL}/{self.config.model}:{action}"
+
+    def _build_headers(self) -> dict[str, str]:
+        """Build request headers with API-key auth kept out of URLs/logs."""
+        return {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.config.api_key,
+        }
 
     def _build_contents(
         self,
@@ -127,7 +134,7 @@ class GeminiProvider(AIProvider):
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
         client = self._get_http_client()
-        headers: dict[str, str] = {"Content-Type": "application/json"}
+        headers = self._build_headers()
         t_start = time.monotonic()
         response = await self._make_request(client, url, headers, payload)
         elapsed_ms = (time.monotonic() - t_start) * 1000
@@ -163,7 +170,7 @@ class GeminiProvider(AIProvider):
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
         client = self._get_http_client()
-        headers: dict[str, str] = {"Content-Type": "application/json"}
+        headers = self._build_headers()
         t_start = time.monotonic()
         response = await self._make_request(client, url, headers, payload)
         elapsed_ms = (time.monotonic() - t_start) * 1000

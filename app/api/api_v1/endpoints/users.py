@@ -9,7 +9,7 @@ from app.api.api_v1.dependencies.auth import (
     get_current_admin,
 )
 from app.core.database import get_db
-from app.core.exceptions import ConflictException
+from app.core.exceptions import BaseAPIException, ConflictException
 from app.core.logging import get_logger
 from app.models.enums import UserRole
 from app.models.users import User
@@ -118,7 +118,21 @@ async def delete_my_account(
     anonymizes + soft-deletes the local record. Shares the same logic as
     ``POST /auth/delete-account``.
     """
-    await delete_user_account(db, current_user)
+    try:
+        await delete_user_account(db, current_user)
+    except (BaseAPIException, HTTPException):
+        raise
+    except Exception as exc:
+        logger.error(
+            "Unexpected delete account failure for user %s: %s",
+            current_user.id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error. Please try again later.",
+        ) from None
     return MessageResponse(message="Account deleted successfully")
 
 

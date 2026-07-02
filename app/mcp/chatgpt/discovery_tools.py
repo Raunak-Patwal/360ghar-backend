@@ -15,8 +15,15 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.database import AsyncSessionLocal
+from app.core.exceptions import PropertyNotFoundException
 from app.core.logging import get_logger
-from app.mcp.apps_sdk import MCP_SECURITY_SCHEMES_MIXED, AuthRequiredError, build_widget_tool_meta
+from app.mcp.apps_sdk import (
+    MCP_SECURITY_SCHEMES_MIXED,
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
+    AppsSDKToolResult,
+    AuthRequiredError,
+    build_widget_tool_meta,
+)
 from app.mcp.chatgpt import get_widget_for_tool
 from app.mcp.chatgpt.response_formatter import (
     format_auth_required_response,
@@ -24,6 +31,7 @@ from app.mcp.chatgpt.response_formatter import (
     format_property_detail_summary,
     format_property_list_summary,
 )
+from app.mcp.errors import mcp_exception_payload
 from app.mcp.tool_ops.search_ops import (
     build_empty_result_message,
     normalize_city,
@@ -40,6 +48,10 @@ from app.mcp.utils import (
 from app.models.enums import PropertyPurpose, PropertyType
 from app.schemas.pagination import decode_cursor, encode_cursor
 from app.schemas.property import PropertySwipe, UnifiedPropertyFilter
+from app.services.property.search_orchestration import (
+    build_property_search_filters,
+    run_property_search,
+)
 
 logger = get_logger(__name__)
 
@@ -80,6 +92,27 @@ async def _get_optional_user(db):
     return await get_user_from_mcp_context(db)
 
 
+def _safe_discovery_error_response(
+    *,
+    exc: Exception,
+    tool_name: str,
+    fallback_message: str,
+) -> AppsSDKToolResult:
+    """Return a safe ChatGPT Apps error response for unexpected failures."""
+    payload = mcp_exception_payload(
+        exc,
+        logger=logger,
+        tool_name=tool_name,
+        fallback_message=fallback_message,
+    )
+    return format_chatgpt_response(
+        data=payload,
+        content_summary=payload["message"],
+        is_error=True,
+        widget_uri=get_widget_for_tool(tool_name),
+    )
+
+
 # ============================================================================
 # Guest-Accessible Discovery Tools
 # ============================================================================
@@ -112,7 +145,7 @@ async def discovery_search(
     locality: str | None = None,
     cursor: str | None = None,
     limit: int = 20,
-) -> dict[str, Any]:
+) -> AppsSDKToolResult:
     """Search properties with comprehensive filtering.
 
     Search for properties using text search, location-based search, or filters.
@@ -141,8 +174,6 @@ async def discovery_search(
         Property search results with pagination info.
     """
     try:
-        from app.services.property import get_unified_properties_optimized
-
         # Validate and clamp limit
         limit = min(max(1, limit), 50)
         cursor_payload = decode_cursor(cursor) if cursor else {}
@@ -213,7 +244,7 @@ async def discovery_search(
                         widget_uri=get_widget_for_tool("discovery_search"),
                     )
 
-            filters = UnifiedPropertyFilter(
+            filters = build_property_search_filters(
                 search_query=query,
                 latitude=latitude,
                 longitude=longitude,
@@ -226,17 +257,20 @@ async def discovery_search(
                 amenities=amenities,
                 city=city,
                 locality=locality,
-                radius_km=radius_km if (latitude and longitude) else 5,
+                radius_km=radius_km if (latitude is not None and longitude is not None) else 5,
             )
 
             # Execute search
-            rows, next_payload, total_count = await get_unified_properties_optimized(
-                db,
+            rows, next_payload, total_count = await run_property_search(
+                db=db,
                 filters=filters,
                 user_id=user_id,
                 cursor_payload=cursor_payload,
                 limit=limit,
                 with_total=True,
+                endpoint_name="discovery_search",
+                stale_listing_context="ChatGPT discovery search",
+                unavailable_detail="Property search is temporarily unavailable. Please retry shortly.",
             )
 
             # Serialize properties
@@ -281,11 +315,12 @@ async def discovery_search(
             )
 
     except Exception as e:
-        logger.error("Error in discovery_search: %s", e, exc_info=True)
-        return format_chatgpt_response(
-            data={"error": True, "message": str(e)},
-            content_summary=f"Sorry, there was an error searching properties: {str(e)}",
-            widget_uri=get_widget_for_tool("discovery_search"),
+        return _safe_discovery_error_response(
+            exc=e,
+            tool_name="discovery_search",
+            fallback_message=(
+                "Sorry, there was an error searching properties. Please try again."
+            ),
         )
 
 
@@ -302,7 +337,7 @@ async def discovery_search(
 )
 async def discovery_property_get(
     property_id: int,
-) -> dict[str, Any]:
+) -> AppsSDKToolResult:
     """Get detailed information about a property.
 
     Retrieves full property details including images, amenities, and location.
@@ -339,18 +374,20 @@ async def discovery_property_get(
                 widget_uri=get_widget_for_tool("discovery_property_get"),
             )
 
-    except Exception as e:
-        logger.error("Error in discovery.property.get: %s", e, exc_info=True)
-        if "not found" in str(e).lower():
-            return format_chatgpt_response(
-                data={"error": True, "code": "NOT_FOUND", "property_id": property_id},
-                content_summary=f"Property with ID {property_id} was not found.",
-                widget_uri=get_widget_for_tool("discovery_property_get"),
-            )
+    except PropertyNotFoundException:
         return format_chatgpt_response(
-            data={"error": True, "message": str(e)},
-            content_summary=f"Sorry, there was an error retrieving the property: {str(e)}",
+            data={"error": True, "code": "NOT_FOUND", "property_id": property_id},
+            content_summary=f"Property with ID {property_id} was not found.",
+            is_error=True,
             widget_uri=get_widget_for_tool("discovery_property_get"),
+        )
+    except Exception as e:
+        return _safe_discovery_error_response(
+            exc=e,
+            tool_name="discovery_property_get",
+            fallback_message=(
+                "Sorry, there was an error retrieving the property. Please try again."
+            ),
         )
 
 
@@ -370,7 +407,7 @@ async def discovery_feed(
     longitude: float | None = None,
     purpose: str | None = None,
     limit: int = 10,
-) -> dict[str, Any]:
+) -> AppsSDKToolResult:
     """Get a discovery feed of properties for swipe-style browsing.
 
     Returns properties for a swipe-style discovery interface.
@@ -389,9 +426,6 @@ async def discovery_feed(
         List of properties for discovery feed.
     """
     try:
-
-        from app.services.property import get_unified_properties_optimized
-
         limit = min(max(1, limit), 20)
 
         async with AsyncSessionLocal() as db:
@@ -411,7 +445,7 @@ async def discovery_feed(
                         widget_uri=get_widget_for_tool("discovery_feed"),
                     )
 
-            filters = UnifiedPropertyFilter(
+            filters = build_property_search_filters(
                 latitude=latitude,
                 longitude=longitude,
                 radius_km=50,  # Wider radius for feed
@@ -419,12 +453,15 @@ async def discovery_feed(
             )
 
             # Get properties
-            rows, _next, _total = await get_unified_properties_optimized(
-                db,
+            rows, _next, _total = await run_property_search(
+                db=db,
                 filters=filters,
                 user_id=user_id,
                 cursor_payload={},
                 limit=limit,
+                endpoint_name="discovery_feed",
+                stale_listing_context="ChatGPT discovery feed",
+                unavailable_detail="Discovery feed is temporarily unavailable. Please retry shortly.",
             )
 
             properties = [serialize_property_basic(p) for p in rows]
@@ -440,11 +477,12 @@ async def discovery_feed(
             )
 
     except Exception as e:
-        logger.error("Error in discovery.feed: %s", e, exc_info=True)
-        return format_chatgpt_response(
-            data={"error": True, "message": str(e)},
-            content_summary=f"Sorry, there was an error loading the discovery feed: {str(e)}",
-            widget_uri=get_widget_for_tool("discovery_feed"),
+        return _safe_discovery_error_response(
+            exc=e,
+            tool_name="discovery_feed",
+            fallback_message=(
+                "Sorry, there was an error loading the discovery feed. Please try again."
+            ),
         )
 
 
@@ -458,7 +496,7 @@ async def discovery_feed(
         "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
     },
 )
-async def discovery_amenities() -> dict[str, Any]:
+async def discovery_amenities() -> AppsSDKToolResult:
     """Get list of available amenities for filtering.
 
     Returns all available amenities that can be used to filter property searches.
@@ -488,11 +526,12 @@ async def discovery_amenities() -> dict[str, Any]:
             )
 
     except Exception as e:
-        logger.error("Error in discovery.amenities: %s", e, exc_info=True)
-        return format_chatgpt_response(
-            data={"error": True, "message": str(e)},
-            content_summary=f"Sorry, there was an error loading amenities: {str(e)}",
-            widget_uri=get_widget_for_tool("discovery_amenities"),
+        return _safe_discovery_error_response(
+            exc=e,
+            tool_name="discovery_amenities",
+            fallback_message=(
+                "Sorry, there was an error loading amenities. Please try again."
+            ),
         )
 
 
@@ -508,7 +547,7 @@ async def discovery_amenities() -> dict[str, Any]:
         "readOnlyHint": False,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=build_widget_tool_meta(
         widget_uri="ui://widget/propertyswipewidget.html",
@@ -519,7 +558,7 @@ async def discovery_amenities() -> dict[str, Any]:
 async def discovery_swipe(
     property_id: int,
     is_liked: bool,
-) -> dict[str, Any]:
+) -> AppsSDKToolResult:
     """Record a swipe action on a property (like or pass).
 
     Records the user's swipe action for a property. Use is_liked=true for
@@ -567,11 +606,12 @@ async def discovery_swipe(
     except AuthRequiredError:
         raise
     except Exception as e:
-        logger.error("Error in discovery.swipe: %s", e, exc_info=True)
-        return format_chatgpt_response(
-            data={"error": True, "message": str(e)},
-            content_summary=f"Sorry, there was an error recording your swipe: {str(e)}",
-            widget_uri=get_widget_for_tool("discovery_swipe"),
+        return _safe_discovery_error_response(
+            exc=e,
+            tool_name="discovery_swipe",
+            fallback_message=(
+                "Sorry, there was an error recording your swipe. Please try again."
+            ),
         )
 
 
@@ -582,14 +622,14 @@ async def discovery_swipe(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=SHORTLIST_META,
 )
 async def discovery_shortlist(
     cursor: str | None = None,
     limit: int = 20,
-) -> dict[str, Any]:
+) -> AppsSDKToolResult:
     """Get the user's shortlisted (liked) properties.
 
     Retrieves all properties the user has liked/swiped right on.
@@ -655,11 +695,12 @@ async def discovery_shortlist(
     except AuthRequiredError:
         raise
     except Exception as e:
-        logger.error("Error in discovery.shortlist: %s", e, exc_info=True)
-        return format_chatgpt_response(
-            data={"error": True, "message": str(e)},
-            content_summary=f"Sorry, there was an error loading your shortlist: {str(e)}",
-            widget_uri=get_widget_for_tool("discovery_shortlist"),
+        return _safe_discovery_error_response(
+            exc=e,
+            tool_name="discovery_shortlist",
+            fallback_message=(
+                "Sorry, there was an error loading your shortlist. Please try again."
+            ),
         )
 
 
@@ -670,7 +711,7 @@ async def discovery_shortlist(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=build_widget_tool_meta(
         widget_uri="ui://widget/propertysearchwidget.html",
@@ -682,7 +723,7 @@ async def discovery_recommendations(
     latitude: float | None = None,
     longitude: float | None = None,
     limit: int = 10,
-) -> dict[str, Any]:
+) -> AppsSDKToolResult:
     """Get AI-powered property recommendations based on user preferences.
 
     Provides personalized property recommendations based on the user's
@@ -735,9 +776,10 @@ async def discovery_recommendations(
     except AuthRequiredError:
         raise
     except Exception as e:
-        logger.error("Error in discovery.recommendations: %s", e, exc_info=True)
-        return format_chatgpt_response(
-            data={"error": True, "message": str(e)},
-            content_summary=f"Sorry, there was an error generating recommendations: {str(e)}",
-            widget_uri=get_widget_for_tool("discovery_recommendations"),
+        return _safe_discovery_error_response(
+            exc=e,
+            tool_name="discovery_recommendations",
+            fallback_message=(
+                "Sorry, there was an error generating recommendations. Please try again."
+            ),
         )

@@ -12,7 +12,7 @@ state-machine:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +20,12 @@ from app.api.api_v1.dependencies.auth import get_current_active_user
 from app.config import settings
 from app.core.auth import AuthFailureReason, _is_failure, admin_link_identity
 from app.core.database import get_db
-from app.core.exceptions import BadRequestException, RateLimitException, ServiceUnavailableException
+from app.core.exceptions import (
+    BadRequestException,
+    BaseAPIException,
+    RateLimitException,
+    ServiceUnavailableException,
+)
 from app.core.logging import get_logger
 from app.middleware.rate_limit import EndpointRateLimiter
 from app.models.enums import AuthMethod
@@ -198,5 +203,19 @@ async def delete_account(
     Returns 204 No Content (alternate mobile-friendly route; the canonical
     ``DELETE /users/me`` returns 200 + MessageResponse).
     """
-    await delete_user_account(db, current_user)
+    try:
+        await delete_user_account(db, current_user)
+    except (BaseAPIException, HTTPException):
+        raise
+    except Exception as exc:
+        logger.error(
+            "Unexpected delete account failure for user %s: %s",
+            current_user.id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error. Please try again later.",
+        ) from None
     return Response(status_code=204)

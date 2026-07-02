@@ -62,15 +62,16 @@ async def _dispatch(
     try:
         from app.services.notification_dispatcher import dispatch_notification_to_user
 
-        return await dispatch_notification_to_user(
-            db,
-            user_db_id=user_db_id,
-            type_key=type_key,
-            title=title,
-            body=body,
-            data=data,
-            deep_link=deep_link,
-        )
+        async with db.begin_nested():
+            return await dispatch_notification_to_user(
+                db,
+                user_db_id=user_db_id,
+                type_key=type_key,
+                title=title,
+                body=body,
+                data=data,
+                deep_link=deep_link,
+            )
     except Exception:
         logger.warning(
             "Push notification dispatch failed (stub fallback)",

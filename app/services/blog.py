@@ -23,7 +23,7 @@ from app.core.exceptions import (
 from app.core.logging import get_logger
 from app.models.blogs import BlogCategory, BlogPost, BlogPostCategory, BlogPostTag, BlogTag
 from app.models.enums import BlogPostStatus, UserRole
-from app.schemas.pagination import keyset_filter, keyset_payload, keyset_sort_value
+from app.schemas.pagination import keyset_filter, trim_keyset_lookahead
 from app.utils.validators import ValidationUtils
 
 if TYPE_CHECKING:
@@ -517,11 +517,12 @@ async def list_blog_posts(
         operation_name="blog_posts_query",
     )
     rows = list(result.scalars().all())
-
-    next_payload: dict | None = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].created_at), rows[-1].id)
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda post: post.created_at,
+        item_id=lambda post: post.id,
+    )
 
     return [BlogPostSchema.model_validate(i) for i in rows], next_payload, count_total
 
@@ -582,11 +583,12 @@ async def list_categories(
 
     result = await db.execute(stmt)
     rows = list(result.scalars().all())
-
-    next_payload: dict | None = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].name), rows[-1].id)
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda category: category.name,
+        item_id=lambda category: category.id,
+    )
 
     return rows, next_payload, count_total
 
@@ -689,11 +691,12 @@ async def list_tags(
 
     result = await db.execute(stmt)
     rows = list(result.scalars().all())
-
-    next_payload: dict | None = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].name), rows[-1].id)
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda tag: tag.name,
+        item_id=lambda tag: tag.id,
+    )
 
     return rows, next_payload, count_total
 

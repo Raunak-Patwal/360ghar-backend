@@ -26,7 +26,7 @@ class _Actor(Protocol):
     agent_id: int | None
 
 
-def _get_actor_role(actor: _Actor) -> UserRole:
+def get_actor_role(actor: _Actor) -> UserRole:
     """Return the UserRole for the given actor.
 
     The model column now stores a UserRole enum directly.
@@ -42,11 +42,14 @@ def _get_actor_role(actor: _Actor) -> UserRole:
         return UserRole.user
 
 
+_get_actor_role = get_actor_role
+
+
 async def assert_can_manage_owner_portfolio(
     db: AsyncSession, *, actor: _Actor, owner_id: int
 ) -> None:
     """Assert the actor can manage an owner's portfolio (PM scope)."""
-    role = _get_actor_role(actor)
+    role = get_actor_role(actor)
     if role == UserRole.admin:
         return
     if role == UserRole.agent:
@@ -99,7 +102,7 @@ async def assert_can_access_property(
     if not prop:
         raise PropertyNotFoundException(detail="Property not found")
 
-    role = _get_actor_role(actor)
+    role = get_actor_role(actor)
     if role == UserRole.admin:
         return prop
 
@@ -148,7 +151,7 @@ async def assert_can_access_lease(
     if not lease:
         raise NotFoundException(detail="Lease not found")
 
-    role = _get_actor_role(actor)
+    role = get_actor_role(actor)
     if role == UserRole.admin:
         return lease
 
@@ -179,7 +182,7 @@ async def get_accessible_owner_ids(db: AsyncSession, *, actor: _Actor) -> Sequen
     - agent: list of owners assigned to their agent_id
     - user: [actor.id]
     """
-    role = _get_actor_role(actor)
+    role = get_actor_role(actor)
     if role == UserRole.admin:
         return None
     if role == UserRole.agent:
@@ -206,7 +209,7 @@ async def can_access_booking(
     from app.models.properties import Property
 
     actor_id = actor.id
-    role = _get_actor_role(actor)
+    role = get_actor_role(actor)
 
     if booking_user_id == actor_id:
         return True
@@ -242,7 +245,7 @@ async def can_access_visit(
     from app.models.properties import Property
 
     actor_id = actor.id
-    role = _get_actor_role(actor)
+    role = get_actor_role(actor)
 
     if visit_user_id == actor_id:
         return True

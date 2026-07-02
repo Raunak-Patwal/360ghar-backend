@@ -150,6 +150,36 @@ class TestGetCurrentUser503Path:
                 )
 
         assert result is db_user
+        db.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_transient_auth_db_error_returns_503(self):
+        db = AsyncMock()
+
+        with patch(
+            "app.api.api_v1.dependencies.auth.verify_supabase_token",
+            new=AsyncMock(return_value=_user_payload()),
+        ):
+            with patch(
+                "app.api.api_v1.dependencies.auth.get_or_create_user_from_supabase",
+                new=AsyncMock(
+                    side_effect=Exception(
+                        "(psycopg.errors.QueryCanceled) "
+                        "canceling statement due to statement timeout"
+                    )
+                ),
+            ):
+                with pytest.raises(HTTPException) as exc_info:
+                    await get_current_user(
+                        request=MagicMock(),
+                        authorization="Bearer valid_jwt_token",
+                        db=db,
+                    )
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail["code"] == "AUTH_DB_UNAVAILABLE"
+        assert exc_info.value.headers == {"Retry-After": "5"}
+        db.commit.assert_not_awaited()
 
 
 class TestGetCurrentUserSSE503Path:
@@ -256,6 +286,57 @@ class TestGetCurrentUserOptional503Path:
             db=AsyncMock(),
         )
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_valid_token_commits_auth_sync(self):
+        db = AsyncMock()
+        db_user = MagicMock()
+        db_user.id = 1
+
+        with patch(
+            "app.api.api_v1.dependencies.auth.verify_supabase_token",
+            new=AsyncMock(return_value=_user_payload()),
+        ):
+            with patch(
+                "app.api.api_v1.dependencies.auth.get_or_create_user_from_supabase",
+                new=AsyncMock(return_value=db_user),
+            ):
+                result = await get_current_user_optional(
+                    request=MagicMock(),
+                    authorization="Bearer valid_jwt_token",
+                    db=db,
+                )
+
+        assert result is db_user
+        db.commit.assert_awaited_once()
+        db.rollback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_auth_sync_failure_rolls_back_before_returning_none(self):
+        db = AsyncMock()
+
+        with patch(
+            "app.api.api_v1.dependencies.auth.verify_supabase_token",
+            new=AsyncMock(return_value=_user_payload()),
+        ):
+            with patch(
+                "app.api.api_v1.dependencies.auth.get_or_create_user_from_supabase",
+                new=AsyncMock(
+                    side_effect=Exception(
+                        "(psycopg.errors.QueryCanceled) "
+                        "canceling statement due to statement timeout"
+                    )
+                ),
+            ):
+                result = await get_current_user_optional(
+                    request=MagicMock(),
+                    authorization="Bearer valid_jwt_token",
+                    db=db,
+                )
+
+        assert result is None
+        db.rollback.assert_awaited_once()
+        db.commit.assert_not_awaited()
 
 
 class TestDnsAndConnectErrorIntegration:

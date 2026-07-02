@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import _is_failure, admin_delete_user
+from app.core.db_resilience import extract_db_error_code
 from app.core.exceptions import (
     BadRequestException,
     BaseAPIException,
@@ -162,18 +163,24 @@ async def get_or_create_user_from_supabase(
 
         inactive_user = None
 
+        # Hot path: existing active users do not need serialization. The lock
+        # below is only needed for first-time creates or duplicate-repoint work.
+        if supabase_id:
+            user = await get_user_by_supabase_id(db, supabase_id)
+            if user and user.is_active:
+                logger.debug("User already exists with ID %s", user.id)
+                return user
+
         # Serialize concurrent first-time creates for the SAME Supabase user.
         # Right after login the frontend fires several authenticated requests in
         # parallel (profile + auth-state); without this lock two of them can
         # both reach the create branch (3) below and INSERT the same new row.
         # The loser's flush raises IntegrityError, and the reconciliation below
-        # then can't see the winner's still-uncommitted row (READ COMMITTED;
-        # get_db commits only at request end) → it re-raises → the auth
-        # dependency returns a spurious 401 AUTHENTICATION_FAILED → the frontend
-        # loop. A transaction-scoped advisory lock keyed on supabase_user_id
-        # makes the loser block until the winner commits, so its lookup sees the
-        # committed row instead of racing. xact-scoped (not session-scoped) so
-        # it is safe under PgBouncer transaction pooling and released at commit.
+        # then can't see the winner's still-uncommitted row under READ COMMITTED.
+        # A transaction-scoped advisory lock keyed on supabase_user_id makes the
+        # loser block until the winner commits, so its lookup sees the committed
+        # row instead of racing. xact-scoped (not session-scoped) so it is safe
+        # under PgBouncer transaction pooling and released at commit.
         if supabase_id:
             await db.execute(
                 text("SELECT pg_advisory_xact_lock(hashtext(:sid))"),
@@ -562,8 +569,11 @@ async def get_identifier_status(db: AsyncSession, identifier: str) -> dict[str, 
             channel,
             type(exc).__name__,
         )
+        error_code = extract_db_error_code(exc) or type(exc).__name__
         raise ServiceUnavailableException(
             detail="Identity provider is temporarily unavailable, please retry",
+            headers={"Retry-After": "30"},
+            details={"error_code": error_code, "channel": channel},
         ) from exc
 
     exists = row is not None

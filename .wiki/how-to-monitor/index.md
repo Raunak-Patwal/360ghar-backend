@@ -20,7 +20,7 @@ Noisy libraries are silenced: `httpx` at WARNING, `asyncio` at WARNING, `sqlalch
 
 File: `app/main.py`
 
-Sentry initializes when `SENTRY_DSN` is set. Key config: `send_default_pii=False`, `traces_sample_rate` defaults to 0.5 in dev and 0.05 in prod (overridable), `release=f"360ghar-backend@{settings.APP_VERSION}"`, a `before_send` hook that strips `authorization` and `x-api-key` headers, and integrations for FastAPI, SQLAlchemy, and logging (WARNING-and-above as breadcrumbs, no events). The auth dependency tags the Sentry user context with `id`, `email`, and `phone` after successful authentication.
+Sentry initializes when `SENTRY_DSN` is set. Key config: `send_default_pii=False`, `traces_sample_rate` defaults to 0.5 in dev and 0.05 in prod (overridable), `release=f"360ghar-backend@{settings.APP_VERSION}"`, a `before_send` hook that strips `authorization` and `x-api-key` headers, and integrations for FastAPI, SQLAlchemy, and logging (WARNING-and-above as breadcrumbs, no events). The auth dependency tags the Sentry user context with `id`, `email`, and `phone` after successful authentication. The intentional crash route `GET /debug-sentry` is only mounted when `ENABLE_SENTRY_TEST_ENDPOINT=true` and `ENVIRONMENT` is not `production`.
 
 ## Health endpoint
 

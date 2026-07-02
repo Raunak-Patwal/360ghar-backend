@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.logging import get_logger
-from app.services.oauth_token_store import oauth_token_store
+from app.services.oauth_token_store import OAuthStorageError, oauth_token_store
 
 from .helpers import (
     OAUTH_ACCESS_TOKEN_LIFETIME,
@@ -22,6 +23,53 @@ from .pkce import verify_pkce
 logger = get_logger(__name__)
 
 token_router = APIRouter()
+
+AUTH_CODE_REQUIRED_FIELDS = ("user_id", "client_id", "scope")
+REFRESH_TOKEN_REQUIRED_FIELDS = ("user_id", "scope")
+
+
+def _invalid_grant(error_description: str) -> HTTPException:
+    return HTTPException(
+        status_code=400,
+        detail={
+            "error": "invalid_grant",
+            "error_description": error_description,
+        },
+    )
+
+
+def _require_oauth_payload(
+    data: object,
+    *,
+    required_fields: tuple[str, ...],
+    payload_name: str,
+    error_description: str,
+) -> dict[str, Any]:
+    if not isinstance(data, Mapping):
+        logger.warning("OAuth %s payload was not a mapping", payload_name)
+        raise _invalid_grant(error_description)
+
+    payload = dict(data)
+    missing_fields = [field for field in required_fields if not payload.get(field)]
+    if missing_fields:
+        logger.warning(
+            "OAuth %s payload missing required fields",
+            payload_name,
+            extra={"missing_fields": missing_fields},
+        )
+        raise _invalid_grant(error_description)
+
+    return payload
+
+
+def _oauth_storage_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "error": "temporarily_unavailable",
+            "error_description": "OAuth token storage is temporarily unavailable",
+        },
+    )
 
 
 @token_router.post("/mcp/oauth/token", summary="OAuth token endpoint")
@@ -78,6 +126,12 @@ async def token_endpoint(
                         "error_description": "Invalid or expired authorization code",
                     },
                 )
+            auth_data = _require_oauth_payload(
+                auth_data,
+                required_fields=AUTH_CODE_REQUIRED_FIELDS,
+                payload_name="authorization code",
+                error_description="Invalid or expired authorization code",
+            )
 
             logger.debug(
                 "OAuth token - auth code valid", extra={"user_id": auth_data.get("user_id")}
@@ -195,6 +249,12 @@ async def token_endpoint(
                         "error_description": "Invalid or expired refresh token",
                     },
                 )
+            refresh_data = _require_oauth_payload(
+                refresh_data,
+                required_fields=REFRESH_TOKEN_REQUIRED_FIELDS,
+                payload_name="refresh token",
+                error_description="Invalid or expired refresh token",
+            )
 
             token_client_id = refresh_data.get("client_id")
             if token_client_id:
@@ -271,8 +331,16 @@ async def token_endpoint(
 
     except HTTPException:
         raise
+    except OAuthStorageError as exc:
+        logger.error(
+            "OAuth token storage unavailable: %s",
+            exc,
+            extra={"grant_type": grant_type, "client_id": client_id},
+            exc_info=True,
+        )
+        raise _oauth_storage_unavailable() from None
     except Exception as exc:
-        logger.error("OAuth token error: %s", exc)
+        logger.error("OAuth token error: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail={

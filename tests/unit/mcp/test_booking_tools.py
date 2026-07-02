@@ -511,3 +511,23 @@ class TestBookingsResponseFormat:
         assert "error" in result
         assert result["error"]["code"] == MCPErrorCode.NOT_FOUND.value
         assert result.get("data") is None
+
+    @pytest.mark.asyncio
+    async def test_generic_exception_response_redacts_raw_message(self):
+        db = AsyncMock()
+        user = _make_user()
+        mock_fn = AsyncMock(side_effect=RuntimeError("raw dsn=postgres://secret"))
+
+        with (
+            patch("app.mcp.user.booking.get_db", return_value=_async_gen(db)),
+            patch("app.mcp.user.booking._get_user", new=AsyncMock(return_value=user)),
+            patch("app.mcp.user.booking.list_user_bookings", new=mock_fn),
+        ):
+            from app.mcp.user.booking import bookings_list
+
+            result = await bookings_list()
+
+        assert result["ok"] is False
+        assert result["error"]["code"] == MCPErrorCode.INTERNAL_ERROR.value
+        assert result["error"]["message"] == "Failed to list bookings."
+        assert "postgres://secret" not in str(result)

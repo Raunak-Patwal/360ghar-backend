@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 
@@ -6,7 +8,6 @@ import sentry_sdk.integrations.fastapi
 import sentry_sdk.integrations.sqlalchemy
 import yaml  # type: ignore[import-untyped]
 from dotenv import load_dotenv
-from fastapi import HTTPException
 from fastapi.responses import Response
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sqlalchemy import text
@@ -78,15 +79,31 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint with database connectivity.
+    """Liveness check that does not touch downstream dependencies."""
+    return {
+        "status": "healthy",
+        "timestamp": utc_now_iso(),
+        "version": settings.APP_VERSION,
+    }
 
-    Uses a raw engine connection (not the session pool) with a short
-    timeout so the health check never blocks on pool exhaustion.
-    Retries once on transient PgBouncer errors (EDBHANDLEREXITED, etc.).
-    Always returns 200 — the status field indicates healthy/degraded.
-    """
-    db_status = "unknown"
 
+@app.get("/ready")
+async def readiness_check(response: Response):
+    """Readiness check with database connectivity."""
+    db_connected, db_status = await _probe_database_ready()
+    if not db_connected:
+        response.status_code = 503
+
+    return {
+        "status": "ready" if db_connected else "unready",
+        "database": db_status,
+        "timestamp": utc_now_iso(),
+        "version": settings.APP_VERSION,
+    }
+
+
+async def _probe_database_ready() -> tuple[bool, str]:
+    """Probe database connectivity for readiness checks."""
     try:
         from app.core.database import engine
 
@@ -95,39 +112,18 @@ async def health_check():
                 async with asyncio.timeout(5):
                     async with engine.connect() as conn:
                         await conn.execute(text("SELECT 1"))
-                db_status = "connected"
-                break
+                return True, "connected"
             except Exception as db_e:
                 if _attempt == 0 and is_transient_db_error(db_e):
                     logger.warning(
-                        "Transient DB error on health check; retrying: %s", db_e
+                        "Transient DB error on readiness check; retrying: %s", db_e
                     )
                     continue
-                logger.error("Database health check failed: %s", db_e)
-                db_status = "disconnected"
+                logger.error("Database readiness check failed: %s", db_e)
+                return False, "disconnected"
     except Exception as e:
-        logger.error("Health check DB probe failed unexpectedly: %s", e)
-        db_status = "disconnected"
-
-    overall_status = "healthy" if db_status == "connected" else "degraded"
-
-    return {
-        "status": overall_status,
-        "database": db_status,
-        **(
-            {
-                "database_url": (
-                    settings.DATABASE_URL.split("@", 1)[1]
-                    if "@" in settings.DATABASE_URL
-                    else "configured"
-                )
-            }
-            if settings.ENVIRONMENT != "production"
-            else {}
-        ),
-        "timestamp": utc_now_iso(),
-        "version": settings.APP_VERSION,
-    }
+        logger.error("Readiness DB probe failed unexpectedly: %s", e)
+    return False, "disconnected"
 
 
 @app.get("/config")
@@ -164,9 +160,9 @@ async def get_openapi_yaml():
     )
 
 
-@app.get("/debug-sentry")
-async def trigger_sentry_error():
-    """Trigger a test error for Sentry verification (dev only)."""
-    if settings.ENVIRONMENT == "production":
-        raise HTTPException(status_code=404)
-    raise RuntimeError("Sentry test error - this is intentional")
+if settings.sentry_test_endpoint_enabled:
+
+    @app.get("/debug-sentry", include_in_schema=False)
+    async def trigger_sentry_error():
+        """Trigger a test error for Sentry verification when explicitly enabled."""
+        raise RuntimeError("Sentry test error - this is intentional")

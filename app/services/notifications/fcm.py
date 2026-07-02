@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import os
 from typing import TYPE_CHECKING, Any
 
@@ -11,6 +13,7 @@ if TYPE_CHECKING:
     from google.oauth2 import service_account
 
 from app.config import settings
+from app.core.constants.limits import FCM_TOKEN_REFRESH_BUFFER_SECONDS
 from app.core.exceptions import BadRequestException
 from app.core.logging import get_logger
 
@@ -22,6 +25,7 @@ _fcm_credentials: service_account.Credentials | None = None
 _fcm_token_expiry: float = 0.0
 _fcm_client: httpx.AsyncClient | None = None
 _fcm_available: bool | None = None  # None=unchecked, True=ok, False=creds missing
+_fcm_refresh_lock = asyncio.Lock()
 
 
 def _get_fcm_client() -> httpx.AsyncClient:
@@ -40,7 +44,7 @@ async def close_fcm_client() -> None:
     _fcm_client = None
 
 
-def _access_token() -> str | None:
+async def _access_token() -> str | None:
     """Create or reuse an OAuth2 access token from the service account file.
 
     Caches credentials and refreshes only when the token is near expiry.
@@ -51,10 +55,6 @@ def _access_token() -> str | None:
 
     if _fcm_available is False:
         return None
-
-    # Lazy import to avoid hard dependency at app import time
-    from google.auth.transport.requests import Request
-    from google.oauth2 import service_account
 
     if not settings.FIREBASE_PROJECT_ID:
         logger.error("FIREBASE_PROJECT_ID is not configured — push notifications disabled")
@@ -71,21 +71,41 @@ def _access_token() -> str | None:
     import time as _time
 
     now = _time.time()
+    if _fcm_credentials is not None and now < _fcm_token_expiry:
+        _fcm_available = True
+        return str(_fcm_credentials.token)
 
-    try:
-        if _fcm_credentials is None:
-            _fcm_credentials = service_account.Credentials.from_service_account_file(
-                creds_path,
-                scopes=[FCM_SCOPE],
-            )
+    async with _fcm_refresh_lock:
+        if _fcm_available is False:
+            return None
 
-        if now >= _fcm_token_expiry:
-            _fcm_credentials.refresh(Request())
-            _fcm_token_expiry = now + 3300
-    except Exception as exc:
-        logger.error("FCM credential initialization failed: %s", exc)
-        _fcm_available = False
-        return None
+        now = _time.time()
+        if _fcm_credentials is not None and now < _fcm_token_expiry:
+            _fcm_available = True
+            return str(_fcm_credentials.token)
+
+        try:
+            # Lazy import to avoid hard dependency at app import time.
+            from google.auth.transport.requests import Request
+            from google.oauth2 import service_account
+
+            if _fcm_credentials is None:
+                _fcm_credentials = service_account.Credentials.from_service_account_file(
+                    creds_path,
+                    scopes=[FCM_SCOPE],
+                )
+
+            await asyncio.to_thread(_fcm_credentials.refresh, Request())
+            credential_expiry = getattr(_fcm_credentials, "expiry", None)
+            if credential_expiry is not None:
+                _fcm_token_expiry = credential_expiry.timestamp() - FCM_TOKEN_REFRESH_BUFFER_SECONDS
+            else:
+                _fcm_token_expiry = _time.time() + 3600 - FCM_TOKEN_REFRESH_BUFFER_SECONDS
+        except Exception as exc:
+            logger.error("FCM credential initialization failed: %s", exc)
+            # Keep availability retryable for transient Google auth/network failures.
+            _fcm_available = None
+            return None
 
     _fcm_available = True
     return str(_fcm_credentials.token)
@@ -154,7 +174,8 @@ def build_message(
 
 async def send_message(message: dict[str, Any]) -> dict[str, Any]:
     """Send a single FCM HTTP v1 message."""
-    token = _access_token()
+    token_result = _access_token()
+    token = await token_result if inspect.isawaitable(token_result) else token_result
     if token is None:
         raise RuntimeError("FCM credentials not configured — push notifications disabled")
     project_id = settings.FIREBASE_PROJECT_ID

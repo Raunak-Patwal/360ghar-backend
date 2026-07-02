@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any, ClassVar
 
 from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +19,36 @@ _ENV_FILE = _ENV_FILE_MAP.get(_CURRENT_ENV, ".env.dev")
 
 
 class Settings(BaseSettings):
+    SECRET_FIELD_NAMES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "AI_AGENT_API_KEY",
+            "AI_AGENT_FALLBACK_API_KEY",
+            "AI_AGENT_FALLBACK2_API_KEY",
+            "CLOUDINARY_API_KEY",
+            "CLOUDINARY_API_SECRET",
+            "DATABASE_URL",
+            "EMAIL_SMTP_PASSWORD",
+            "GLM_API_KEY",
+            "GOOGLE_API_KEY",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "GROQ_API_KEY",
+            "PERPLEXITY_API_KEY",
+            "PEXELS_API_KEY",
+            "PIXABAY_API_KEY",
+            "RAZORPAY_SECRET",
+            "RAZORPAY_WEBHOOK_SECRET",
+            "REDIS_URL",
+            "SENTRY_DSN",
+            "SERPAPI_API_KEY",
+            "SMS_PROVIDER_API_KEY",
+            "SUPABASE_SECRET_KEY",
+            "SUPABASE_WEBHOOK_SECRET",
+            "SECRET_KEY",
+            "VALID_API_KEYS",
+        }
+    )
+    REDACTED_SECRET_VALUE: ClassVar[str] = "********"
+
     # ── Core ────────────────────────────────────────────────────────────────────
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str = "change-me-in-production"
@@ -28,6 +59,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     SENTRY_DSN: str | None = None
     SENTRY_TRACES_SAMPLE_RATE: float | None = None  # Free tier default: 0.5 dev, 0.05 prod
+    ENABLE_SENTRY_TEST_ENDPOINT: bool = False
     VALID_API_KEYS: str = ""  # API keys for middleware (comma-separated)
 
     # ── Serverless ──────────────────────────────────────────────────────────────
@@ -112,13 +144,13 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
 
     # Main pool (HTTP/MCP request traffic)
-    DB_POOL_SIZE: int = 10
-    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_SIZE: int = 4
+    DB_MAX_OVERFLOW: int = 0
     DB_POOL_TIMEOUT: int = 15
     DB_POOL_RECYCLE: int = 180
     # Background pool (schedulers, scrapers, long-running tasks)
-    DB_BG_POOL_SIZE: int = 3
-    DB_BG_MAX_OVERFLOW: int = 5
+    DB_BG_POOL_SIZE: int = 1
+    DB_BG_MAX_OVERFLOW: int = 0
     # Per-request statement timeout (ms) for interactive read endpoints such as
     # property search. Bounds a stalled query so it fails fast and frees its
     # pooler connection instead of holding it until the 2-minute server default.
@@ -139,6 +171,14 @@ class Settings(BaseSettings):
     def SUPABASE_CLIENT_KEY(self) -> str:
         """Return the key used for non-privileged Supabase auth flows."""
         return self.SUPABASE_PUBLISHABLE_KEY.strip()
+
+    @property
+    def sentry_test_endpoint_enabled(self) -> bool:
+        """Return True when the intentional Sentry crash route should be mounted."""
+        return (
+            self.ENABLE_SENTRY_TEST_ENDPOINT
+            and self.ENVIRONMENT.lower() != "production"
+        )
 
     # ── Google OAuth client IDs (surfaced to clients via /api/v1/auth/config) ───
     GOOGLE_WEB_CLIENT_ID: str | None = None
@@ -164,7 +204,7 @@ class Settings(BaseSettings):
     CACHE_TTL_BLOG_CATEGORIES: int = 86400  # 24 hours
     CACHE_TTL_BLOG_TAGS: int = 86400  # 24 hours
     CACHE_TTL_FAQS: int = 86400  # 24 hours
-    CACHE_TTL_VERSIONS: int = 86400  # 24 hours
+    CACHE_TTL_VERSIONS: int = 3600  # 1 hour
 
     # ── AI Providers ─────────────────────────────────────────────────────────────
     # Gemini
@@ -338,6 +378,47 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore",
     )
+
+    def __repr_args__(self):
+        for field_name, value in super().__repr_args__():
+            if self._should_redact_field(field_name):
+                yield field_name, self._redact_secret_value(value)
+            else:
+                yield field_name, value
+
+    def model_dump(self, *args: Any, redact_secrets: bool = True, **kwargs: Any) -> dict[str, Any]:
+        data = super().model_dump(*args, **kwargs)
+        if not redact_secrets:
+            return data
+        return self._redact_mapping(data)
+
+    def model_dump_redacted(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        kwargs.pop("redact_secrets", None)
+        return self.model_dump(*args, redact_secrets=True, **kwargs)
+
+    def safe_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        return self.model_dump_redacted(*args, **kwargs)
+
+    @classmethod
+    def _redact_mapping(cls, data: dict[str, Any]) -> dict[str, Any]:
+        return {
+            field_name: (
+                cls._redact_secret_value(value)
+                if cls._should_redact_field(field_name)
+                else value
+            )
+            for field_name, value in data.items()
+        }
+
+    @classmethod
+    def _should_redact_field(cls, field_name: str) -> bool:
+        return field_name in cls.SECRET_FIELD_NAMES
+
+    @classmethod
+    def _redact_secret_value(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return value
+        return cls.REDACTED_SECRET_VALUE
 
 
 settings = Settings()  # type: ignore[call-arg]

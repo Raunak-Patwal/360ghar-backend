@@ -210,14 +210,18 @@ async def create_visit(db: AsyncSession, user_id: int, visit: VisitCreate):
     # --- Push notification on visit creation ---
     try:
         from app.services.push_notification import notify_visit_scheduled
-        # Notify the counterparty (flatmate meet) or the property owner
-        if visit_obj.counterparty_user_id:
-            await notify_visit_scheduled(
-                db,
-                recipient_db_id=visit_obj.counterparty_user_id,
-                property_title=visit_obj.property.title if visit_obj.property and visit_obj.property.title else "the property",
-                scheduled_date=visit_obj.scheduled_date.isoformat(),
-            )
+
+        async with db.begin_nested():
+            # Notify the counterparty (flatmate meet) or the property owner
+            if visit_obj.counterparty_user_id:
+                await notify_visit_scheduled(
+                    db,
+                    recipient_db_id=visit_obj.counterparty_user_id,
+                    property_title=visit_obj.property.title
+                    if visit_obj.property and visit_obj.property.title
+                    else "the property",
+                    scheduled_date=visit_obj.scheduled_date.isoformat(),
+                )
     except Exception:
         pass  # best-effort; never block visit creation
 
@@ -376,23 +380,33 @@ async def update_visit(db: AsyncSession, visit_id: int, visit_update: VisitUpdat
     if new_status == VisitStatus.confirmed and old_status != VisitStatus.confirmed and updated_visit:
         try:
             from app.services.push_notification import notify_visit_confirmed
-            scheduled_str = updated_visit.scheduled_date.isoformat() if updated_visit.scheduled_date else "TBD"
-            prop_title = updated_visit.property.title if updated_visit.property and updated_visit.property.title else "the property"
-            # Notify the visiting user
-            await notify_visit_confirmed(
-                db,
-                recipient_db_id=updated_visit.user_id,
-                property_title=prop_title,
-                scheduled_date=scheduled_str,
-            )
-            # Notify the counterparty if present
-            if updated_visit.counterparty_user_id:
+
+            async with db.begin_nested():
+                scheduled_str = (
+                    updated_visit.scheduled_date.isoformat()
+                    if updated_visit.scheduled_date
+                    else "TBD"
+                )
+                prop_title = (
+                    updated_visit.property.title
+                    if updated_visit.property and updated_visit.property.title
+                    else "the property"
+                )
+                # Notify the visiting user
                 await notify_visit_confirmed(
                     db,
-                    recipient_db_id=updated_visit.counterparty_user_id,
+                    recipient_db_id=updated_visit.user_id,
                     property_title=prop_title,
                     scheduled_date=scheduled_str,
                 )
+                # Notify the counterparty if present
+                if updated_visit.counterparty_user_id:
+                    await notify_visit_confirmed(
+                        db,
+                        recipient_db_id=updated_visit.counterparty_user_id,
+                        property_title=prop_title,
+                        scheduled_date=scheduled_str,
+                    )
         except Exception:
             pass  # best-effort; never block visit update
 

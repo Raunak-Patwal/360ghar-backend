@@ -36,10 +36,13 @@ from app.services.property import (
     delete_property,
     get_property,
     get_property_recommendations,
-    get_unified_properties_optimized,
     increment_property_view_count,
     list_user_properties,
     update_property,
+)
+from app.services.property.search_orchestration import (
+    build_property_search_filters,
+    run_property_search,
 )
 from app.services.swipe import get_user_like_for_property
 from app.services.visit import get_user_property_visit_stats
@@ -139,11 +142,12 @@ def build_property_filters(
     ),
 ):
     """Common dependency to build UnifiedPropertyFilter from query params."""
-    return UnifiedPropertyFilter(
+    return build_property_search_filters(
         latitude=lat,
         longitude=lng,
         radius_km=radius,
         search_query=q,
+        semantic_search=semantic_search,
         property_ids=ids,
         property_type=property_type,
         purpose=purpose,
@@ -173,7 +177,6 @@ def build_property_filters(
         guests=guests,
         sort_by=sort_by,
         exclude_swiped=exclude_swiped,
-        semantic_search=semantic_search,
     )
 
 
@@ -284,9 +287,6 @@ async def get_properties_list(
     - Optional user authentication
     - Auth-aware filter: exclude swiped properties when `exclude_swiped=true`
     """
-    if filters.semantic_search and not filters.search_query:
-        raise HTTPException(status_code=400, detail="semantic_search requires a search query (q)")
-
     user_id = current_user.id if current_user else None
 
     cursor_payload = page.decoded()
@@ -301,55 +301,24 @@ async def get_properties_list(
         },
     )
 
-    try:
-        # Bound every statement in this read request so a stalled DB backend
-        # fails fast instead of holding a pooler connection for the 2-minute
-        # server default (which cascades into transaction-pool exhaustion).
-        await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
+    rows, next_payload, total = await run_property_search(
+        db,
+        filters,
+        user_id,
+        cursor_payload,
+        page.limit,
+        with_total=page.include_total,
+        endpoint_name="get_properties_list",
+        stale_listing_context="property browse",
+        unavailable_detail="Property search is temporarily unavailable. Please retry shortly.",
+    )
 
-        # Stale-listing pause is a best-effort cleanup write; it must never
-        # break browsing. If it stalls/fails, roll back the aborted transaction
-        # and continue to the (read-only) search.
-        try:
-            await pause_stale_flatmate_listings(db)
-        except Exception as cleanup_exc:
-            logger.warning(
-                "Skipping stale-listing pause during property browse: %s", cleanup_exc
-            )
-            await db.rollback()
-            await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
+    logger.info(
+        "Property search completed — found %s properties",
+        len(rows),
+    )
 
-        rows, next_payload, total = await get_unified_properties_optimized(
-            db, filters, user_id, cursor_payload, page.limit,
-            with_total=page.include_total,
-        )
-
-        logger.info(
-            "Property search completed — found %s properties",
-            len(rows),
-        )
-
-        return build_cursor_page(rows, limit=page.limit, next_payload=next_payload, total=total)
-    except Exception as e:
-        if is_transient_db_error(e) or is_statement_timeout(e):
-            error_code = extract_db_error_code(e) or (
-                "STATEMENT_TIMEOUT" if is_statement_timeout(e) else "TRANSIENT_DB_ERROR"
-            )
-            logger.error(
-                "Property search transient DB failure",
-                extra={
-                    "endpoint": "get_properties_list",
-                    "user": user_id or "anonymous",
-                    "error_code": error_code,
-                },
-                exc_info=True,
-            )
-            raise ServiceUnavailableException(
-                detail="Property search is temporarily unavailable. Please retry shortly.",
-                details={"error_code": error_code, "endpoint": "get_properties_list"},
-            ) from e
-        logger.error("Property search failed for user %s: %s", user_id or "anonymous", e)
-        raise
+    return build_cursor_page(rows, limit=page.limit, next_payload=next_payload, total=total)
 
 
 @router.get("/semantic-search", response_model=CursorPage[Property], summary="Semantic property search")
@@ -363,13 +332,6 @@ async def semantic_property_search(
     Perform semantic (vector-powered) property search.
     Combines vector similarity with traditional filters and returns relevance scores.
     """
-    if not filters.search_query:
-        raise HTTPException(
-            status_code=400, detail="A search query (q) is required for semantic search"
-        )
-
-    filters.semantic_search = True
-    filters.sort_by = SortBy.relevance
     user_id = current_user.id if current_user else None
 
     logger.info(
@@ -377,38 +339,21 @@ async def semantic_property_search(
         extra={"user": user_id or "anonymous", "query": filters.search_query},
     )
 
-    try:
-        await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
-        cursor_payload = page.decoded()
-        try:
-            await pause_stale_flatmate_listings(db)
-        except Exception as cleanup_exc:
-            logger.warning(
-                "Skipping stale-listing pause during semantic search: %s", cleanup_exc
-            )
-            await db.rollback()
-            await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
-
-        rows, next_payload, total = await get_unified_properties_optimized(
-            db, filters, user_id, cursor_payload, page.limit,
-            with_total=page.include_total,
-        )
-        return build_cursor_page(rows, limit=page.limit, next_payload=next_payload, total=total)
-    except Exception as e:
-        if is_transient_db_error(e) or is_statement_timeout(e):
-            error_code = extract_db_error_code(e) or (
-                "STATEMENT_TIMEOUT" if is_statement_timeout(e) else "TRANSIENT_DB_ERROR"
-            )
-            logger.error(
-                "Semantic property search transient DB failure",
-                extra={"endpoint": "semantic_property_search", "error_code": error_code},
-                exc_info=True,
-            )
-            raise ServiceUnavailableException(
-                detail="Semantic search is temporarily unavailable. Please retry shortly.",
-                details={"error_code": error_code, "endpoint": "semantic_property_search"},
-            ) from e
-        raise
+    cursor_payload = page.decoded()
+    rows, next_payload, total = await run_property_search(
+        db,
+        filters,
+        user_id,
+        cursor_payload,
+        page.limit,
+        with_total=page.include_total,
+        semantic_required=True,
+        force_semantic_relevance=True,
+        endpoint_name="semantic_property_search",
+        stale_listing_context="semantic search",
+        unavailable_detail="Semantic search is temporarily unavailable. Please retry shortly.",
+    )
+    return build_cursor_page(rows, limit=page.limit, next_payload=next_payload, total=total)
 
 
 @router.get("/recommendations", response_model=CursorPage[Property], summary="List recommended properties")
@@ -491,17 +436,19 @@ async def get_property_details(
     # read-only and cacheable). A failure here must never break the response.
     if not _is_bot_user_agent(request.headers.get("user-agent")):
         try:
-            await increment_property_view_count(db, property_id)
+            async with db.begin_nested():
+                await increment_property_view_count(db, property_id)
         except Exception as view_exc:  # noqa: BLE001
             logger.warning("View count increment failed for %s: %s", property_id, view_exc)
 
     # If user is authenticated, enrich with user-specific context
     if current_user:
         try:
-            # Liked status (True/False/None)
-            liked = await get_user_like_for_property(db, current_user.id, property_id)
-            # Upcoming visit stats
-            visit_stats = await get_user_property_visit_stats(db, current_user.id, property_id)
+            async with db.begin_nested():
+                # Liked status (True/False/None)
+                liked = await get_user_like_for_property(db, current_user.id, property_id)
+                # Upcoming visit stats
+                visit_stats = await get_user_property_visit_stats(db, current_user.id, property_id)
             property_data = property_data.model_copy(
                 update={
                     "liked": bool(liked) if liked is not None else None,

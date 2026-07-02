@@ -4,18 +4,22 @@ Tests for MCP protocol compliance with the Apps SDK specification.
 These tests verify that all tools and widgets meet the OpenAI Apps SDK
 and MCP protocol requirements without requiring a running server.
 """
+
+from __future__ import annotations
+
 import pytest
 
 from app.mcp.apps_sdk import (
     MCP_SECURITY_SCHEMES_MIXED,
     MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     RESOURCE_MIME_TYPE,
+    AppsSDKFastMCP,
     build_widget_tool_meta,
     build_www_authenticate,
     error_response,
     success_response,
 )
-from app.mcp.chatgpt import WIDGETS, get_widget_for_tool
+from app.mcp.chatgpt import WIDGETS, get_widget_for_tool, register_chatgpt_widgets
 from app.mcp.chatgpt.response_formatter import format_auth_required_response
 
 
@@ -84,6 +88,33 @@ class TestWidgetMapping:
 
     def test_get_widget_for_unknown_tool_returns_none(self):
         assert get_widget_for_tool("nonexistent_tool") is None
+
+
+class TestWidgetResourceRegistration:
+    """Verify advertised widget URIs are readable MCP resources."""
+
+    @pytest.mark.asyncio
+    async def test_registers_stable_and_versioned_widget_resource_uris(self):
+        mcp = AppsSDKFastMCP("widget-resource-test")
+        register_chatgpt_widgets(mcp)
+
+        for widget_name in WIDGETS:
+            stable_uri = f"ui://widget/{widget_name.lower()}.html"
+
+            stable_result = await mcp.read_resource(stable_uri)
+
+            assert stable_result.contents[0].mime_type == RESOURCE_MIME_TYPE
+            assert stable_result.contents[0].meta["ui"]["resourceUri"] == stable_uri
+
+        versioned_uri = get_widget_for_tool("discovery_feed")
+
+        assert versioned_uri is not None
+        assert versioned_uri.startswith("ui://widget/propertyswipewidget.html?v=")
+
+        versioned_result = await mcp.read_resource(versioned_uri)
+
+        assert versioned_result.contents[0].mime_type == RESOURCE_MIME_TYPE
+        assert versioned_result.contents[0].meta["ui"]["resourceUri"] == versioned_uri
 
 
 class TestSuccessResponse:

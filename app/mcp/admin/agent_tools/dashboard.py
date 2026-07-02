@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.mcp.admin.agent_tools.common import (
-    MCP_SECURITY_SCHEMES_MIXED,
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     AuthRequiredError,
     MCPErrorCode,
     MCPResponse,
@@ -17,7 +17,14 @@ from app.mcp.admin.agent_tools.common import (
     logger,
     utc_now,
 )
+from app.mcp.apps_sdk import build_widget_tool_meta
 from app.models.enums import UserRole
+
+AGENT_DASHBOARD_META = build_widget_tool_meta(
+    widget_uri="ui://widget/ownerdashboardwidget.html",
+    invoking="Loading dashboard...",
+    invoked="Dashboard loaded",
+)
 
 
 @admin_mcp.tool(
@@ -27,8 +34,9 @@ from app.models.enums import UserRole
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
+    meta=AGENT_DASHBOARD_META,
 )
 async def agent_dashboard_overview(
     owner_id: int | None = None,

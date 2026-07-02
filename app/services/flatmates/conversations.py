@@ -618,14 +618,15 @@ async def send_message(
         try:
             from app.services.push_notification import notify_new_message
 
-            sender = await db.get(User, user_id)
-            sender_name = (sender.full_name if sender else None) or "Someone"
-            await notify_new_message(
-                db,
-                recipient_db_id=peer_id,
-                sender_name=sender_name,
-                conversation_id=conversation.id,
-            )
+            async with db.begin_nested():
+                sender = await db.get(User, user_id)
+                sender_name = (sender.full_name if sender else None) or "Someone"
+                await notify_new_message(
+                    db,
+                    recipient_db_id=peer_id,
+                    sender_name=sender_name,
+                    conversation_id=conversation.id,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Message notification failed (best-effort): %s", exc, exc_info=True)
 

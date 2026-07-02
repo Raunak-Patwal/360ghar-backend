@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import secrets
 import socket
+import ssl
 from html import escape
 from typing import Any
 from urllib.parse import urlparse
@@ -30,6 +32,9 @@ CHATGPT_REDIRECT_URIS = [
 CHATGPT_REDIRECT_PREFIXES = [
     "https://chatgpt.com/connector/oauth/",
 ]
+
+_CLIENT_METADATA_MAX_BYTES = 64 * 1024
+_CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
 
 
 # =============================================================================
@@ -369,6 +374,184 @@ def render_consent_html(
     """
 
 
+def _is_public_metadata_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return True only for globally routable metadata endpoint addresses."""
+    return (
+        ip.is_global
+        and not ip.is_private
+        and not ip.is_loopback
+        and not ip.is_link_local
+        and not ip.is_multicast
+        and not ip.is_reserved
+        and not ip.is_unspecified
+        and ip not in _CGNAT_NETWORK
+    )
+
+
+async def _resolve_public_metadata_ips(host: str, port: int) -> list[str]:
+    """Resolve a metadata host and reject the entire result set if any IP is unsafe."""
+    def _resolve_ips() -> list[str]:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        return [str(info[4][0]) for info in infos if info and info[4]]
+
+    try:
+        raw_ips = await anyio.to_thread.run_sync(_resolve_ips)
+    except Exception as exc:
+        logger.warning("Failed to resolve client_id host %s: %s", host, exc)
+        return []
+
+    ips: list[str] = []
+    seen: set[str] = set()
+    for ip_str in raw_ips:
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            logger.warning("Invalid IP for client_id host %s: %s", host, ip_str)
+            return []
+
+        if not _is_public_metadata_ip(ip):
+            logger.warning("Rejected client_id host %s resolving to non-public IP %s", host, ip_str)
+            return []
+
+        if ip_str not in seen:
+            seen.add(ip_str)
+            ips.append(ip_str)
+
+    return ips
+
+
+def _decode_chunked_body(body: bytes) -> bytes:
+    """Decode a small HTTP/1.1 chunked body."""
+    decoded = bytearray()
+    cursor = 0
+    while True:
+        line_end = body.find(b"\r\n", cursor)
+        if line_end == -1:
+            raise ValueError("Invalid chunked response")
+        size_line = body[cursor:line_end].split(b";", 1)[0]
+        try:
+            chunk_size = int(size_line, 16)
+        except ValueError as exc:
+            raise ValueError("Invalid chunk size") from exc
+        cursor = line_end + 2
+        if chunk_size == 0:
+            return bytes(decoded)
+        chunk_end = cursor + chunk_size
+        if len(body) < chunk_end + 2:
+            raise ValueError("Truncated chunked response")
+        decoded.extend(body[cursor:chunk_end])
+        cursor = chunk_end + 2
+
+
+async def _fetch_metadata_from_validated_ip(
+    parsed: Any,
+    ip: str,
+    *,
+    max_bytes: int = _CLIENT_METADATA_MAX_BYTES,
+    timeout: float = 10.0,
+) -> dict[str, Any] | None:
+    """Fetch metadata from a validated IP without re-resolving the hostname."""
+    host = parsed.hostname
+    if not host:
+        return None
+
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+
+    request = (
+        f"GET {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        "Accept: application/json\r\n"
+        "Accept-Encoding: identity\r\n"
+        "Connection: close\r\n"
+        "User-Agent: 360ghar-oauth-metadata/1.0\r\n"
+        "\r\n"
+    ).encode("ascii")
+
+    ssl_context = ssl.create_default_context()
+    response = bytearray()
+    try:
+        with anyio.fail_after(timeout):
+            async with await anyio.connect_tcp(
+                ip,
+                443,
+                tls=True,
+                tls_hostname=host,
+                ssl_context=ssl_context,
+            ) as stream:
+                await stream.send(request)
+                while True:
+                    try:
+                        chunk = await stream.receive(8192)
+                    except anyio.EndOfStream:
+                        break
+                    if not chunk:
+                        break
+                    response.extend(chunk)
+                    if len(response) > max_bytes:
+                        logger.warning("Client metadata response exceeded %s bytes", max_bytes)
+                        return None
+    except Exception as exc:
+        logger.warning("Failed to fetch client metadata from pinned IP %s for %s: %s", ip, host, exc)
+        return None
+
+    header_end = response.find(b"\r\n\r\n")
+    if header_end == -1:
+        logger.warning("Client metadata response missing HTTP headers for %s", host)
+        return None
+
+    header_blob = bytes(response[:header_end]).decode("iso-8859-1", errors="replace")
+    body = bytes(response[header_end + 4 :])
+    header_lines = header_blob.split("\r\n")
+    status_parts = header_lines[0].split(" ", 2)
+    if len(status_parts) < 2 or status_parts[1] != "200":
+        logger.warning("Client metadata fetch returned non-200 status for %s", host)
+        return None
+
+    headers: dict[str, str] = {}
+    for line in header_lines[1:]:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            headers[key.strip().lower()] = value.strip().lower()
+
+    if headers.get("transfer-encoding") == "chunked":
+        try:
+            body = _decode_chunked_body(body)
+        except ValueError as exc:
+            logger.warning("Failed to decode chunked client metadata for %s: %s", host, exc)
+            return None
+
+    if len(body) > max_bytes:
+        logger.warning("Client metadata body exceeded %s bytes for %s", max_bytes, host)
+        return None
+
+    try:
+        parsed_body = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        logger.warning("Client metadata response was not valid JSON for %s: %s", host, exc)
+        return None
+
+    if isinstance(parsed_body, dict):
+        return dict[str, Any](parsed_body)
+    logger.warning("Client metadata response was not a JSON object for %s", host)
+    return None
+
+
+def _validate_client_metadata(metadata: dict[str, Any], client_id: str) -> dict[str, Any] | None:
+    """Validate the required fields in a client metadata document."""
+    if metadata.get("client_id") != client_id:
+        logger.warning("Client ID mismatch in metadata document: %s", client_id)
+        return None
+    if "redirect_uris" not in metadata or "client_name" not in metadata:
+        logger.warning("Client metadata missing required fields: %s", client_id)
+        return None
+    if not isinstance(metadata.get("redirect_uris"), list):
+        logger.warning("Client metadata redirect_uris must be a list: %s", client_id)
+        return None
+    return metadata
+
+
 async def fetch_client_metadata(client_id: str) -> dict[str, Any] | None:
     """Fetch and validate Client ID Metadata Document for URL-based client_ids."""
     if not client_id.startswith("https://"):
@@ -389,53 +572,22 @@ async def fetch_client_metadata(client_id: str) -> dict[str, Any] | None:
             return None
 
         port = parsed.port or 443
-        if port not in {443}:
+        if port != 443:
             logger.warning("Rejected client_id with non-HTTPS port: %s", client_id)
             return None
 
-        def _resolve_ips() -> list[str]:
-            infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-            return [str(info[4][0]) for info in infos if info and info[4]]
-
-        try:
-            ips = await anyio.to_thread.run_sync(_resolve_ips)
-        except Exception as exc:
-            logger.warning("Failed to resolve client_id host %s: %s", host, exc)
+        ips = await _resolve_public_metadata_ips(host, port)
+        if not ips:
             return None
 
-        for ip_str in ips:
-            try:
-                ip = ipaddress.ip_address(ip_str)
-            except ValueError:
-                logger.warning("Invalid IP for client_id host %s: %s", host, ip_str)
-                return None
-
-            if (
-                ip.is_private
-                or ip.is_loopback
-                or ip.is_link_local
-                or ip.is_multicast
-                or ip.is_reserved
-                or ip.is_unspecified
-            ):
-                logger.warning(
-                    "Rejected client_id resolving to non-public IP %s (%s)", ip_str, client_id
-                )
-                return None
-
-        from app.core.http import get_general_client
-
-        client = get_general_client()
-        resp = await client.get(client_id, timeout=10.0, follow_redirects=False)
-        if resp.status_code == 200:
-            metadata = resp.json()
-            if metadata.get("client_id") == client_id:
-                if "redirect_uris" in metadata and "client_name" in metadata:
-                    logger.info("Fetched client metadata from %s", client_id)
-                    return dict[str, Any](metadata)
-                logger.warning("Client metadata missing required fields: %s", client_id)
-            else:
-                logger.warning("Client ID mismatch in metadata document: %s", client_id)
+        # Do not use the shared httpx client here: it would resolve the host
+        # again after validation and reopen the DNS-rebinding SSRF window.
+        metadata = await _fetch_metadata_from_validated_ip(parsed, ips[0])
+        if metadata:
+            validated = _validate_client_metadata(metadata, client_id)
+            if validated:
+                logger.info("Fetched client metadata from %s", client_id)
+                return validated
     except Exception as exc:
         logger.warning("Failed to fetch client metadata from %s: %s", client_id, exc)
 

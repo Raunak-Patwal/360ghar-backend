@@ -7,7 +7,11 @@ from typing import Any
 
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
-from app.mcp.apps_sdk import MCP_SECURITY_SCHEMES_MIXED, AuthRequiredError, build_widget_tool_meta
+from app.mcp.apps_sdk import (
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
+    AuthRequiredError,
+    build_widget_tool_meta,
+)
 from app.mcp.chatgpt import get_widget_for_tool
 from app.mcp.chatgpt.pm_shared import _format_lease_summary, _get_optional_user, _serialize_lease
 from app.mcp.chatgpt.response_formatter import (
@@ -37,7 +41,7 @@ LEASE_MANAGEMENT_META = build_widget_tool_meta(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=LEASE_MANAGEMENT_META,
 )
@@ -121,7 +125,7 @@ async def owner_leases_list(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=LEASE_MANAGEMENT_META,
 )
@@ -178,7 +182,7 @@ async def owner_leases_get(
         "readOnlyHint": False,
         "destructiveHint": True,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta={
         "openai/toolInvocation/invoking": "Terminating lease...",

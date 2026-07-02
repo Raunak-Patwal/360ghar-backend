@@ -60,6 +60,12 @@ async def api_v1_health_redirect():
     return RedirectResponse(url="/health", status_code=307)
 
 
+@api_router.get("/ready", include_in_schema=False)
+async def api_v1_ready_redirect():
+    """Redirect /api/v1/ready to the root /ready endpoint."""
+    return RedirectResponse(url="/ready", status_code=307)
+
+
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(properties.router, prefix="/properties", tags=["properties"])

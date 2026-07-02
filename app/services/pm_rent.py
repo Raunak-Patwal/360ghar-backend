@@ -12,7 +12,7 @@ from app.models.enums import LeaseStatus, RentChargeStatus, UserRole
 from app.models.pm_finance import RentCharge, RentPayment
 from app.models.pm_leases import Lease
 from app.models.users import User
-from app.schemas.pagination import keyset_filter, keyset_payload, keyset_sort_value
+from app.schemas.pagination import keyset_filter, trim_keyset_lookahead
 from app.services.pm_authz import assert_can_access_lease, assert_can_manage_owner_portfolio
 
 
@@ -188,9 +188,12 @@ async def list_rent_charges(
     stmt = stmt.order_by(RentCharge.due_date.asc(), RentCharge.id.asc()).limit(limit + 1)
     res = await db.execute(stmt)
     rows = res.all()
-
-    has_more = len(rows) > limit
-    page_rows = rows[:limit]
+    page_rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda row: row[0].due_date,
+        item_id=lambda row: row[0].id,
+    )
 
     items: list[dict] = []
     for charge, paid_total in page_rows:
@@ -205,11 +208,6 @@ async def list_rent_charges(
                 "outstanding": outstanding,
             }
         )
-
-    next_payload: dict | None = None
-    if has_more and items:
-        last = items[-1]["charge"]
-        next_payload = keyset_payload(keyset_sort_value(last.due_date), last.id)
 
     return items, next_payload, count_total
 
@@ -346,13 +344,11 @@ async def list_rent_payments(
     stmt = stmt.order_by(RentPayment.paid_at.desc(), RentPayment.id.desc()).limit(limit + 1)
     res = await db.execute(stmt)
     rows = list(res.scalars().all())
-
-    has_more = len(rows) > limit
-    items = rows[:limit]
-
-    next_payload: dict | None = None
-    if has_more and items:
-        last = items[-1]
-        next_payload = keyset_payload(keyset_sort_value(last.paid_at), last.id)
+    items, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda payment: payment.paid_at,
+        item_id=lambda payment: payment.id,
+    )
 
     return items, next_payload, count_total

@@ -51,9 +51,14 @@ def is_statement_timeout(exc: Exception) -> bool:
         or "querycanceled" in message
     )
 
-TRANSIENT_DB_ERROR_CODES = {"EDBHANDLEREXITED", "ECHECKOUTTIMEOUT"}
+TRANSIENT_DB_ERROR_CODES = {
+    "ECHECKOUTTIMEOUT",
+    "EDBHANDLEREXITED",
+    "EMAXCONNSESSION",
+}
 _TRANSIENT_DB_MESSAGE_MARKERS = (
     "connection to database closed",
+    "max clients reached",
     "unable to check out connection from the pool",
 )
 
@@ -69,7 +74,16 @@ def extract_db_error_code(exc: Exception) -> str | None:
 
 def _is_pool_exhaustion_error(exc: Exception) -> bool:
     """Pool exhaustion is a capacity problem — retrying makes it worse."""
-    return "QueuePool limit" in str(exc) or "3o7r" in str(exc)
+    message = str(exc)
+    message_lower = message.lower()
+    return (
+        "QueuePool limit" in message
+        or "3o7r" in message
+        or "EMAXCONNSESSION" in message
+        or "max clients reached" in message_lower
+        or "remaining connection slots are reserved" in message_lower
+        or "too many connections" in message_lower
+    )
 
 
 def is_transient_db_error(exc: Exception) -> bool:

@@ -56,7 +56,7 @@ Selected external-facing paths require an `x-api-key` header validated against t
 
 ## Sentry
 
-The `sentry-sdk[fastapi]` package is integrated with `send_default_pii=False`. The `SENTRY_DSN` and `SENTRY_TRACES_SAMPLE_RATE` settings control initialization. The auth dependency tags the Sentry user context with `id`, `email`, and `phone` (as `username`) after successful authentication. Performance monitoring is sampled at the configured rate.
+The `sentry-sdk[fastapi]` package is integrated with `send_default_pii=False`. The `SENTRY_DSN` and `SENTRY_TRACES_SAMPLE_RATE` settings control initialization. The auth dependency tags the Sentry user context with `id`, `email`, and `phone` (as `username`) after successful authentication. Performance monitoring is sampled at the configured rate. `GET /debug-sentry` is not mounted by default; set `ENABLE_SENTRY_TEST_ENDPOINT=true` in a non-production environment only when intentionally verifying Sentry ingestion.
 
 ## Data safety
 

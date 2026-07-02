@@ -6,6 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthFailureReason, _is_failure, verify_supabase_token
 from app.core.database import get_bg_session_factory, get_db
+from app.core.db_resilience import (
+    extract_db_error_code,
+    is_statement_timeout,
+    is_transient_db_error,
+)
 from app.core.logging import get_logger
 from app.models.enums import UserRole
 from app.models.users import User
@@ -31,6 +36,30 @@ def _provider_unavailable_response() -> HTTPException:
         },
         headers={"Retry-After": _RETRY_AFTER_SECONDS},
     )
+
+
+def _auth_db_unavailable_response(exc: Exception) -> HTTPException:
+    """Build a 503 response for transient local auth-sync database failures."""
+    error_code = extract_db_error_code(exc) or (
+        "STATEMENT_TIMEOUT" if is_statement_timeout(exc) else "AUTH_DB_UNAVAILABLE"
+    )
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": "AUTH_DB_UNAVAILABLE",
+            "message": "Authentication data is temporarily unavailable, please retry",
+            "details": {"error_code": error_code},
+        },
+        headers={"Retry-After": _RETRY_AFTER_SECONDS},
+    )
+
+
+async def _rollback_optional_auth(db: AsyncSession) -> None:
+    """Clear a failed optional-auth transaction before public endpoint work continues."""
+    try:
+        await db.rollback()
+    except Exception as rollback_exc:  # noqa: BLE001
+        logger.warning("Optional auth rollback failed: %s", rollback_exc)
 
 
 def _parse_bearer_token(authorization: str | None) -> str:
@@ -128,6 +157,9 @@ async def get_current_user(
             )
 
         db_user = await get_or_create_user_from_supabase(db, supabase_user_data)
+        # Auth sync uses a transaction-scoped advisory lock. It is independent
+        # from endpoint business writes, so release it before endpoint logic runs.
+        await db.commit()
         request.state.user_id = getattr(db_user, "id", None)
         # Store raw Supabase user data so endpoints that need identity
         # metadata (e.g. GET /users/me/identities) can access it without
@@ -143,6 +175,17 @@ async def get_current_user(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
+        if is_transient_db_error(exc) or is_statement_timeout(exc):
+            logger.warning(
+                "Authentication DB sync temporarily unavailable: %s",
+                exc,
+                exc_info=True,
+                extra={
+                    "reason": "authentication_db_unavailable",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            raise _auth_db_unavailable_response(exc) from exc
         logger.error(
             "Authentication error: %s",
             exc,
@@ -318,6 +361,7 @@ async def get_current_user_optional(
             return None
 
         db_user = await get_or_create_user_from_supabase(db, supabase_user_data)
+        await db.commit()
         request.state.user_id = getattr(db_user, "id", None)
         sentry_sdk.set_user({
             "id": str(getattr(db_user, "id", None)),
@@ -327,6 +371,7 @@ async def get_current_user_optional(
         return db_user
     except Exception:
         logger.warning("Optional auth resolution failed", exc_info=True)
+        await _rollback_optional_auth(db)
         return None
 
 

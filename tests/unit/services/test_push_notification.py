@@ -33,6 +33,7 @@ class TestDispatchFallback:
             )
             assert result["fallback"] is True
             assert result["type_key"] == "flatmate_new_message"
+            mock_db_session.begin_nested.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_notify_new_match_fallback(self, mock_db_session):
@@ -142,6 +143,7 @@ class TestNotifyDeepLinks:
             )
             call_kwargs = mock_dispatch.call_args.kwargs
             assert "chats" in str(call_kwargs.get("deep_link", ""))
+            mock_db_session.begin_nested.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_new_match_route(self, mock_db_session):

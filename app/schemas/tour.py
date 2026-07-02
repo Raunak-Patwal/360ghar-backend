@@ -125,7 +125,7 @@ class HotspotBase(BaseModel):
 
 class HotspotCreate(HotspotBase):
     """Schema for creating a hotspot."""
-    pass
+    model_config = ConfigDict(json_schema_extra={"title": "HotspotCreate"})
 
 
 class HotspotUpdate(BaseModel):
@@ -256,7 +256,7 @@ class TourBase(BaseModel):
 
 class TourCreate(TourBase):
     """Schema for creating a tour."""
-    pass
+    model_config = ConfigDict(json_schema_extra={"title": "TourCreate"})
 
 
 class TourUpdate(BaseModel):

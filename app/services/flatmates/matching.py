@@ -169,28 +169,30 @@ async def record_swipe(
             did_match = True
             match_id = match.id
             conversation_id = conversation.id
+            await db.flush()
 
             # --- Push notifications to both users ---
             try:
                 from app.services.push_notification import notify_new_match
 
-                swiper = await db.get(User, user_id)
-                target = await db.get(User, payload.target_user_id)
-                swiper_name = swiper.full_name or "Someone" if swiper else "Someone"
-                target_name = target.full_name or "Someone" if target else "Someone"
-                assert payload.target_user_id is not None
-                await notify_new_match(
-                    db,
-                    recipient_db_id=payload.target_user_id,
-                    peer_name=swiper_name,
-                    match_id=match_id,
-                )
-                await notify_new_match(
-                    db,
-                    recipient_db_id=user_id,
-                    peer_name=target_name,
-                    match_id=match_id,
-                )
+                async with db.begin_nested():
+                    swiper = await db.get(User, user_id)
+                    target = await db.get(User, payload.target_user_id)
+                    swiper_name = swiper.full_name or "Someone" if swiper else "Someone"
+                    target_name = target.full_name or "Someone" if target else "Someone"
+                    assert payload.target_user_id is not None
+                    await notify_new_match(
+                        db,
+                        recipient_db_id=payload.target_user_id,
+                        peer_name=swiper_name,
+                        match_id=match_id,
+                    )
+                    await notify_new_match(
+                        db,
+                        recipient_db_id=user_id,
+                        peer_name=target_name,
+                        match_id=match_id,
+                    )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Match notification failed (best-effort): %s", exc, exc_info=True)
                 pass  # best-effort; never block swipe recording

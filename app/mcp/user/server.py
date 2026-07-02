@@ -38,22 +38,6 @@ def _require_auth(*, action: str, message: str, scope: str = "mcp:read mcp:write
     )
 
 
-def _count_mcp_tools(mcp: AppsSDKFastMCP) -> int:
-    """Count the number of tools currently registered on the MCP server.
-
-    Uses the local provider's internal component storage to get a
-    synchronous tool count without needing an async event loop.
-    """
-    from fastmcp.tools.base import Tool
-
-    try:
-        components = mcp.local_provider._components
-        return sum(1 for v in components.values() if isinstance(v, Tool))
-    except AttributeError:
-        # If internal API changes, fall back to 0 (cannot verify)
-        return 0
-
-
 # ============================================================================
 # Import sub-modules to register tools on user_mcp
 # ============================================================================
@@ -72,7 +56,6 @@ from app.mcp.user import visits as visits  # noqa: E402,F401
 # ============================================================================
 # Import ChatGPT PM tools (cross-cutting owner/tenant) to register them
 try:
-    _before_count = _count_mcp_tools(user_mcp)
     from app.mcp.chatgpt import (
         pm_dashboard_tools,  # noqa: F401
         pm_lease_tools,  # noqa: F401
@@ -80,17 +63,6 @@ try:
         pm_rent_tools,  # noqa: F401
         pm_tenant_tools,  # noqa: F401
     )
-    _after_count = _count_mcp_tools(user_mcp)
-    _new_tools = _after_count - _before_count
-    if _new_tools == 0:
-        logger.warning(
-            "No new ChatGPT PM tools registered after import. "
-            "This may indicate a registration failure."
-        )
-    else:
-        logger.info(
-            "ChatGPT PM tools registered successfully",
-            extra={"new_tools_count": _new_tools},
-        )
+    logger.info("ChatGPT PM tool modules imported for registration")
 except ImportError as e:
     logger.warning("ChatGPT PM tools not registered: %s", e)

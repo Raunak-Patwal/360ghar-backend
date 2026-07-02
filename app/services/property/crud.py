@@ -38,8 +38,8 @@ from app.services.flatmates.moderation import (
     apply_listing_prescreen_metadata,
     apply_stale_listing_pause,
 )
-from app.services.pm_authz import _get_actor_role
-from app.services.property.helpers import _validate_listing_contract, build_location_wkt
+from app.services.pm_authz import get_actor_role
+from app.services.property.helpers import build_location_wkt, validate_listing_contract
 from app.utils.validators import ValidationUtils
 
 logger = get_logger(__name__)
@@ -184,7 +184,7 @@ async def create_property(
 
     try:
         repo = PropertyRepository(db)
-        actor_role = _get_actor_role(actor)
+        actor_role = get_actor_role(actor)
 
         owner = await db.get(UserModel, owner_id)
         if not owner:
@@ -210,7 +210,7 @@ async def create_property(
                     actor_id=actor.id,
                 )
 
-        _validate_listing_contract(property_data.property_type, property_data.purpose)
+        validate_listing_contract(property_data.property_type, property_data.purpose)
 
         # Defensive server-side check: rent-bearing listings must have a
         # positive monthly_rent. The PropertyCreate schema also enforces this,
@@ -405,7 +405,7 @@ async def update_property(
             logger.warning("Property %s not found for update", property_id)
             raise PropertyNotFoundException(property_id=property_id)
 
-        actor_role = _get_actor_role(actor)
+        actor_role = get_actor_role(actor)
         # RBAC checks
         if actor_role == UserRole.admin:
             pass
@@ -445,7 +445,7 @@ async def update_property(
             final_property_type = PropertyType(final_property_type)
         if isinstance(final_purpose, str):
             final_purpose = PropertyPurpose(final_purpose)
-        _validate_listing_contract(final_property_type, final_purpose)
+        validate_listing_contract(final_property_type, final_purpose)
 
         owner_status_toggle = (
             _owner_moderation_status_toggle(update_data)
@@ -545,7 +545,7 @@ async def delete_property(db: AsyncSession, property_id: int, actor: UserSchema)
             logger.warning("Property %s not found for deletion", property_id)
             raise PropertyNotFoundException(property_id=property_id)
 
-        actor_role = _get_actor_role(actor)
+        actor_role = get_actor_role(actor)
         # RBAC checks
         if actor_role == UserRole.admin:
             pass

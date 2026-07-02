@@ -10,6 +10,7 @@ import os
 from fastapi import UploadFile
 
 from app.config import settings
+from app.core.exceptions import FileTooLargeException
 
 # ── Valid MIME type sets ────────────────────────────────────────────────
 
@@ -45,10 +46,44 @@ VALID_DOCUMENT_TYPES: set[str] = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
+DEFAULT_UPLOAD_CHUNK_SIZE = 1024 * 1024
+
 
 def get_max_upload_bytes() -> int:
     """Return the maximum upload size in bytes (from settings)."""
     return int(getattr(settings, "MAX_UPLOAD_SIZE_MB", 50)) * 1024 * 1024
+
+
+async def read_upload_file_limited(
+    file: UploadFile,
+    max_bytes: int,
+    *,
+    chunk_size: int = DEFAULT_UPLOAD_CHUNK_SIZE,
+) -> bytes:
+    """Read an UploadFile while enforcing a hard byte limit."""
+    if max_bytes < 0:
+        raise FileTooLargeException(detail="Invalid upload size limit")
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+
+    content = bytearray()
+    while True:
+        remaining = max_bytes + 1 - len(content)
+        if remaining <= 0:
+            max_mb = max_bytes // (1024 * 1024)
+            raise FileTooLargeException(
+                detail=f"File too large. Maximum size is {max_mb}MB",
+            )
+        chunk = await file.read(min(chunk_size, remaining))
+        if not chunk:
+            break
+        content.extend(chunk)
+        if len(content) > max_bytes:
+            max_mb = max_bytes // (1024 * 1024)
+            raise FileTooLargeException(
+                detail=f"File too large. Maximum size is {max_mb}MB",
+            )
+    return bytes(content)
 
 
 def is_valid_upload(file: UploadFile, *, allow_documents: bool = False) -> bool:

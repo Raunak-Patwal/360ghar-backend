@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import UploadFile
 
-from app.core.exceptions import InvalidFileException, StorageException
+from app.core.exceptions import BaseAPIException, InvalidFileException, StorageException
 from app.core.logging import get_logger
 from app.services import image_processing
 
-from .helpers import VALID_IMAGE_TYPES
+from .helpers import VALID_IMAGE_TYPES, get_max_upload_bytes, read_upload_file_limited
 
 if TYPE_CHECKING:
     from PIL.Image import Image as PILImage
@@ -44,7 +44,7 @@ async def upload_scene_image(
             raise InvalidFileException(detail="Invalid image type")
 
         async with _IMAGE_PROCESSING_SEMAPHORE:
-            file_content = await file.read()
+            file_content = await read_upload_file_limited(file, get_max_upload_bytes())
 
             import io
             with Image.open(io.BytesIO(file_content)) as img:
@@ -125,9 +125,7 @@ async def upload_scene_image(
             "file_size": file_size,
         }
 
-    except InvalidFileException:
-        raise
-    except StorageException:
+    except BaseAPIException:
         raise
     except Exception:
         logger.exception("Scene image upload error")

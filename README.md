@@ -354,6 +354,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 # Optional Services
 REDIS_URL=redis://localhost:6379
 SENTRY_DSN=your_sentry_dsn_here
+ENABLE_SENTRY_TEST_ENDPOINT=false
 
 # Environment
 ENVIRONMENT=development

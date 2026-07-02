@@ -8,6 +8,7 @@ using the centralized CacheManager for all storage operations.
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from typing import Any
 
 from app.core.cache import get_cache_manager
@@ -36,6 +37,22 @@ class OAuthTokenStore:
     @staticmethod
     def _key(prefix: str, identifier: str) -> str:
         return f"oauth:{prefix}:{identifier}"
+
+    @staticmethod
+    def _valid_user_token_references(existing: Any, cutoff: float) -> list[dict[str, Any]]:
+        if not isinstance(existing, list):
+            if existing is not None:
+                logger.warning("Discarding malformed OAuth user token reference cache")
+            return []
+
+        references: list[dict[str, Any]] = []
+        for token in existing:
+            if not isinstance(token, Mapping):
+                logger.warning("Discarding malformed OAuth user token reference")
+                continue
+            if token.get("created_at", 0) > cutoff:
+                references.append(dict(token))
+        return references[-MAX_USER_TOKEN_REFERENCES:]
 
     def _ensure_cache_available(self) -> None:
         """Ensure cache backend is not NullCacheBackend for security-critical operations."""
@@ -93,6 +110,9 @@ class OAuthTokenStore:
             data = await cache.get_and_delete(key)
             if data is None:
                 logger.debug("Auth code not found or already consumed")
+                return None
+            if not isinstance(data, Mapping):
+                logger.warning("Auth code payload was malformed")
                 return None
             # Check if expired (belt-and-suspenders for in-memory backend)
             if time.time() > data.get("expires_at", 0):
@@ -156,18 +176,12 @@ class OAuthTokenStore:
                 "access_token": access_token,
             }
 
-            await cache.set(self._key("access_token", access_token), access_data, ttl=access_token_expires_in)
-            await cache.set(self._key("refresh_token", refresh_token), refresh_data, ttl=refresh_token_expires_in)
-
-            # Store user's tokens for lookup
             user_tokens_key = self._key("user_tokens", user_id)
-            existing: list = await cache.get(user_tokens_key) or []
             cutoff = now - USER_TOKEN_REFERENCE_TTL_SECONDS
-            existing = [
-                token
-                for token in existing
-                if token.get("created_at", 0) > cutoff
-            ][-MAX_USER_TOKEN_REFERENCES:]
+            existing = self._valid_user_token_references(
+                await cache.get(user_tokens_key),
+                cutoff,
+            )
             existing.append({
                 "access_token": access_token,
                 "refresh_token": refresh_token,
@@ -175,7 +189,33 @@ class OAuthTokenStore:
                 "created_at": now,
             })
             existing = existing[-MAX_USER_TOKEN_REFERENCES:]
-            await cache.set(user_tokens_key, existing, ttl=refresh_token_expires_in)
+
+            access_stored = await cache.set(
+                self._key("access_token", access_token),
+                access_data,
+                ttl=access_token_expires_in,
+            )
+            if not access_stored:
+                raise OAuthStorageError("cache rejected access token write")
+
+            refresh_stored = await cache.set(
+                self._key("refresh_token", refresh_token),
+                refresh_data,
+                ttl=refresh_token_expires_in,
+            )
+            if not refresh_stored:
+                await cache.delete(self._key("access_token", access_token))
+                raise OAuthStorageError("cache rejected refresh token write")
+
+            references_stored = await cache.set(
+                user_tokens_key,
+                existing,
+                ttl=refresh_token_expires_in,
+            )
+            if not references_stored:
+                await cache.delete(self._key("access_token", access_token))
+                await cache.delete(self._key("refresh_token", refresh_token))
+                raise OAuthStorageError("cache rejected user token reference write")
 
             logger.debug("Stored OAuth tokens for user %s", user_id)
             return True

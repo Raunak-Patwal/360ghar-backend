@@ -194,6 +194,66 @@ class TestOAuthTokenEndpoint:
             assert response.status_code == 400
 
     @pytest.mark.asyncio
+    async def test_token_auth_code_storage_unavailable(self, client: AsyncClient):
+        """Storage failures should return OAuth temporarily_unavailable, not server_error."""
+        from app.services.oauth_token_store import OAuthStorageError
+
+        with patch(
+            "app.api.api_v1.endpoints.oauth.token.oauth_token_store"
+        ) as mock_store:
+            mock_store.get_auth_code = AsyncMock(
+                side_effect=OAuthStorageError("cache unavailable")
+            )
+
+            response = await client.post(
+                "/api/v1/mcp/oauth/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "code": "test_auth_code",
+                    "client_id": "ghar360-mcp",
+                    "redirect_uri": "http://localhost:3000/callback",
+                    "code_verifier": "test_verifier",
+                },
+            )
+
+            assert response.status_code == 503
+            data = response.json()
+            assert data["error"] == "temporarily_unavailable"
+
+    @pytest.mark.asyncio
+    async def test_token_malformed_auth_code_payload_returns_invalid_grant(
+        self,
+        client: AsyncClient,
+    ):
+        """Malformed stored auth-code data should not crash token exchange."""
+        with patch(
+            "app.api.api_v1.endpoints.oauth.token.oauth_token_store"
+        ) as mock_store:
+            mock_store.get_auth_code = AsyncMock(
+                return_value={
+                    "client_id": "ghar360-mcp",
+                    "scope": "mcp:read mcp:write",
+                }
+            )
+            mock_store.store_oauth_tokens = AsyncMock()
+
+            response = await client.post(
+                "/api/v1/mcp/oauth/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "code": "test_auth_code",
+                    "client_id": "ghar360-mcp",
+                    "redirect_uri": "http://localhost:3000/callback",
+                    "code_verifier": "test_verifier",
+                },
+            )
+
+            assert response.status_code == 400
+            data = response.json()
+            assert data["error"] == "invalid_grant"
+            mock_store.store_oauth_tokens.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_token_refresh_grant(self, client: AsyncClient):
         """Test token refresh."""
         with patch(

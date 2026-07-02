@@ -25,6 +25,10 @@ def mock_db_session() -> AsyncMock:
     session.execute = AsyncMock()
     session.rollback = AsyncMock()
     session.commit = AsyncMock()
+    nested = MagicMock()
+    nested.__aenter__ = AsyncMock(return_value=None)
+    nested.__aexit__ = AsyncMock(return_value=None)
+    session.begin_nested = MagicMock(return_value=nested)
     session.add = MagicMock()
     session.delete = MagicMock()
     return session

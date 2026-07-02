@@ -12,7 +12,7 @@ from app.config import settings
 from app.core.logging import get_logger
 from app.mcp.admin.server import _get_user, admin_mcp
 from app.mcp.apps_sdk import (
-    MCP_SECURITY_SCHEMES_MIXED,
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     AuthRequiredError,
 )
 from app.mcp.errors import (
@@ -40,7 +40,7 @@ logger = get_logger(__name__)
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
 )
 async def admin_system_status() -> dict[str, Any]:

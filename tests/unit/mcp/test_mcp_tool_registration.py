@@ -4,11 +4,25 @@ Tests for MCP tool registration on user and admin servers.
 Verifies that tools are properly registered and have correct annotations
 per Apps SDK compliance.
 """
+from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 
 from app.mcp.admin import admin_mcp
+from app.mcp.chatgpt import WIDGETS
 from app.mcp.user.server import user_mcp
+
+
+class TestRegistrationImplementation:
+    """Tests that registration verification avoids FastMCP private internals."""
+
+    def test_user_server_does_not_use_private_fastmcp_component_store(self):
+        source = Path("app/mcp/user/server.py").read_text()
+
+        assert "local_provider" not in source
+        assert "_components" not in source
 
 
 class TestDiscoveryToolRegistration:
@@ -138,6 +152,27 @@ class TestAdminToolRegistration:
 class TestToolAnnotations:
     """Tests that MCP tools have proper annotations per Apps SDK compliance."""
 
+    GUEST_USER_TOOLS = {
+        "bookings_check_availability",
+        "bookings_get_pricing",
+        "discovery_search",
+        "discovery_property_get",
+        "discovery_feed",
+        "discovery_amenities",
+        "user_system_status",
+    }
+
+    ADMIN_WIDGET_TOOLS = {
+        "agent_bookings_list_all": "ui://widget/visitlistwidget.html",
+        "agent_dashboard_overview": "ui://widget/ownerdashboardwidget.html",
+        "agent_leases_list": "ui://widget/leasemanagementwidget.html",
+        "agent_maintenance_list": "ui://widget/maintenancewidget.html",
+        "agent_properties_get": "ui://widget/propertydetailswidget.html",
+        "agent_properties_list": "ui://widget/ownerdashboardwidget.html",
+        "agent_rent_list_due": "ui://widget/rentcollectionwidget.html",
+        "agent_rent_record_payment": "ui://widget/rentcollectionwidget.html",
+    }
+
     @pytest.mark.asyncio
     async def test_discovery_read_tools_have_read_only_hint(self):
         """Pure read/discovery tools should have readOnlyHint=True."""
@@ -156,6 +191,58 @@ class TestToolAnnotations:
             ann = tool.annotations
             schemes = getattr(ann, "securitySchemes", None)
             assert schemes is not None, f"{tool.name} missing securitySchemes"
+
+    @pytest.mark.asyncio
+    async def test_user_tool_security_schemes_match_auth_boundary(self):
+        tools = await user_mcp.list_tools()
+        for tool in tools:
+            ann = tool.annotations
+            schemes = getattr(ann, "securitySchemes", [])
+            scheme_types = [scheme["type"] for scheme in schemes]
+            expected = (
+                ["noauth", "oauth2"]
+                if tool.name in self.GUEST_USER_TOOLS
+                else ["oauth2"]
+            )
+            assert scheme_types == expected, f"{tool.name} security schemes should be {expected}"
+
+    @pytest.mark.asyncio
+    async def test_admin_tools_are_oauth_only(self):
+        tools = await admin_mcp.list_tools()
+        for tool in tools:
+            ann = tool.annotations
+            schemes = getattr(ann, "securitySchemes", [])
+            scheme_types = [scheme["type"] for scheme in schemes]
+            assert scheme_types == ["oauth2"], f"{tool.name} should require OAuth"
+
+    @pytest.mark.asyncio
+    async def test_admin_widget_tools_advertise_output_templates(self):
+        tools = await admin_mcp.list_tools()
+        tools_by_name = {tool.name: tool for tool in tools}
+
+        for tool_name, expected_uri in self.ADMIN_WIDGET_TOOLS.items():
+            tool = tools_by_name[tool_name]
+            assert tool.meta is not None
+            assert tool.meta.get("openai/outputTemplate") == expected_uri
+            assert tool.meta.get("ui/resourceUri") == expected_uri
+
+    @pytest.mark.asyncio
+    async def test_registered_widget_tools_match_widget_registry(self):
+        user_tools = await user_mcp.list_tools()
+        admin_tools = await admin_mcp.list_tools()
+        tools = [*user_tools, *admin_tools]
+        tools_by_name = {tool.name: tool for tool in tools}
+
+        for widget_name, config in WIDGETS.items():
+            expected_uri = f"ui://widget/{widget_name.lower()}.html"
+            for tool_name in config["tools"]:
+                if tool_name not in tools_by_name:
+                    continue
+
+                tool = tools_by_name[tool_name]
+                assert tool.meta is not None
+                assert tool.meta.get("openai/outputTemplate") == expected_uri
+                assert tool.meta.get("ui/resourceUri") == expected_uri
 
     @pytest.mark.asyncio
     async def test_total_tool_count(self):

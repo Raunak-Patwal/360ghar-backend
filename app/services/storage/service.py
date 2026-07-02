@@ -36,6 +36,7 @@ from .helpers import (
     infer_content_type_from_extension,
     is_valid_content_type,
     is_valid_upload,
+    read_upload_file_limited,
     validate_magic_bytes,
 )
 from .processing import process_existing_scene_image as _process_existing_scene_image
@@ -45,6 +46,8 @@ if TYPE_CHECKING:
     from app.services.cloudinary.service import CloudinaryService
 
 logger = get_logger(__name__)
+
+MAX_BATCH_UPLOAD_FILES = 20
 
 OPTIMIZE_SETTINGS: dict[StorageFolder, tuple[int, int]] = {
     StorageFolder.AVATAR: (512, 85),
@@ -110,7 +113,7 @@ class StorageService:
                 scene_id=scene_id,
             )
 
-            file_content = await file.read()
+            file_content = await self._read_upload_content(file)
 
             # Magic-byte validation: reject spoofed content_type headers for
             # non-image types (PIL already validates images downstream).
@@ -223,7 +226,7 @@ class StorageService:
             if not is_valid_upload(file):
                 raise InvalidFileException(detail="Invalid file type")
 
-            file_content = await file.read()
+            file_content = await self._read_upload_content(file)
             content_type = file.content_type or "application/octet-stream"
 
             # Magic-byte validation: reject spoofed content_type headers for
@@ -333,6 +336,11 @@ class StorageService:
         tour_id: str | None = None,
         visibility: str = "private",
     ) -> list[dict[str, Any]]:
+        if len(files) > MAX_BATCH_UPLOAD_FILES:
+            raise BadRequestException(
+                detail=f"Batch upload supports at most {MAX_BATCH_UPLOAD_FILES} files"
+            )
+
         results = []
         for f in files:
             results.append(
@@ -561,12 +569,12 @@ class StorageService:
     def extract_path_from_url(self, public_url: str, bucket_name: str | None = None) -> str | None:
         return self.cloudinary.extract_public_id_from_url(public_url)
 
-    def list_files(self, folder: str, bucket_name: str | None = None) -> list[dict[str, Any]]:
-        return []
-
     # ============================================================
     # Private Helper Methods
     # ============================================================
+
+    async def _read_upload_content(self, file: UploadFile) -> bytes:
+        return await read_upload_file_limited(file, self._max_upload_bytes)
 
     async def _upload_file(
         self,
@@ -581,7 +589,7 @@ class StorageService:
             if not is_valid_upload(file, allow_documents=allow_documents):
                 raise InvalidFileException(detail="Invalid file type")
 
-            file_content = await file.read()
+            file_content = await self._read_upload_content(file)
             content_type = file.content_type or "application/octet-stream"
 
             # Magic-byte validation: reject spoofed content_type headers for

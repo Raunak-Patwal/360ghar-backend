@@ -264,6 +264,7 @@ async def get_public_tour(
         except Exception as e:
             # Don't fail the request if analytics tracking fails
             logger.warning("Failed to track analytics for tour %s: %s", tour_id, e)
+            await db.rollback()
 
     # Hydrate floor plans into tour.settings for the viewer (floor plans are stored in a dedicated table).
     floor_plans_query = select(FloorPlan).where(FloorPlan.tour_id == tour_id).order_by(FloorPlan.floor_number)
@@ -511,6 +512,7 @@ async def like_tour(
         )
     except Exception as e:
         logger.warning("Failed to track like event for tour %s: %s", tour_id, e)
+        await db.rollback()
 
     return {"like_count": new_like_count}
 
@@ -577,5 +579,6 @@ async def unlike_tour(
         )
     except Exception as e:
         logger.warning("Failed to track unlike event for tour %s: %s", tour_id, e)
+        await db.rollback()
 
     return {"like_count": new_like_count}

@@ -153,11 +153,60 @@ def get_widget_name_for_tool(tool_name: str) -> str | None:
     return None
 
 
+def _build_widget_resource_meta(
+    *,
+    resource_uri: str,
+    base_url: str,
+    description: str,
+) -> dict[str, Any]:
+    """Build metadata for a concrete widget resource URI."""
+    return {
+        # --- MCP Apps standard (SEP-1865) keys ---
+        "ui": {
+            "resourceUri": resource_uri,
+            "visibility": "host",
+            "domain": base_url,
+            "prefersBorder": True,
+            "csp": {
+                "connectDomains": [
+                    base_url,
+                    "https://api.360ghar.com",
+                ],
+                "resourceDomains": [
+                    "https://images.360ghar.com",
+                    "https://*.cloudinary.com",
+                    "https://res.cloudinary.com",
+                ],
+                "frameDomains": [],
+            },
+        },
+        # --- Backward-compatible OpenAI aliases ---
+        "ui/resourceUri": resource_uri,
+        "ui/visibility": "host",
+        "openai/widgetPrefersBorder": True,
+        "openai/widgetDomain": base_url,
+        "openai/widgetDescription": description,
+        "openai/widgetCSP": {
+            "connectDomains": [
+                base_url,
+                "https://api.360ghar.com",
+            ],
+            "resourceDomains": [
+                "https://images.360ghar.com",
+                "https://*.cloudinary.com",
+                "https://res.cloudinary.com",
+            ],
+        },
+    }
+
+
 def register_chatgpt_widgets(mcp: FastMCP) -> None:
     """Register ChatGPT widget HTML bundles as MCP resources.
 
     Widgets are registered with standard HTML mimeType for broader MCP host
-    compatibility, while retaining OpenAI-specific metadata aliases.
+    compatibility, while retaining OpenAI-specific metadata aliases. Each
+    widget is exposed at both the stable URI advertised in tool metadata and a
+    content-hashed alias used by result-level widget hints.
     """
     # Determine base URL for CSP
     base_url = settings.PUBLIC_BASE_URL or "https://api.360ghar.com"
@@ -168,46 +217,8 @@ def register_chatgpt_widgets(mcp: FastMCP) -> None:
         if widget_html:
             # Append content hash for cache busting when widgets change.
             content_hash = hashlib.md5(widget_html.encode()).hexdigest()[:8]
-            resource_uri = f"ui://widget/{widget_name.lower()}.html?v={content_hash}"
-
-            resource_meta = {
-                # --- MCP Apps standard (SEP-1865) keys ---
-                "ui": {
-                    "resourceUri": resource_uri,
-                    "visibility": "host",
-                    "domain": base_url,
-                    "prefersBorder": True,
-                    "csp": {
-                        "connectDomains": [
-                            base_url,
-                            "https://api.360ghar.com",
-                        ],
-                        "resourceDomains": [
-                            "https://images.360ghar.com",
-                            "https://*.cloudinary.com",
-                            "https://res.cloudinary.com",
-                        ],
-                        "frameDomains": [],
-                    },
-                },
-                # --- Backward-compatible OpenAI aliases ---
-                "ui/resourceUri": resource_uri,
-                "ui/visibility": "host",
-                "openai/widgetPrefersBorder": True,
-                "openai/widgetDomain": base_url,
-                "openai/widgetDescription": config.get("description", ""),
-                "openai/widgetCSP": {
-                    "connectDomains": [
-                        base_url,
-                        "https://api.360ghar.com",
-                    ],
-                    "resourceDomains": [
-                        "https://images.360ghar.com",
-                        "https://*.cloudinary.com",
-                        "https://res.cloudinary.com",
-                    ],
-                },
-            }
+            stable_resource_uri = f"ui://widget/{widget_name.lower()}.html"
+            versioned_resource_uri = f"{stable_resource_uri}?v={content_hash}"
 
             def make_widget_reader(html: str):
                 async def get_widget() -> str:
@@ -217,20 +228,29 @@ def register_chatgpt_widgets(mcp: FastMCP) -> None:
 
             handler = make_widget_reader(widget_html)
 
-            mcp.resource(
-                resource_uri,
-                mime_type=RESOURCE_MIME_TYPE,
-                name=config["title"],
-                description=config["description"],
-                meta=resource_meta,
-            )(handler)
+            for resource_uri in (stable_resource_uri, versioned_resource_uri):
+                mcp.resource(
+                    resource_uri,
+                    mime_type=RESOURCE_MIME_TYPE,
+                    name=config["title"],
+                    description=config["description"],
+                    meta=_build_widget_resource_meta(
+                        resource_uri=resource_uri,
+                        base_url=base_url,
+                        description=config.get("description", ""),
+                    ),
+                )(handler)
 
             # Store versioned URIs so get_widget_for_tool() returns them.
             for tool_name in config["tools"]:
-                _TOOL_WIDGET_URIS[tool_name] = resource_uri
+                _TOOL_WIDGET_URIS[tool_name] = versioned_resource_uri
 
             registered_count += 1
-            logger.info("Registered ChatGPT widget: %s -> %s", widget_name, resource_uri)
+            logger.info(
+                "Registered ChatGPT widget: %s -> %s",
+                widget_name,
+                versioned_resource_uri,
+            )
         else:
             logger.debug("Widget not found (build required): %s", widget_name)
 

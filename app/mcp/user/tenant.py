@@ -13,7 +13,7 @@ from typing import Any
 
 from app.core.logging import get_logger
 from app.mcp.apps_sdk import (
-    MCP_SECURITY_SCHEMES_MIXED,
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     AuthRequiredError,
     build_widget_tool_meta,
 )
@@ -71,7 +71,7 @@ TENANT_RENT_WIDGET_META = build_widget_tool_meta(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=LEASE_DETAILS_META,
 )
@@ -108,7 +108,7 @@ async def tenant_lease_current() -> dict[str, Any]:
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=TENANT_RENT_WIDGET_META,
 )
@@ -158,7 +158,7 @@ async def tenant_rent_history(
         "readOnlyHint": False,
         "destructiveHint": False,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=MAINTENANCE_WIDGET_META,
 )
@@ -237,7 +237,7 @@ async def tenant_maintenance_create(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=MAINTENANCE_WIDGET_META,
 )

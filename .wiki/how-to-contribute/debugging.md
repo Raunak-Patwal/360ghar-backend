@@ -31,7 +31,7 @@ The async engine is configured in [`app/core/database.py`](../../app/core/databa
 
 - **`OperationalError: connection refused`** — Postgres is not running. Start it with `docker-compose up -d db`.
 - **`Extension "vector" or "postgis" does not exist`** — The database was created without the extensions. CI creates them with `CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS postgis;`. Locally, run the same against your dev database.
-- **`Too many connections`** — Connection pool exhaustion. In serverless mode the app uses `NullPool` and relies on PgBouncer; in normal mode it uses a sized pool. Check `DATABASE_URL` and pool settings in `app/core/config.py`.
+- **`Too many connections` / `EMAXCONNSESSION`** — Connection pool exhaustion. In serverless mode the app uses `NullPool` and must use the Supabase transaction pooler (`:6543`), not shared session mode (`:5432`). In normal mode it uses a small sized pool. Check `DATABASE_URL` and pool settings in `app/core/config.py`.
 - **Transient errors** — [`app/core/db_resilience.py`](../../app/core/db_resilience.py) detects transient DB errors and retries with rollback. If a retry storm appears in logs, look at the underlying error class.
 
 SSE and streaming endpoints release the main-pool session before streaming and use a background-pool session via `get_bg_db`. If a streaming endpoint holds a session too long, the main pool can starve; check that the endpoint calls `get_bg_db` for any DB work inside the stream.
@@ -56,7 +56,7 @@ Debugging serverless issues:
 
 - A scheduled job that stopped running likely never started. Move it to an external cron.
 - Higher per-request latency (10 to 50 ms added) is the NullPool trade-off and is expected.
-- PgBouncer handles server-side pooling. Connection errors in serverless mode usually point at PgBouncer config, not the app pool.
+- Supabase transaction pooling handles server-side reuse. Connection errors in serverless mode usually point at `DATABASE_URL`/pooler config, not the app pool.
 
 ## MCP OAuth debugging
 
@@ -67,6 +67,7 @@ Common issues:
 - **`AuthRequiredError` raised without a challenge URL** — Use `raise_auth_required()` from the MCP helpers, not the raw exception. The challenge must include `resource_metadata` so the host can render the OAuth UI.
 - **Token not persisting across requests** — The cache backend is in-memory in dev. Use Redis in any multi-process deployment.
 - **`invalid_grant` from the host** — The authorization code expired or was replayed. Codes are single-use; check the token store logic in `oauth_token_store.py`.
+- **`temporarily_unavailable` from the token endpoint** — The OAuth token store could not read or persist security-critical cache data. Confirm Redis/disk cache availability and check `OAuthStorageError` logs before retrying the authorization flow.
 - **Discovery failures** — RFC 9728 / RFC 8414 well-known metadata lives at `/mcp/oauth/*`. If a client cannot discover the server, confirm those endpoints are reachable and not blocked by CORS or a proxy.
 
 OAuth metadata is served from the same origin as the MCP server. Custom domains for tours are a separate system (see [features/mcp-servers.md](../features/mcp-servers.md)).

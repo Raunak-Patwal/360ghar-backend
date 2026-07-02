@@ -8,11 +8,11 @@ Active contributors: Saksham, Ravi
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | Postgres connection string. Must include `+asyncpg` for SQLAlchemy async. |
-| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `DB_POOL_RECYCLE` | Main pool tuning (HTTP/MCP traffic). Commented out in `.env.example` - defaults apply. |
-| `DB_BG_POOL_SIZE`, `DB_BG_MAX_OVERFLOW` | Background pool tuning (schedulers, scrapers, long-running tasks). |
+| `DATABASE_URL` | Postgres connection string. SQLAlchemy converts `postgresql://`/`postgres://` to `postgresql+psycopg://`. Railway/serverless Supabase deploys must use the transaction pooler on port `6543`; the shared pooler session-mode URL on port `5432` is rejected in production when `SERVERLESS_ENABLED=true`. |
+| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `DB_POOL_RECYCLE` | Main pool tuning (HTTP/MCP traffic). Ignored when `SERVERLESS_ENABLED=true`. Defaults are `4`, `0`, `15`, `180`. |
+| `DB_BG_POOL_SIZE`, `DB_BG_MAX_OVERFLOW` | Background pool tuning (schedulers, scrapers, long-running tasks). Defaults are `1`, `0`. |
 | `DB_READ_STATEMENT_TIMEOUT_MS` | Per-request statement timeout (ms, default `8000`) for interactive read endpoints like property search. Applied via `SET LOCAL` so a stalled query fails fast and frees its pooler connection instead of holding it until the 2-minute server default. `0` disables the guardrail. |
-| `SERVERLESS_ENABLED` | When `true`, switches to `NullPool` for both engines, skips schedulers, falls back to in-memory cache. |
+| `SERVERLESS_ENABLED` | When `true`, switches to `NullPool` for both engines, skips schedulers, falls back to in-memory cache. Use this with Supabase transaction pooling (`:6543`) in Railway production. |
 | `SUPABASE_URL` | Supabase project URL. Used for JWKS fetch, auth introspection, push notifications. |
 | `SUPABASE_PUBLISHABLE_KEY` | Supabase anon/publishable key. |
 | `SUPABASE_SECRET_KEY` | Supabase service-role key (admin operations like user deletion). |
@@ -82,6 +82,7 @@ Active contributors: Saksham, Ravi
 | `PUBLIC_APP_URL` | Frontend URL for share previews. |
 | `SENTRY_DSN` | Sentry project DSN. When unset, error tracking is disabled. |
 | `SENTRY_TRACES_SAMPLE_RATE` | Performance sample rate (default 0.5 dev, 0.05 prod). |
+| `ENABLE_SENTRY_TEST_ENDPOINT` | Opt-in local/test diagnostic flag for mounting `GET /debug-sentry`, which intentionally raises a Sentry test exception. Defaults to `false` and is ignored in production. |
 
 ## CORS
 

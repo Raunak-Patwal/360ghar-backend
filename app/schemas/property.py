@@ -52,7 +52,7 @@ class PropertyImageBase(BaseModel):
 
 
 class PropertyImageCreate(PropertyImageBase):
-    pass
+    model_config = ConfigDict(json_schema_extra={"title": "PropertyImageCreate"})
 
 
 class PropertyImage(PropertyImageBase):
@@ -542,5 +542,4 @@ class UnifiedPropertyResponse(BaseModel):
     total_pages: int
     filters_applied: dict[str, Any]
     search_center: dict[str, float] | None = None
-
 

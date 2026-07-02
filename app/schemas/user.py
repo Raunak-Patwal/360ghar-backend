@@ -156,7 +156,7 @@ class UserInDB(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 class User(UserInDB):
-    pass
+    model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str

@@ -108,7 +108,7 @@ class PresignedUploadResponse(BaseModel):
 
 class UploadConfirmRequest(BaseModel):
     """Request to confirm a client-side upload completed."""
-    pass  # upload_id comes from URL path
+    model_config = ConfigDict(json_schema_extra={"title": "UploadConfirmRequest"})
 
 
 class UploadConfirmResponse(BaseModel):

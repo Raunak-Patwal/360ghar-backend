@@ -58,6 +58,37 @@ def test_transient_db_error_detection_and_code_extraction() -> None:
     assert extract_db_error_code(exc) == "ECHECKOUTTIMEOUT"
 
 
+def test_supabase_max_clients_error_is_transient_capacity() -> None:
+    exc = Exception(
+        "(psycopg.OperationalError) connection failed: FATAL: "
+        "(EMAXCONNSESSION) max clients reached in session mode"
+    )
+    assert is_transient_db_error(exc) is True
+    assert extract_db_error_code(exc) == "EMAXCONNSESSION"
+
+
+@pytest.mark.asyncio
+async def test_execute_with_transient_retry_does_not_retry_pool_capacity() -> None:
+    session = AsyncMock()
+    operation = AsyncMock(
+        side_effect=Exception(
+            "(EMAXCONNSESSION) max clients reached in session mode - "
+            "max clients are limited to pool_size: 15"
+        )
+    )
+
+    with pytest.raises(Exception, match="EMAXCONNSESSION"):
+        await execute_with_transient_retry(
+            session,
+            operation,
+            operation_name="unit_test_pool_capacity",
+        )
+
+    assert operation.await_count == 1
+    session.rollback.assert_not_awaited()
+    session.invalidate.assert_not_awaited()
+
+
 def test_is_statement_timeout_matches_query_cancellation() -> None:
     exc = Exception(
         "(psycopg.errors.QueryCanceled) canceling statement due to statement timeout"

@@ -39,6 +39,14 @@ The script tracks applied versions in a `schema_migrations` table, making it ide
 - **Before destructive operations**: Always confirm the target database is a development environment, not production. Use `--dry-run` flags where available to preview changes.
 - **New seeded models**: When adding a new model that is populated by seed scripts, either add an `is_seed_data` boolean column (with `server_default=text("false")`) or ensure a FK cascade chain links it back to a parent with `is_seed_data`.
 
+## Hosted Supabase Test Runs
+
+- Use Supabase itself for integration/QA tests when local Postgres cannot reproduce hosted behavior, but only against a clearly identified development or staging Supabase project. Never point tests, seeders, cleanup scripts, or ad-hoc SQL at the production/live Supabase database unless the user explicitly asks and approves the exact operation.
+- Before running tests against hosted Supabase, verify the active env file and database URL. Do not use `.env.prod` for test runs. Prefer a dedicated `TEST_DATABASE_URL` or non-production env file whose project name makes the target obvious.
+- Test data written to Supabase must be scoped for cleanup: set `is_seed_data = true` where the model supports it, add a unique test marker such as `test_run_id`, slug/email/phone prefixes like `agent_test_`, or use dedicated test users. Do not update rows that lack a test marker or seed flag.
+- Prefer transaction rollback for automated tests. If committed writes are needed to test real Supabase behavior, record the inserted IDs/markers and clean them up at the end of the run using exact `WHERE` predicates. Run a count/select preview before cleanup and never use bare `DELETE`, `TRUNCATE`, or `DROP`.
+- After hosted Supabase testing, clean test data before reporting completion. If cleanup fails or cannot be verified, report the remaining marker/IDs and stop rather than attempting broad destructive cleanup.
+
 ## Layering Rules
 - HTTP endpoints in `app/api/api_v1/endpoints/` validate input, enforce auth through dependencies, and delegate business logic to `app/services/`.
 - REST route composition lives in `app/api/api_v1/api.py`; `app/factory.py` is the composition root, while app wiring, middleware, lifespan, and MCP mounts live in `app/infrastructure/`.

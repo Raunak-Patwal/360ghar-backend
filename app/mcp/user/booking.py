@@ -16,12 +16,15 @@ from typing import Any
 from app.core.logging import get_logger
 from app.mcp.apps_sdk import (
     MCP_SECURITY_SCHEMES_MIXED,
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     AuthRequiredError,
+    build_widget_tool_meta,
 )
 from app.mcp.errors import (
     MCPErrorCode,
     MCPResponse,
     internal_error_response,
+    mcp_exception_response,
     not_found_response,
 )
 from app.mcp.tool_ops import (
@@ -44,6 +47,19 @@ from app.schemas.pagination import decode_cursor
 logger = get_logger(__name__)
 
 
+BOOKING_LIST_META = build_widget_tool_meta(
+    widget_uri="ui://widget/visitlistwidget.html",
+    invoking="Loading bookings...",
+    invoked="Bookings loaded",
+)
+
+BOOKING_DETAILS_META = build_widget_tool_meta(
+    widget_uri="ui://widget/visitschedulerwidget.html",
+    invoking="Loading booking details...",
+    invoked="Booking details loaded",
+)
+
+
 # ============================================================================
 # Booking Tools (for short-stay properties)
 # ============================================================================
@@ -56,7 +72,7 @@ logger = get_logger(__name__)
         "readOnlyHint": False,
         "destructiveHint": False,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
 )
 async def bookings_create(
@@ -105,8 +121,12 @@ async def bookings_create(
     except AuthRequiredError:
         raise
     except Exception as e:
-        logger.error("Error in bookings.create: %s", e, exc_info=True)
-        return internal_error_response(f"Failed to create booking: {str(e)}")
+        return mcp_exception_response(
+            e,
+            logger=logger,
+            tool_name="bookings_create",
+            fallback_message="Failed to create booking.",
+        )
     return {}
 
 
@@ -117,8 +137,9 @@ async def bookings_create(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
+    meta=BOOKING_LIST_META,
 )
 async def bookings_list(
     cursor: str | None = None,
@@ -160,8 +181,12 @@ async def bookings_list(
     except AuthRequiredError:
         raise
     except Exception as e:
-        logger.error("Error in bookings.list: %s", e, exc_info=True)
-        return internal_error_response(f"Failed to list bookings: {str(e)}")
+        return mcp_exception_response(
+            e,
+            logger=logger,
+            tool_name="bookings_list",
+            fallback_message="Failed to list bookings.",
+        )
     return {}
 
 
@@ -172,8 +197,9 @@ async def bookings_list(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
+    meta=BOOKING_DETAILS_META,
 )
 async def bookings_get(
     booking_id: int,
@@ -215,8 +241,12 @@ async def bookings_get(
     except AuthRequiredError:
         raise
     except Exception as e:
-        logger.error("Error in bookings.get: %s", e, exc_info=True)
-        return internal_error_response(f"Failed to get booking: {str(e)}")
+        return mcp_exception_response(
+            e,
+            logger=logger,
+            tool_name="bookings_get",
+            fallback_message="Failed to get booking.",
+        )
     return {}
 
 
@@ -227,7 +257,7 @@ async def bookings_get(
         "readOnlyHint": False,
         "destructiveHint": True,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
 )
 async def bookings_cancel(
@@ -278,8 +308,12 @@ async def bookings_cancel(
     except AuthRequiredError:
         raise
     except Exception as e:
-        logger.error("Error in bookings.cancel: %s", e, exc_info=True)
-        return internal_error_response(f"Failed to cancel booking: {str(e)}")
+        return mcp_exception_response(
+            e,
+            logger=logger,
+            tool_name="bookings_cancel",
+            fallback_message="Failed to cancel booking.",
+        )
     return {}
 
 
@@ -321,8 +355,12 @@ async def bookings_check_availability(
     except AuthRequiredError:
         raise
     except Exception as e:
-        logger.error("Error in bookings.check_availability: %s", e, exc_info=True)
-        return internal_error_response(f"Failed to check availability: {str(e)}")
+        return mcp_exception_response(
+            e,
+            logger=logger,
+            tool_name="bookings_check_availability",
+            fallback_message="Failed to check availability.",
+        )
     return {}
 
 
@@ -370,6 +408,10 @@ async def bookings_get_pricing(
     except AuthRequiredError:
         raise
     except Exception as e:
-        logger.error("Error in bookings.get_pricing: %s", e, exc_info=True)
-        return internal_error_response(f"Failed to get pricing: {str(e)}")
+        return mcp_exception_response(
+            e,
+            logger=logger,
+            tool_name="bookings_get_pricing",
+            fallback_message="Failed to get pricing.",
+        )
     return {}

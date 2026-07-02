@@ -32,7 +32,7 @@ class BlogCategoryBase(BaseModel):
 
 
 class BlogCategoryCreate(BlogCategoryBase):
-    pass
+    model_config = ConfigDict(json_schema_extra={"title": "BlogCategoryCreate"})
 
 
 class BlogCategoryUpdate(BaseModel):
@@ -55,7 +55,7 @@ class BlogTagBase(BaseModel):
 
 
 class BlogTagCreate(BlogTagBase):
-    pass
+    model_config = ConfigDict(json_schema_extra={"title": "BlogTagCreate"})
 
 
 class BlogTagUpdate(BaseModel):
