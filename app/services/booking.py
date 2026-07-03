@@ -25,6 +25,19 @@ from app.schemas.pagination import keyset_filter, trim_keyset_lookahead
 logger = get_logger(__name__)
 
 
+def _apply_pricing_fields(pricing: dict, target: dict | Booking) -> None:
+    """Helper to apply pricing fields to either a dictionary or a Booking object to avoid drift."""
+    fields = ["nights", "base_amount", "taxes_amount", "service_charges", "total_amount"]
+    if isinstance(target, dict):
+        for field in fields:
+            target[field] = pricing[field]
+        target["discount_amount"] = pricing.get("discount_amount", 0.0)
+    else:
+        for field in fields:
+            setattr(target, field, pricing[field])
+        target.discount_amount = pricing.get("discount_amount", 0.0)
+
+
 async def create_booking(db: AsyncSession, user_id: int, booking: BookingCreate):
     """Create a new booking"""
     booking_data = booking.model_dump()
@@ -77,12 +90,7 @@ async def create_booking(db: AsyncSession, user_id: int, booking: BookingCreate)
     if isinstance(pricing, dict) and pricing.get("error"):
         raise BadRequestException(detail=pricing["error"])
 
-    booking_data["nights"] = pricing["nights"]
-    booking_data["base_amount"] = pricing["base_amount"]
-    booking_data["taxes_amount"] = pricing["taxes_amount"]
-    booking_data["service_charges"] = pricing["service_charges"]
-    booking_data["discount_amount"] = pricing.get("discount_amount", 0.0)
-    booking_data["total_amount"] = pricing["total_amount"]
+    _apply_pricing_fields(pricing, booking_data)
 
     # Set initial statuses
     booking_data["booking_status"] = BookingStatus.pending
@@ -284,12 +292,7 @@ async def update_booking(db: AsyncSession, booking_id: int, booking_update: Book
                 booking.payment_status = PaymentStatus.pending
                 booking.booking_status = BookingStatus.pending
 
-            booking.nights = pricing["nights"]
-            booking.base_amount = pricing["base_amount"]
-            booking.taxes_amount = pricing["taxes_amount"]
-            booking.service_charges = pricing["service_charges"]
-            booking.discount_amount = pricing.get("discount_amount", 0.0)
-            booking.total_amount = pricing["total_amount"]
+            _apply_pricing_fields(pricing, booking)
         # -------------------------------------------------------------------------
 
         for field, value in update_data.items():

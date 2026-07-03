@@ -400,6 +400,12 @@ async def update_visit(db: AsyncSession, visit_id: int, visit_update: VisitUpdat
         if new_scheduled_date.tzinfo is None:
             new_scheduled_date = new_scheduled_date.replace(tzinfo=timezone.utc)
             update_data["scheduled_date"] = new_scheduled_date
+
+        # Ensure scheduled date is in the future
+        now = datetime.now(timezone.utc)
+        if new_scheduled_date < now:
+            raise BadRequestException(detail="scheduled_date must be in the future")
+
         if new_scheduled_date != visit.scheduled_date:
             await _ensure_no_visit_conflict(
                 db, visit.user_id, visit.property_id, new_scheduled_date, exclude_visit_id=visit.id
