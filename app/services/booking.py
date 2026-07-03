@@ -16,7 +16,7 @@ from app.core.exceptions import (
 )
 from app.core.logging import get_logger
 from app.models.bookings import Booking
-from app.models.enums import BookingStatus, PaymentStatus
+from app.models.enums import BookingStatus, PaymentStatus, UserRole
 from app.models.properties import Property
 from app.models.users import User
 from app.schemas.booking import BookingCreate, BookingPayment, BookingReview, BookingUpdate
@@ -250,7 +250,7 @@ async def update_booking(
     db: AsyncSession,
     booking_id: int,
     booking_update: BookingUpdate,
-    current_booking_id: int | None = None,
+    actor_role: UserRole | None = None,
 ):
     """Update a booking"""
     stmt = select(Booking).where(Booking.id == booking_id)
@@ -259,6 +259,11 @@ async def update_booking(
 
     if booking:
         update_data = booking_update.model_dump(exclude_unset=True)
+
+        # Privilege escalation check: only admins or agents can modify internal_notes
+        is_staff = actor_role in (UserRole.admin, UserRole.agent) if actor_role else False
+        if not is_staff:
+            update_data.pop("internal_notes", None)
 
         # --- FIX: Recalculate pricing and availability if dates or guests change ---
         new_check_in = update_data.get("check_in_date", booking.check_in_date)
@@ -280,7 +285,7 @@ async def update_booking(
                 if hasattr(new_check_out, "isoformat")
                 else str(new_check_out),
                 new_guests,
-                exclude_booking_id=current_booking_id,
+                exclude_booking_id=booking_id,
             )
             if not availability.get("available", False):
                 reason = availability.get("reason", "Property not available for these dates")
@@ -629,10 +634,9 @@ async def get_all_bookings(
 
     count_total = None
     if with_total:
-        # Use COUNT(DISTINCT booking.id) to avoid inflated counts from agent OR-joins.
-        count_stmt = select(func.count(Booking.id.distinct())).select_from(
-            stmt.subquery()
-        )
+        # Use subquery column reference to avoid cross-join/cartesian product with the base table.
+        subq = stmt.subquery()
+        count_stmt = select(func.count(subq.c.id)).select_from(subq)
         count_result = await execute_with_transient_retry(
             db,
             lambda: db.execute(count_stmt),

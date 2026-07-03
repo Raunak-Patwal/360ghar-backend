@@ -476,14 +476,234 @@ class TestGetAllBookingsDistinct:
         )
 
     def test_booking_service_uses_count_distinct_for_agent_filter(self):
-        """COUNT must also use DISTINCT to avoid inflated total counts."""
+        """COUNT must count the subquery column to avoid cartesian products."""
         import inspect
         from app.services import booking as booking_module
 
         source = inspect.getsource(booking_module.get_all_bookings)
-        assert "Booking.id.distinct()" in source, (
-            "Count query must use COUNT(DISTINCT booking.id) to avoid inflated totals"
+        assert "func.count(subq.c.id)" in source, (
+            "Count query must use the subquery column to avoid cartesian product issues"
         )
+
+
+# ---------------------------------------------------------------------------
+# Direct Service Unit Tests for update_booking and process_payment
+# ---------------------------------------------------------------------------
+
+class TestUpdateBookingService:
+    """Service-level unit tests for update_booking recalculation, privilege checks, and status reset."""
+
+    @pytest.mark.asyncio
+    async def test_update_booking_basic_success(self):
+        """Update non-pricing/date fields successfully without status reset."""
+        from app.schemas.booking import BookingUpdate
+        from app.services.booking import update_booking
+
+        mock_booking = MagicMock()
+        mock_booking.check_in_date = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
+        mock_booking.check_out_date = datetime(2026, 7, 13, 11, 0, tzinfo=timezone.utc)
+        mock_booking.guests = 2
+        mock_booking.booking_status = BookingStatus.confirmed
+        mock_booking.payment_status = PaymentStatus.paid
+        mock_booking.special_requests = "None"
+
+        db = _make_mock_db()
+        db.execute.return_value = _make_mock_result(mock_booking)
+
+        booking_update = BookingUpdate(special_requests="High floor please")
+        result = await update_booking(db, booking_id=1, booking_update=booking_update)
+
+        assert result is mock_booking
+        assert mock_booking.special_requests == "High floor please"
+        # Since dates/guests didn't change, status should remain confirmed/paid
+        assert mock_booking.booking_status == BookingStatus.confirmed
+        assert mock_booking.payment_status == PaymentStatus.paid
+
+    @pytest.mark.asyncio
+    async def test_update_booking_recalculates_price_and_resets_status(self):
+        """Changing dates recalculates price and resets payment/booking statuses if total amount differs."""
+        from app.schemas.booking import BookingUpdate
+        from app.services.booking import update_booking
+
+        mock_booking = MagicMock()
+        mock_booking.check_in_date = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
+        mock_booking.check_out_date = datetime(2026, 7, 13, 11, 0, tzinfo=timezone.utc)
+        mock_booking.guests = 2
+        mock_booking.total_amount = Decimal("6000.00")
+        mock_booking.booking_status = BookingStatus.confirmed
+        mock_booking.payment_status = PaymentStatus.paid
+
+        db = _make_mock_db()
+        db.execute.return_value = _make_mock_result(mock_booking)
+
+        booking_update = BookingUpdate(check_out_date=datetime(2026, 7, 14, 11, 0, tzinfo=timezone.utc))
+
+        with patch("app.services.booking.check_availability", new_callable=AsyncMock) as mock_avail, \
+             patch("app.services.booking.calculate_pricing", new_callable=AsyncMock) as mock_pricing:
+            
+            mock_avail.return_value = {"available": True}
+            mock_pricing.return_value = {
+                "nights": 4,
+                "base_amount": Decimal("8000.00"),
+                "taxes_amount": Decimal("1440.00"),
+                "service_charges": Decimal("400.00"),
+                "discount_amount": Decimal("0.00"),
+                "total_amount": Decimal("9840.00"),
+            }
+
+            result = await update_booking(db, booking_id=1, booking_update=booking_update)
+
+            assert result is mock_booking
+            assert mock_booking.total_amount == Decimal("9840.00")
+            # Recalculation detected a price difference -> statuses reset to pending
+            assert mock_booking.booking_status == BookingStatus.pending
+            assert mock_booking.payment_status == PaymentStatus.pending
+
+    @pytest.mark.asyncio
+    async def test_update_booking_recalculates_price_no_status_reset_if_same_price(self):
+        """Changing dates recalculates price but does NOT reset status if total amount is identical."""
+        from app.schemas.booking import BookingUpdate
+        from app.services.booking import update_booking
+
+        mock_booking = MagicMock()
+        mock_booking.check_in_date = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
+        mock_booking.check_out_date = datetime(2026, 7, 13, 11, 0, tzinfo=timezone.utc)
+        mock_booking.guests = 2
+        mock_booking.total_amount = Decimal("7380.00")
+        mock_booking.booking_status = BookingStatus.confirmed
+        mock_booking.payment_status = PaymentStatus.paid
+
+        db = _make_mock_db()
+        db.execute.return_value = _make_mock_result(mock_booking)
+
+        # shift dates without changing length
+        booking_update = BookingUpdate(
+            check_in_date=datetime(2026, 7, 11, 14, 0, tzinfo=timezone.utc),
+            check_out_date=datetime(2026, 7, 14, 11, 0, tzinfo=timezone.utc)
+        )
+
+        with patch("app.services.booking.check_availability", new_callable=AsyncMock) as mock_avail, \
+             patch("app.services.booking.calculate_pricing", new_callable=AsyncMock) as mock_pricing:
+            
+            mock_avail.return_value = {"available": True}
+            mock_pricing.return_value = {
+                "nights": 3,
+                "base_amount": Decimal("6000.00"),
+                "taxes_amount": Decimal("1080.00"),
+                "service_charges": Decimal("300.00"),
+                "discount_amount": Decimal("0.00"),
+                "total_amount": Decimal("7380.00"),
+            }
+
+            result = await update_booking(db, booking_id=1, booking_update=booking_update)
+
+            assert result is mock_booking
+            assert mock_booking.total_amount == Decimal("7380.00")
+            # Status should NOT be reset
+            assert mock_booking.booking_status == BookingStatus.confirmed
+            assert mock_booking.payment_status == PaymentStatus.paid
+
+    @pytest.mark.asyncio
+    async def test_update_booking_internal_notes_prevented_for_non_staff(self):
+        """A non-staff user's internal_notes update must be silently stripped/prevented."""
+        from app.schemas.booking import BookingUpdate
+        from app.services.booking import update_booking
+        from app.models.enums import UserRole
+
+        mock_booking = MagicMock()
+        mock_booking.internal_notes = "Original admin notes"
+
+        db = _make_mock_db()
+        db.execute.return_value = _make_mock_result(mock_booking)
+
+        booking_update = BookingUpdate(internal_notes="hacked notes")
+        # actor_role is None (non-staff)
+        result = await update_booking(db, booking_id=1, booking_update=booking_update, actor_role=None)
+
+        assert result is mock_booking
+        assert mock_booking.internal_notes == "Original admin notes"  # Unchanged!
+
+    @pytest.mark.asyncio
+    async def test_update_booking_internal_notes_allowed_for_staff(self):
+        """Staff (Admin/Agent) can update internal_notes."""
+        from app.schemas.booking import BookingUpdate
+        from app.services.booking import update_booking
+        from app.models.enums import UserRole
+
+        mock_booking = MagicMock()
+        mock_booking.internal_notes = "Original admin notes"
+
+        db = _make_mock_db()
+        db.execute.return_value = _make_mock_result(mock_booking)
+
+        booking_update = BookingUpdate(internal_notes="valid staff notes")
+        
+        # Test Admin
+        result = await update_booking(db, booking_id=1, booking_update=booking_update, actor_role=UserRole.admin)
+        assert result is mock_booking
+        assert mock_booking.internal_notes == "valid staff notes"
+
+        # Test Agent
+        mock_booking.internal_notes = "Original agent notes"
+        booking_update = BookingUpdate(internal_notes="updated agent notes")
+        result = await update_booking(db, booking_id=1, booking_update=booking_update, actor_role=UserRole.agent)
+        assert result is mock_booking
+        assert mock_booking.internal_notes == "updated agent notes"
+
+
+class TestProcessPaymentService:
+    """Service-level unit tests for process_payment amount verification and status updates."""
+
+    @pytest.mark.asyncio
+    async def test_process_payment_rejects_underpayment(self):
+        """Paying less than the total booking price raises BadRequestException."""
+        from app.schemas.booking import BookingPayment
+        from app.services.booking import process_payment
+
+        mock_booking = MagicMock()
+        mock_booking.total_amount = Decimal("5000.00")
+
+        db = _make_mock_db()
+        db.execute.return_value = _make_mock_result(mock_booking)
+
+        payment_data = BookingPayment(
+            booking_id=1,
+            payment_method="razorpay",
+            transaction_id="tx_123",
+            amount=4999.99  # underpayment
+        )
+
+        with pytest.raises(BadRequestException, match="Payment amount is insufficient"):
+            await process_payment(db, payment_data)
+
+    @pytest.mark.asyncio
+    async def test_process_payment_success(self):
+        """Successful payment updates payment/booking status to paid/confirmed."""
+        from app.schemas.booking import BookingPayment
+        from app.services.booking import process_payment
+
+        mock_booking = MagicMock()
+        mock_booking.total_amount = Decimal("5000.00")
+        mock_booking.booking_status = BookingStatus.pending
+        mock_booking.payment_status = PaymentStatus.pending
+
+        db = _make_mock_db()
+        db.execute.return_value = _make_mock_result(mock_booking)
+
+        payment_data = BookingPayment(
+            booking_id=1,
+            payment_method="razorpay",
+            transaction_id="tx_123",
+            amount=5000.00
+        )
+
+        success = await process_payment(db, payment_data)
+
+        assert success is True
+        assert mock_booking.payment_status == PaymentStatus.paid
+        assert mock_booking.booking_status == BookingStatus.confirmed
+        assert mock_booking.payment_method == "razorpay"
+        assert mock_booking.transaction_id == "tx_123"
 
 
 # ---------------------------------------------------------------------------
@@ -571,9 +791,39 @@ class TestGetBooking:
 class TestBookingReferenceGeneration:
     """Tests for booking reference format."""
 
-    def test_booking_reference_format(self):
-        """Booking references must start with BK and be 10 chars."""
-        import uuid
-        ref = f"BK{uuid.uuid4().hex[:8].upper()}"
-        assert ref.startswith("BK")
-        assert len(ref) == 10
+    @pytest.mark.asyncio
+    async def test_booking_reference_format(self):
+        """Verify that create_booking generates a booking reference with correct format."""
+        from app.schemas.booking import BookingCreate
+        from app.services.booking import create_booking
+
+        booking_data = BookingCreate(
+            property_id=1,
+            check_in_date=_utc_now() + timedelta(days=7),
+            check_out_date=_utc_now() + timedelta(days=10),
+            guests=2,
+            primary_guest_name="Test Guest",
+            primary_guest_phone="+919876543210",
+            primary_guest_email="guest@test.com",
+        )
+
+        db = _make_mock_db()
+        # Mock availability check to pass
+        with patch("app.services.booking.check_availability", new_callable=AsyncMock) as mock_avail, \
+             patch("app.services.booking.calculate_pricing", new_callable=AsyncMock) as mock_pricing:
+            
+            mock_avail.return_value = {"available": True}
+            mock_pricing.return_value = {
+                "nights": 3,
+                "base_amount": Decimal("6000"),
+                "taxes_amount": Decimal("1080"),
+                "service_charges": Decimal("300"),
+                "discount_amount": Decimal("0"),
+                "total_amount": Decimal("7380"),
+            }
+
+            result = await create_booking(db, user_id=42, booking=booking_data)
+
+            assert result is not None
+            assert result.booking_reference.startswith("BK")
+            assert len(result.booking_reference) == 10

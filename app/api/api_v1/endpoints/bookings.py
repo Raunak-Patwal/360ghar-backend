@@ -256,7 +256,7 @@ async def update_booking_details(
     if not await can_access_booking(db, actor=current_user, booking_user_id=booking.user_id, booking_property_id=booking.property_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    return await update_booking(db, booking_id, booking_update, current_booking_id=booking_id)
+    return await update_booking(db, booking_id, booking_update, actor_role=current_user.role)
 
 @router.post("/cancel", response_model=MessageResponse, summary="Cancel booking")
 async def cancel_booking_request(
