@@ -8,7 +8,13 @@ This is the main conftest.py providing:
 - External service mocking setup
 """
 
+import asyncio
 import os
+import sys
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
@@ -64,6 +70,7 @@ IS_CI = os.getenv("CI", "false").lower() == "true"
 # =============================================================================
 # Database Fixtures
 # =============================================================================
+
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def test_engine():
@@ -158,6 +165,7 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 # =============================================================================
 # Application Fixtures
 # =============================================================================
+
 
 @pytest_asyncio.fixture(scope="function")
 async def test_app(db_session: AsyncSession):
