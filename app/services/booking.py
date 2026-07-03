@@ -44,10 +44,13 @@ async def create_booking(db: AsyncSession, user_id: int, booking: BookingCreate)
     booking_data["user_id"] = user_id
     booking_data["booking_reference"] = f"BK{uuid.uuid4().hex[:8].upper()}"
 
-    # Calculate nights
+    # Calculate nights using calendar dates (not raw timedelta seconds) so that
+    # e.g. check-in at 14:00 and check-out at 11:00 next day correctly yields 1 night.
     check_in = booking_data["check_in_date"]
     check_out = booking_data["check_out_date"]
-    nights = (check_out - check_in).days
+    check_in_date_only = check_in.date() if hasattr(check_in, "date") else check_in
+    check_out_date_only = check_out.date() if hasattr(check_out, "date") else check_out
+    nights = (check_out_date_only - check_in_date_only).days
     if nights <= 0:
         logger.warning(
             "Invalid date range in booking creation",
@@ -243,7 +246,12 @@ async def get_user_past_bookings(
     return rows, next_payload, count_total
 
 
-async def update_booking(db: AsyncSession, booking_id: int, booking_update: BookingUpdate):
+async def update_booking(
+    db: AsyncSession,
+    booking_id: int,
+    booking_update: BookingUpdate,
+    current_booking_id: int | None = None,
+):
     """Update a booking"""
     stmt = select(Booking).where(Booking.id == booking_id)
     result = await db.execute(stmt)
@@ -272,6 +280,7 @@ async def update_booking(db: AsyncSession, booking_id: int, booking_update: Book
                 if hasattr(new_check_out, "isoformat")
                 else str(new_check_out),
                 new_guests,
+                exclude_booking_id=current_booking_id,
             )
             if not availability.get("available", False):
                 reason = availability.get("reason", "Property not available for these dates")
@@ -305,15 +314,40 @@ async def update_booking(db: AsyncSession, booking_id: int, booking_update: Book
 
 
 async def cancel_booking(db: AsyncSession, booking_id: int, reason: str):
-    """Cancel a booking"""
+    """Cancel a booking.
+
+    Guards:
+    - Raises BadRequestException if the booking is already cancelled (idempotency).
+    - Automatically marks payment as refunded and records refund_amount when the
+      booking was already paid, so accounting is never left in an inconsistent state.
+    """
     stmt = select(Booking).where(Booking.id == booking_id)
     result = await db.execute(stmt)
     booking = result.scalar_one_or_none()
 
     if booking:
+        # Guard: prevent double-cancellation
+        if booking.booking_status == BookingStatus.cancelled:
+            raise BadRequestException(detail="Booking is already cancelled")
+
         booking.booking_status = BookingStatus.cancelled
         booking.cancellation_date = datetime.now(timezone.utc)
         booking.cancellation_reason = reason
+
+        # If the booking was paid, mark it as refunded so accounting stays consistent.
+        # Actual gateway refund (e.g. Razorpay) must be triggered separately.
+        if booking.payment_status == PaymentStatus.paid:
+            booking.payment_status = PaymentStatus.refunded
+            booking.refund_amount = booking.total_amount
+            logger.info(
+                "Paid booking cancelled — refund recorded",
+                extra={
+                    "booking_id": booking_id,
+                    "user_id": booking.user_id,
+                    "refund_amount": float(booking.total_amount),
+                },
+            )
+
         await db.flush()
         logger.info(
             "Booking cancelled",
@@ -363,32 +397,62 @@ async def process_payment(db: AsyncSession, payment_data: BookingPayment):
     return False
 
 
-async def add_review(db: AsyncSession, review_data: BookingReview):
-    """Add a review to a booking"""
+async def add_review(db: AsyncSession, review_data: BookingReview, actor_id: int):
+    """Add a guest review to a completed booking.
+
+    Guards:
+    - Only the guest who made the booking (booking.user_id) may submit a guest review.
+    - The booking must be in `completed` or `checked_out` status (stay must have occurred).
+    """
+    from app.core.exceptions import ForbiddenException
+
     stmt = select(Booking).where(Booking.id == review_data.booking_id)
     result = await db.execute(stmt)
     booking = result.scalar_one_or_none()
 
-    if booking:
-        booking.guest_rating = review_data.guest_rating
-        booking.guest_review = review_data.guest_review
-        await db.flush()
-        return True
+    if not booking:
+        return False
 
-    return False
+    # Only the actual guest can submit a guest review
+    if booking.user_id != actor_id:
+        raise ForbiddenException(detail="Only the guest who made this booking can submit a review")
+
+    # Review only makes sense once the stay has occurred
+    if booking.booking_status not in (
+        BookingStatus.completed,
+        BookingStatus.checked_out,
+    ):
+        raise BadRequestException(
+            detail="Reviews can only be submitted for completed or checked-out bookings"
+        )
+
+    booking.guest_rating = review_data.guest_rating
+    booking.guest_review = review_data.guest_review
+    await db.flush()
+    return True
 
 
 async def check_availability(
-    db: AsyncSession, property_id: int, check_in_date: str, check_out_date: str, guests: int
+    db: AsyncSession,
+    property_id: int,
+    check_in_date: str,
+    check_out_date: str,
+    guests: int,
+    exclude_booking_id: int | None = None,
 ):
     """Check if property is available for booking.
 
-    Business rule: overlapping bookings are allowed — the same property can be
-    shown to (and booked by) multiple people for the same dates. Availability
-    only depends on the property existing and the guest count fitting
-    max_occupancy.
+    Rules applied in order:
+    1. Property must exist.
+    2. Guest count must not exceed property max_occupancy (when set).
+    3. No active (confirmed or pending) booking for this property may overlap
+       with the requested date range — prevents double-booking.
+
+    Args:
+        exclude_booking_id: When re-checking availability during an update, pass
+            the booking being updated so it is excluded from the overlap query.
     """
-    # Get property max occupancy
+    # 1. Property existence check
     prop_stmt = select(Property).where(Property.id == property_id)
     prop_result = await db.execute(prop_stmt)
     property_obj = prop_result.scalar_one_or_none()
@@ -396,6 +460,7 @@ async def check_availability(
     if not property_obj:
         return {"available": False, "reason": "Property not found"}
 
+    # 2. Guest count check
     if property_obj.max_occupancy and guests > property_obj.max_occupancy:
         logger.info(
             "Availability check: guests exceed max occupancy",
@@ -411,6 +476,30 @@ async def check_availability(
             "available": False,
             "reason": f"Property can accommodate maximum {property_obj.max_occupancy} guests",
         }
+
+    # 3. Date-overlap check — prevents double-booking
+    # Two date ranges [A, B) and [C, D) overlap when A < D and C < B.
+    overlap_filters = [
+        Booking.property_id == property_id,
+        Booking.booking_status.in_([BookingStatus.confirmed, BookingStatus.pending]),
+        Booking.check_in_date < check_out_date,
+        Booking.check_out_date > check_in_date,
+    ]
+    if exclude_booking_id is not None:
+        overlap_filters.append(Booking.id != exclude_booking_id)
+
+    overlap_stmt = select(Booking.id).where(and_(*overlap_filters)).limit(1)
+    overlap_result = await db.execute(overlap_stmt)
+    if overlap_result.scalar_one_or_none() is not None:
+        logger.info(
+            "Availability check: date overlap detected",
+            extra={
+                "property_id": property_id,
+                "check_in": check_in_date,
+                "check_out": check_out_date,
+            },
+        )
+        return {"available": False, "reason": "Property is already booked for these dates"}
 
     logger.info(
         "Availability check passed",
@@ -445,7 +534,11 @@ async def calculate_pricing(
     if not property_obj:
         return {"error": "Property not found"}
 
-    nights = (check_out_date - check_in_date).days
+    # Use calendar-date subtraction so times-of-day don't shorten the night count.
+    # e.g. check-in 14:00 → check-out 11:00 next day = 1 calendar night (not 0 hours).
+    ci_date = check_in_date.date() if hasattr(check_in_date, "date") else check_in_date
+    co_date = check_out_date.date() if hasattr(check_out_date, "date") else check_out_date
+    nights = (co_date - ci_date).days
     if nights <= 0:
         return {"error": "Invalid date range"}
 
@@ -526,13 +619,20 @@ async def get_all_bookings(
             .outerjoin(Owner, Property.owner_id == Owner.id)
         )
         filters.append(or_(User.agent_id == filter_agent_id, Owner.agent_id == filter_agent_id))
+        # When both the booking user and the property owner share the same agent,
+        # the OR join produces two rows for the same Booking.  DISTINCT prevents
+        # duplicates from reaching the response and inflating pagination counts.
+        stmt = stmt.distinct()
 
     if filters:
         stmt = stmt.where(and_(*filters))
 
     count_total = None
     if with_total:
-        count_stmt = select(func.count()).select_from(stmt.subquery())
+        # Use COUNT(DISTINCT booking.id) to avoid inflated counts from agent OR-joins.
+        count_stmt = select(func.count(Booking.id.distinct())).select_from(
+            stmt.subquery()
+        )
         count_result = await execute_with_transient_retry(
             db,
             lambda: db.execute(count_stmt),
