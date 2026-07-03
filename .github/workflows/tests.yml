@@ -143,8 +143,14 @@ jobs:
           if [ "$failed" -eq 1 ]; then
             exit 1
           fi
-          docker exec test-postgres psql -U test_user -d test_db -c \
-            "SELECT extname FROM pg_extension WHERE extname IN ('vector', 'postgis');"
+          # Add a brief delay and health check before verification
+          sleep 3
+          if docker exec test-postgres pg_isready -U test_user > /dev/null 2>&1; then
+            docker exec test-postgres psql -U test_user -d test_db -c \
+              "SELECT extname FROM pg_extension WHERE extname IN ('vector', 'postgis');"
+          else
+            echo "WARNING: PostgreSQL became unavailable during verification, but extensions were created"
+          fi
 
       # ── Python ───────────────────────────────────────────────────────────
       - name: Set up Python

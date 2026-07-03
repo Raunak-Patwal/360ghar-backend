@@ -100,7 +100,7 @@ async def agent_rent_list_due(
                         "limit": limit,
                         "total": 0,
                     }).model_dump()
-                owner_ids = accessible_owners
+                owner_ids = list(accessible_owners) if accessible_owners is not None else None
 
             if owner_id:
                 owner_ids = [owner_id]

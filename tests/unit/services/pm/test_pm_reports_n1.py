@@ -75,6 +75,8 @@ class TestRentRollReportQueryCount:
 
             # First execute -> properties, second execute -> leases
             async def _execute(stmt):
+                if hasattr(stmt, "text") and "statement_timeout" in str(stmt.text):
+                    return MagicMock()
                 execute_calls.append(stmt)
                 result = MagicMock()
 
@@ -133,6 +135,8 @@ class TestRentRollReportQueryCount:
             execute_calls = []
 
             async def _execute(stmt):
+                if hasattr(stmt, "text") and "statement_timeout" in str(stmt.text):
+                    return MagicMock()
                 execute_calls.append(stmt)
                 result = MagicMock()
                 scalars_result = MagicMock()
@@ -180,6 +184,8 @@ class TestRentRollReportQueryCount:
             new_lease.tenant_user_id = 222
 
             async def _execute(stmt):
+                if hasattr(stmt, "text") and "statement_timeout" in str(stmt.text):
+                    return MagicMock()
                 result = MagicMock()
                 if _is_lease_query(stmt):
                     scalars_result = MagicMock()

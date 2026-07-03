@@ -35,6 +35,10 @@ class FakeDb:
     async def flush(self):
         self.flushed = True
 
+    async def commit(self):
+        """Simulate database commit."""
+        pass
+
     async def refresh(self, obj):
         if getattr(obj, "created_at", None) is None:
             from datetime import datetime, timezone
