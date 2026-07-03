@@ -280,7 +280,7 @@ async def update_booking(db: AsyncSession, booking_id: int, booking_update: Book
                 raise BadRequestException(detail=pricing["error"])
 
             # If the price changes, revoke their paid/confirmed status so they have to pay the difference
-            if float(pricing["total_amount"]) != float(booking.total_amount):
+            if round(float(pricing["total_amount"]), 2) != round(float(booking.total_amount), 2):
                 booking.payment_status = PaymentStatus.pending
                 booking.booking_status = BookingStatus.pending
 
@@ -329,7 +329,7 @@ async def process_payment(db: AsyncSession, payment_data: BookingPayment):
 
     if booking:
         # --- FIX: Prevent payment amount bypass ---
-        if float(payment_data.amount) < float(booking.total_amount):
+        if round(float(payment_data.amount), 2) < round(float(booking.total_amount), 2):
             logger.warning(
                 "Payment amount mismatch",
                 extra={

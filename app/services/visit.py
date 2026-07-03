@@ -126,6 +126,7 @@ async def _ensure_no_visit_conflict(
     user_id: int,
     property_id: int,
     scheduled_date: datetime,
+    exclude_visit_id: int | None = None,
 ) -> None:
     """Raise ConflictException if the user already has an active visit overlapping
     the requested window **for the same property**.
@@ -156,6 +157,8 @@ async def _ensure_no_visit_conflict(
         Visit.scheduled_date >= window_start,
         Visit.scheduled_date <= window_end,
     )
+    if exclude_visit_id is not None:
+        stmt = stmt.where(Visit.id != exclude_visit_id)
     result = await db.execute(stmt)
     existing_visits = result.scalars().all()
 
@@ -393,8 +396,14 @@ async def update_visit(db: AsyncSession, visit_id: int, visit_update: VisitUpdat
 
     # --- FIX: Prevent overlap bypass on reschedule ---
     new_scheduled_date = update_data.get("scheduled_date")
-    if new_scheduled_date and new_scheduled_date != visit.scheduled_date:
-        await _ensure_no_visit_conflict(db, visit.user_id, visit.property_id, new_scheduled_date)
+    if new_scheduled_date:
+        if new_scheduled_date.tzinfo is None:
+            new_scheduled_date = new_scheduled_date.replace(tzinfo=timezone.utc)
+            update_data["scheduled_date"] = new_scheduled_date
+        if new_scheduled_date != visit.scheduled_date:
+            await _ensure_no_visit_conflict(
+                db, visit.user_id, visit.property_id, new_scheduled_date, exclude_visit_id=visit.id
+            )
     # -------------------------------------------------
 
     # --- Validate status transition ---
@@ -512,6 +521,12 @@ async def reschedule_visit(
     now = datetime.now(timezone.utc)
     if new_date < now:
         return None
+
+    # --- FIX: Prevent overlap on reschedule ---
+    await _ensure_no_visit_conflict(
+        db, visit.user_id, visit.property_id, new_date, exclude_visit_id=visit.id
+    )
+    # ------------------------------------------
 
     visit.rescheduled_from = visit.scheduled_date
     visit.scheduled_date = new_date
