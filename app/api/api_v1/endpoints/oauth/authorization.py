@@ -209,14 +209,11 @@ async def process_consent(
                 "OAuth login failed - Supabase auth failed",
                 extra={"phone_prefix": phone[:4] + "****" if len(phone) > 4 else "****"},
             )
-            user_exists = await admin_find_user_by_phone(phone)
-            error_msg = "Invalid phone or password" if user_exists else "User not found"
-
             return HTMLResponse(
                 render_consent_html(
                     session_id=session,
                     oauth_session=oauth_session,
-                    error_message=f"Authentication failed: {error_msg}",
+                    error_message="Authentication failed: Invalid phone or password.",
                 ),
                 status_code=401,
             )

@@ -101,6 +101,7 @@ class Settings(BaseSettings):
         "https://www.360ghar.com",
         "https://flatmates.360ghar.com",
         "https://admin.360ghar.com",
+        "https://tours.360ghar.com",
         # ChatGPT App domains (for widget iframes and MCP calls)
         "https://chatgpt.com",
         "https://chat.openai.com",

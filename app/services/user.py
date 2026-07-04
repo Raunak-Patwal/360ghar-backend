@@ -481,20 +481,21 @@ async def delete_user_account(db: AsyncSession, user: User) -> None:
     )
 
 
-def _normalize_phone_to_e164(identifier: str) -> str:
+def _normalize_phone_to_e164(identifier: str) -> str | None:
     """Normalize a phone identifier to E.164 for matching ``auth.users.phone``.
 
-    Reuses :meth:`ValidationUtils.validate_phone` (India default +91). On a
-    malformed input it returns the stripped raw value unchanged so the
-    ``WHERE phone = :phone`` clause simply yields no match (``exists=False``),
-    mirroring the prior not-found semantics — it NEVER raises.
+    Reuses :meth:`ValidationUtils.validate_phone` (India default +91). Returns
+    ``None`` when the input cannot be parsed as a phone number so callers can
+    safely treat the identifier as non-existent instead of querying with garbage.
     """
     raw = identifier.strip()
+    if not raw:
+        return None
     try:
         normalized = ValidationUtils.validate_phone(raw)
     except ValidationException:
-        return raw
-    return normalized or raw
+        return None
+    return normalized or None
 
 
 async def get_identifier_status(db: AsyncSession, identifier: str) -> dict[str, Any]:
@@ -545,6 +546,14 @@ async def get_identifier_status(db: AsyncSession, identifier: str) -> dict[str, 
             # removeprefix strips at most one "+" so malformed input can't be
             # massaged into a valid key (lstrip would strip every "+").
             phone_value = _normalize_phone_to_e164(identifier)
+            if phone_value is None:
+                return {
+                    "exists": False,
+                    "verified": False,
+                    "has_password": False,
+                    "channel": channel,
+                    "next_step": "otp",
+                }
             phone_noplus = phone_value.removeprefix("+")
             stmt = text(
                 """
