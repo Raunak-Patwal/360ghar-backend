@@ -7,7 +7,9 @@
     "docs/repo-contract.json",
     "docs/deep-linking.md",
     "docs/deep-linking-deployment-checklist.md",
-    "docs/deep-linking-production-readiness.md"
+    "docs/deep-linking-production-readiness.md",
+    "docs/openapi.json",
+    "docs/flatmates-openapi.yaml"
   ],
   "top_level_paths": [
     "AGENTS.md",
@@ -240,6 +242,7 @@
     "pm_tenants.py",
     "property/crud.py",
     "property/search.py",
+    "property/search_orchestration.py",
     "property/recommendations.py",
     "property/helpers.py",
     "push_notification.py",

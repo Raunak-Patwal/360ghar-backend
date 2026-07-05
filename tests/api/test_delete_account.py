@@ -88,7 +88,9 @@ class TestDeleteAccountViaAuthRoute:
 
     @pytest.mark.asyncio
     async def test_unauthenticated_returns_401(self, client: AsyncClient):
-        response = await client.post("/api/v1/auth/delete-account")
+        response = await client.post(
+            "/api/v1/auth/delete-account", json={"confirm": True}
+        )
         assert response.status_code == 401
 
     @pytest.mark.asyncio
@@ -97,7 +99,9 @@ class TestDeleteAccountViaAuthRoute:
             "app.api.api_v1.endpoints.auth.delete_user_account",
             new_callable=AsyncMock,
         ) as mock_delete:
-            response = await user_client.post("/api/v1/auth/delete-account")
+            response = await user_client.post(
+                "/api/v1/auth/delete-account", json={"confirm": True}
+            )
 
         assert response.status_code == 204
         assert response.content == b""  # No Content
@@ -113,7 +117,9 @@ class TestDeleteAccountViaAuthRoute:
                 headers={"Retry-After": "30"},
             ),
         ):
-            response = await user_client.post("/api/v1/auth/delete-account")
+            response = await user_client.post(
+                "/api/v1/auth/delete-account", json={"confirm": True}
+            )
 
         assert response.status_code == 503
 

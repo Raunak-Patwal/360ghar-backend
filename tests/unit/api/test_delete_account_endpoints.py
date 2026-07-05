@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -35,8 +35,12 @@ async def test_auth_delete_account_converts_unexpected_service_error() -> None:
         "app.api.api_v1.endpoints.auth.delete_user_account",
         new=AsyncMock(side_effect=Exception("Unexpected error")),
     ) as delete_user_account:
+        request = MagicMock()
+        body = auth.DeleteAccountRequest(confirm=True)
         with pytest.raises(HTTPException) as exc_info:
-            await auth.delete_account(current_user=current_user, db=db)
+            await auth.delete_account(
+                request=request, body=body, current_user=current_user, db=db
+            )
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "Internal server error. Please try again later."
