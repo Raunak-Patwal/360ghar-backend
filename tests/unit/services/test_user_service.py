@@ -109,6 +109,35 @@ class TestGetOrCreateUserFromSupabase:
         assert result.id == test_user.id
 
     @pytest.mark.asyncio
+    async def test_existing_active_user_skips_advisory_lock(self):
+        """Existing active users return on the fast path without taking the lock."""
+        from app.services.user import get_or_create_user_from_supabase
+
+        db = AsyncMock(spec=AsyncSession)
+        existing = MagicMock()
+        existing.id = 1
+        existing.is_active = True
+
+        with patch(
+            "app.services.user.get_user_by_supabase_id",
+            new=AsyncMock(return_value=existing),
+        ):
+            result = await get_or_create_user_from_supabase(
+                db,
+                {
+                    "id": str(uuid.uuid4()),
+                    "phone": "+919111222333",
+                    "email": None,
+                    "phone_verified": True,
+                    "email_confirmed_at": None,
+                    "user_metadata": {},
+                },
+            )
+
+        assert result is existing
+        db.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_create_new_user(self, db_session: AsyncSession):
         """Test creating new user from Supabase data."""
         from app.services.user import get_or_create_user_from_supabase
@@ -165,8 +194,7 @@ class TestGetOrCreateUserFromSupabase:
 
     @pytest.mark.asyncio
     async def test_concurrent_create_serializes_via_advisory_lock(self):
-        """The create path acquires a per-supabase_user_id advisory lock before
-        its first lookup.
+        """The create path acquires a per-supabase_user_id advisory lock.
 
         Why this matters: right after login the frontend fires several
         authenticated requests in parallel (profile + auth-state); two of them
@@ -180,9 +208,9 @@ class TestGetOrCreateUserFromSupabase:
         We can't reproduce a live two-session race in this harness: the loser
         would block on the lock until the winner's transaction commits, which
         never happens inside ``get_or_create`` (flush only, no commit), so the
-        test would hang. Instead we assert the lock is acquired, with the
-        correct key, before any user lookup — proving the serialization is in
-        place. The reconciliation safety net is covered by
+        test would hang. Instead we assert the lock is acquired after the
+        initial fast-path miss, with the correct key, before the locked re-check
+        and create path. The reconciliation safety net is covered by
         ``test_integrity_error_reconciles_by_supabase_id``.
         """
         from app.services.user import get_or_create_user_from_supabase
@@ -213,12 +241,13 @@ class TestGetOrCreateUserFromSupabase:
             }
             await get_or_create_user_from_supabase(db, supabase_data)
 
-        # The very first DB statement is the transaction-scoped advisory lock,
-        # keyed on the supabase id, run BEFORE the canonical lookup.
+        # The first direct DB statement is the transaction-scoped advisory lock,
+        # keyed on the supabase id, after the initial fast-path miss.
         first = db.execute.call_args_list[0]
         assert "pg_advisory_xact_lock" in str(first.args[0])
         assert "hashtext" in str(first.args[0])
         assert first.args[1] == {"sid": supabase_id}
+        assert mock_by_sb.await_count == 2
 
 
 class TestEmailLinkedIdentity:
@@ -468,8 +497,8 @@ class TestEmailLinkedIdentity:
         )
 
         db = AsyncMock(spec=AsyncSession)
-        # First lookup by supabase id (pre-flush) returns None → create path.
-        # After IntegrityError + rollback, lookup by supabase id returns the row.
+        # Fast-path and locked lookups both miss, then rollback reconciliation
+        # finds the row that won the concurrent insert race.
         db.flush.side_effect = [IntegrityError("dup", None, Exception("dup")), None]
 
         with patch(
@@ -479,7 +508,7 @@ class TestEmailLinkedIdentity:
         ) as mock_by_email, patch(
             "app.services.user.get_user_by_phone", new_callable=AsyncMock
         ) as mock_by_phone:
-            mock_by_sb.side_effect = [None, reconciled]
+            mock_by_sb.side_effect = [None, None, reconciled]
             mock_by_email.return_value = None
             mock_by_phone.return_value = None
 
@@ -665,8 +694,14 @@ class TestGetIdentifierStatus:
         from app.services.user import get_identifier_status
 
         db = self._fake_db(execute_exc=RuntimeError("connection refused"))
-        with pytest.raises(ServiceUnavailableException):
+        with pytest.raises(ServiceUnavailableException) as exc_info:
             await get_identifier_status(db, "x@example.com")
+
+        assert exc_info.value.headers == {"Retry-After": "30"}
+        assert exc_info.value.details == {
+            "error_code": "RuntimeError",
+            "channel": "email",
+        }
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

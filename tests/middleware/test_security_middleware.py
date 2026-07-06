@@ -40,7 +40,7 @@ class TestSecurityMiddleware:
             assert response.status_code == 200
             assert response.headers.get("X-Content-Type-Options") == "nosniff"
             assert response.headers.get("X-Frame-Options") == "DENY"
-            assert response.headers.get("X-XSS-Protection") == "1; mode=block"
+            assert response.headers.get("X-XSS-Protection") == "0"
 
     @pytest.mark.asyncio
     async def test_cors_headers(self):
@@ -82,7 +82,7 @@ class TestXSSProtection:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.get("/test")
 
-            assert response.headers.get("X-XSS-Protection") == "1; mode=block"
+            assert response.headers.get("X-XSS-Protection") == "0"
 
 
 class TestContentTypeOptions:

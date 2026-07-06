@@ -8,7 +8,7 @@ from app.core.exceptions import (
     PropertyNotFoundException,
 )
 from app.mcp.admin.agent_tools.common import (
-    MCP_SECURITY_SCHEMES_MIXED,
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     AuthRequiredError,
     MCPErrorCode,
     MCPResponse,
@@ -27,8 +27,21 @@ from app.mcp.admin.agent_tools.common import (
     serialize_user_basic,
     utc_now_iso,
 )
+from app.mcp.apps_sdk import build_widget_tool_meta
 from app.schemas.pagination import decode_cursor, encode_cursor
 from app.utils.validators import ValidationUtils
+
+AGENT_PROPERTIES_LIST_META = build_widget_tool_meta(
+    widget_uri="ui://widget/ownerdashboardwidget.html",
+    invoking="Loading managed properties...",
+    invoked="Managed properties loaded",
+)
+
+AGENT_PROPERTY_DETAILS_META = build_widget_tool_meta(
+    widget_uri="ui://widget/propertydetailswidget.html",
+    invoking="Loading property details...",
+    invoked="Property details loaded",
+)
 
 
 @admin_mcp.tool(
@@ -38,8 +51,9 @@ from app.utils.validators import ValidationUtils
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
+    meta=AGENT_PROPERTIES_LIST_META,
 )
 async def agent_properties_list(
     owner_id: int | None = None,
@@ -125,8 +139,9 @@ async def agent_properties_list(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
+    meta=AGENT_PROPERTY_DETAILS_META,
 )
 async def agent_properties_get(
     property_id: int,
@@ -215,7 +230,7 @@ async def agent_properties_get(
         "readOnlyHint": False,
         "destructiveHint": False,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
 )
 async def agent_properties_create_for_owner(
@@ -340,7 +355,7 @@ async def agent_properties_create_for_owner(
         "readOnlyHint": False,
         "destructiveHint": False,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
 )
 async def agent_properties_verify(
@@ -388,14 +403,16 @@ async def agent_properties_verify(
                     "You do not have access to this property"
                 ).model_dump()
 
-            prop.is_verified = is_verified  # type: ignore[attr-defined]
+            preferences = dict(prop.listing_preferences or {})
+            verification: dict[str, Any] = {
+                "is_verified": is_verified,
+                "verified_by": user.id,
+                "verified_at": utc_now_iso(),
+            }
             if verification_notes:
-                # Store in features JSON if no dedicated field
-                features = prop.features or {}
-                features["verification_notes"] = verification_notes
-                features["verified_by"] = user.id
-                features["verified_at"] = utc_now_iso()
-                prop.features = features
+                verification["notes"] = verification_notes
+            preferences["verification"] = verification
+            prop.listing_preferences = preferences
 
             await db.flush()
             await db.commit()

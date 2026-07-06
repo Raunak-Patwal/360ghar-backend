@@ -4,8 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.api_v1.dependencies.auth import get_current_active_user
+from app.api.api_v1.dependencies.auth import (
+    get_current_active_user,
+    get_current_cached_active_user,
+)
 from app.core.database import get_db
+from app.core.db_resilience import raise_read_service_unavailable
 from app.core.logging import get_logger
 from app.models.enums import PropertyPurpose, PropertyType
 from app.schemas.common import MessageResponse
@@ -17,6 +21,7 @@ from app.schemas.property import (
     UnifiedPropertyFilter,
 )
 from app.schemas.user import User as UserSchema
+from app.services.auth_user_cache import AuthUserSnapshot
 from app.services.swipe import (
     batch_unswipe,
     get_swipe_history,
@@ -104,7 +109,7 @@ async def get_user_swipe_history(
     # Cursor pagination
     page: CursorParams = Depends(),
 
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: AuthUserSnapshot = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -178,6 +183,12 @@ async def get_user_swipe_history(
 
         return build_cursor_page(props, limit=page.limit, next_payload=next_payload, total=total)
     except Exception as e:
+        raise_read_service_unavailable(
+            e,
+            endpoint="swipe_history",
+            detail="Swipe history is temporarily unavailable. Please retry shortly.",
+            extra={"user": current_user.id},
+        )
         logger.error("Swipe history search failed for user %s: %s", current_user.id, e)
         raise
 
@@ -211,19 +222,33 @@ async def toggle_swipe_like(
 
 @router.get("/stats", summary="Get swipe statistics")
 async def get_user_swipe_statistics(
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: AuthUserSnapshot = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get user's swipe statistics"""
-    stats = await get_swipe_stats(db, current_user.id)
-    return stats
+    try:
+        return await get_swipe_stats(db, current_user.id)
+    except Exception as exc:
+        raise_read_service_unavailable(
+            exc,
+            endpoint="swipe_stats",
+            detail="Swipe statistics are temporarily unavailable. Please retry shortly.",
+            extra={"user": current_user.id},
+        )
+        raise
 
 
 class BatchRemoveRequest(BaseModel):
     property_ids: list[int]
 
 
-@router.post("/batch-remove", response_model=MessageResponse, summary="Batch remove swipes")
+class BatchRemoveResponse(BaseModel):
+    removed_count: int
+    failed_property_ids: list[int] = []
+    message: str
+
+
+@router.post("/batch-remove", response_model=BatchRemoveResponse, summary="Batch remove swipes")
 async def batch_remove_swipes(
     payload: BatchRemoveRequest,
     current_user: UserSchema = Depends(get_current_active_user),
@@ -231,4 +256,8 @@ async def batch_remove_swipes(
 ):
     """Remove many liked swipes for the current user in a single request."""
     deleted = await batch_unswipe(db, current_user.id, payload.property_ids)
-    return MessageResponse(message=f"Removed {deleted} swipes")
+    return BatchRemoveResponse(
+        removed_count=deleted,
+        failed_property_ids=[],
+        message=f"Removed {deleted} swipes",
+    )

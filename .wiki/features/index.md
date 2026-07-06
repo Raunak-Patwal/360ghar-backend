@@ -10,7 +10,7 @@ The platform is organised around these feature areas, each with its own REST sur
 
 - [Ghar Core](ghar-core.md) — the property marketplace. Swipe-based discovery, PostGIS geospatial search, PostgreSQL full-text search, hybrid semantic search over pgvector, and the recent 3-tuple cursor pagination refactor for list endpoints. Covers properties, swipes, visits, and agents.
 - [360 Stays](stays.md) — short-stay bookings for hotels, vacation rentals, and temporary accommodation. Covers availability checks, dynamic pricing, the booking lifecycle, and the deliberate overlapping-bookings business rule.
-- [Flatmates](flatmates.md) — flatmate and PG discovery with swipe-based matching, conversations, moderation, QnA, and SSE-driven real-time events.
+- [Flatmates](flatmates.md) — flatmate and PG discovery with swipe-based matching, conversations, moderation, QnA, and Supabase Realtime-driven events.
 - [Property Management](property-management.md) — the PM system for landlords and relationship managers: leases, rent collection, maintenance, documents, inspections, reports, tenants, applications, and RM assignments.
 - [360 Virtual Tours](virtual-tours.md) — immersive 360° tour platform with AI-powered hotspot generation, floor plans, analytics, and custom branded domains.
 - [360 Data Hub](data-hub.md) — real estate data aggregation. Twenty-six scraper modules covering bank auctions, RERA projects, circle rates, gazette notifications, jamabandi, zoning, and neighbourhood scores, scheduled by a single APScheduler instance.

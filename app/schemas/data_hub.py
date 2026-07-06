@@ -5,6 +5,8 @@ Covers all 13 data hub entities plus calculation, builder reputation,
 and paginated list response schemas.
 """
 
+from __future__ import annotations
+
 from datetime import date, datetime
 from typing import Any, Literal
 
@@ -120,7 +122,7 @@ class AuctionAlertCreate(BaseModel):
 
 
 class AuctionAlertUpdate(AuctionAlertCreate):
-    pass
+    model_config = ConfigDict(json_schema_extra={"title": "AuctionAlertUpdate"})
 
 
 class AuctionAlertResponse(BaseModel):

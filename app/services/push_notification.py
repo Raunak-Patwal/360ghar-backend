@@ -37,40 +37,51 @@ async def _dispatch(
     body: str,
     data: dict[str, str] | None = None,
     deep_link: str | None = None,
+    realtime_publish_immediately: bool = False,
 ) -> dict[str, Any]:
     """Dispatch a notification through the existing notification pipeline.
 
     Falls back to a log-only stub when the dispatcher is unavailable.
     """
-    # --- SSE event to user (always fire, even if FCM is down) ---
-    try:
-        from app.core.sse import SSE_NEW_NOTIFICATION, sse_bus
+    from app.services.flatmates.realtime import (
+        EVENT_NEW_NOTIFICATION,
+        FlatmatesRealtimeEvent,
+        publish_flatmates_realtime_event,
+        queue_flatmates_realtime_event,
+    )
 
-        await sse_bus.emit(
-            user_db_id,
-            {
-                "type": SSE_NEW_NOTIFICATION,
-                "type_key": type_key,
-                "title": title,
-                "body": body,
-                "route": (data or {}).get("route"),
-            },
+    realtime_event = FlatmatesRealtimeEvent(
+        user_id=user_db_id,
+        event_type=EVENT_NEW_NOTIFICATION,
+        payload={
+            "type_key": type_key,
+            "title": title,
+            "body": body,
+            "route": (data or {}).get("route"),
+        },
+    )
+
+    if not realtime_publish_immediately:
+        queue_flatmates_realtime_event(
+            db,
+            user_id=user_db_id,
+            event_type=EVENT_NEW_NOTIFICATION,
+            payload=realtime_event.payload,
         )
-    except Exception:  # noqa: BLE001
-        pass  # best-effort
 
     try:
         from app.services.notification_dispatcher import dispatch_notification_to_user
 
-        return await dispatch_notification_to_user(
-            db,
-            user_db_id=user_db_id,
-            type_key=type_key,
-            title=title,
-            body=body,
-            data=data,
-            deep_link=deep_link,
-        )
+        async with db.begin_nested():
+            result = await dispatch_notification_to_user(
+                db,
+                user_db_id=user_db_id,
+                type_key=type_key,
+                title=title,
+                body=body,
+                data=data,
+                deep_link=deep_link,
+            )
     except Exception:
         logger.warning(
             "Push notification dispatch failed (stub fallback)",
@@ -81,7 +92,12 @@ async def _dispatch(
                 "body": body,
             },
         )
-        return {"ok": False, "fallback": True, "type_key": type_key}
+        result = {"ok": False, "fallback": True, "type_key": type_key}
+
+    if realtime_publish_immediately:
+        await publish_flatmates_realtime_event(realtime_event)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +191,7 @@ async def notify_listing_approved(
     recipient_db_id: int,
     listing_title: str,
     boosted_for_hours: int | None = None,
+    realtime_publish_immediately: bool = False,
 ) -> dict[str, Any]:
     """Notify a listing owner that their flatmate listing was approved.
 
@@ -191,6 +208,7 @@ async def notify_listing_approved(
         body=body,
         data={"route": "/post"},
         deep_link="/post",
+        realtime_publish_immediately=realtime_publish_immediately,
     )
 
 

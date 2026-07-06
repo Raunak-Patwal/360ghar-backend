@@ -53,6 +53,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {"name": "pm-reports", "description": "PM financial reports: rent roll, income, P&L, occupancy."},
     {"name": "design-studio", "description": "AI-powered design image generation."},
     {"name": "vastu", "description": "Vastu compliance analysis for floor plans (public)."},
+    {"name": "deeplinks", "description": "App deep link generation, resolution, and well-known manifests."},
     {"name": "tours", "description": "360 virtual tour CRUD, publish, duplicate, analytics."},
     {"name": "scenes", "description": "Tour scene CRUD and nested hotspot management."},
     {"name": "hotspots", "description": "Hotspot CRUD and position updates within scenes."},

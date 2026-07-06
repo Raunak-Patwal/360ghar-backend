@@ -144,3 +144,20 @@ class TestPropertySearchCombinations:
         )
         for item in rows:
             assert item.property_type in (PropertyType.pg, PropertyType.flatmate)
+
+    @pytest.mark.asyncio
+    async def test_unknown_amenity_name_returns_no_results(
+        self,
+        db_session: AsyncSession,
+        test_properties,
+        test_user,
+    ):
+        """An amenity name that resolves to no known ID must match nothing.
+
+        Previously the filter was silently dropped and ALL properties were returned.
+        """
+        filters = UnifiedPropertyFilter(amenities=["DefinitelyNotARealAmenity123"])
+        rows, _next, _total = await get_unified_properties_optimized(
+            db_session, filters, user_id=test_user.id, cursor_payload={}, limit=10,
+        )
+        assert rows == []

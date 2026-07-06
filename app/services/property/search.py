@@ -14,6 +14,7 @@ from sqlalchemy import (
     and_,
     bindparam,
     cast,
+    false,
     func,
     or_,
     select,
@@ -21,6 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import settings
 from app.core.cache import PropertyCacheManager
@@ -137,6 +139,11 @@ def _available_from_minimum(available_from: str | None) -> datetime | None:
         return _utc_day_start(datetime.fromisoformat(available_from.strip()))
     except ValueError:
         return None
+
+
+def _property_ts_vector_column() -> ColumnElement[Any]:
+    """Return the named table column used for PostgreSQL full-text search."""
+    return Property.__table__.c["__ts_vector__"]
 
 
 async def get_unified_properties_optimized(
@@ -291,7 +298,7 @@ async def get_unified_properties_optimized(
             logger.debug("Adding full-text search filter: %s", filters.search_query)
 
             search_query_obj = func.plainto_tsquery("english", filters.search_query)
-            search_vector = Property.ts_vector
+            search_vector = _property_ts_vector_column()
             # Only hard-filter by text match when semantic search is not requested
             if not semantic_enabled:
                 conditions.append(search_vector.op("@@")(search_query_obj))
@@ -354,10 +361,11 @@ async def get_unified_properties_optimized(
         if filters.city:
             normalized_city = normalize_city(filters.city)
             logger.debug("Adding city filter: %s (normalized from: %s)", normalized_city, filters.city)
-            conditions.append(func.lower(Property.city).like(f"%{normalized_city.lower()}%"))
+            conditions.append(func.lower(Property.city).like(f"%{normalized_city.lower()}%", escape="\\"))
         if filters.locality:
             logger.debug("Adding locality filter: %s", filters.locality)
-            conditions.append(Property.locality.ilike(f"%{filters.locality}%"))
+            escaped_locality = filters.locality.replace("%", r"\%").replace("_", r"\_")
+            conditions.append(Property.locality.ilike(f"%{escaped_locality}%", escape="\\"))
         if filters.pincode:
             logger.debug("Adding pincode filter: %s", filters.pincode)
             conditions.append(Property.pincode == filters.pincode)
@@ -415,6 +423,12 @@ async def get_unified_properties_optimized(
                     .having(func.count(PropertyAmenity.amenity_id) >= len(amenity_ids))
                 )
                 conditions.append(Property.id.in_(amenity_subquery))
+            elif amenity_names and not amenity_ids:
+                # No amenity names resolved to known IDs: the caller asked for an
+                # amenity that doesn't exist. Match nothing instead of silently
+                # dropping the filter and returning all properties.
+                logger.warning("No amenities found for names: %s", amenity_names)
+                conditions.append(false)
 
         # Listing preference filters for PG / flatmate use cases
         listing_preferences_json = cast(Property.listing_preferences, JSONB)

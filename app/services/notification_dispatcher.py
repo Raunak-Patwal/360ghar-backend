@@ -5,6 +5,8 @@ from typing import Any
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
+from app.core.db_resilience import apply_statement_timeout, execute_with_transient_retry
 from app.core.logging import get_logger
 from app.core.utils import utc_now_iso
 from app.models.users import User as UserModel
@@ -242,11 +244,16 @@ async def find_user_ids_for_segment(
     limit: int | None = DEFAULT_SEGMENT_LIMIT,
 ) -> list[int]:
     """Resolve a simple audience segment to a list of user ids."""
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     stmt, _ = _build_segment_statements(role=role, agent_id=agent_id, is_active=is_active)
     stmt = stmt.order_by(UserModel.id)
     if limit is not None:
         stmt = stmt.limit(limit)
-    res = await db.execute(stmt)
+    res = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(stmt),
+        operation_name="notification_segment_user_ids",
+    )
     return [row[0] for row in res.all()]
 
 
@@ -258,8 +265,14 @@ async def count_users_for_segment(
     is_active: bool | None = True,
 ) -> int:
     """Count users in a simple audience segment without loading ids."""
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     _, count_stmt = _build_segment_statements(role=role, agent_id=agent_id, is_active=is_active)
-    return int((await db.execute(count_stmt)).scalar_one() or 0)
+    result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(count_stmt),
+        operation_name="notification_segment_count",
+    )
+    return int(result.scalar_one() or 0)
 
 
 def _build_segment_statements(
@@ -276,7 +289,7 @@ def _build_segment_statements(
     if agent_id is not None:
         conditions.append(UserModel.agent_id == agent_id)
     if is_active is not None:
-        conditions.append(UserModel.is_active == is_active)
+        conditions.append(UserModel.is_active.is_(is_active))
     if conditions:
         stmt = stmt.where(*conditions)
         count_stmt = count_stmt.where(*conditions)

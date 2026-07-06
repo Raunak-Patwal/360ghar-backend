@@ -8,7 +8,7 @@ from app.core.exceptions import (
     InsufficientPermissionsError,
 )
 from app.mcp.admin.agent_tools.common import (
-    MCP_SECURITY_SCHEMES_MIXED,
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     AuthRequiredError,
     MCPErrorCode,
     MCPResponse,
@@ -27,8 +27,15 @@ from app.mcp.admin.agent_tools.common import (
     utc_now,
     utc_now_iso,
 )
+from app.mcp.apps_sdk import build_widget_tool_meta
 from app.models.enums import UserRole
 from app.schemas.pagination import decode_cursor, encode_cursor, offset_payload, read_offset
+
+AGENT_MAINTENANCE_LIST_META = build_widget_tool_meta(
+    widget_uri="ui://widget/maintenancewidget.html",
+    invoking="Loading maintenance requests...",
+    invoked="Maintenance requests loaded",
+)
 
 
 @admin_mcp.tool(
@@ -38,8 +45,9 @@ from app.schemas.pagination import decode_cursor, encode_cursor, offset_payload,
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
+    meta=AGENT_MAINTENANCE_LIST_META,
 )
 async def agent_maintenance_list(
     owner_id: int | None = None,
@@ -151,7 +159,7 @@ async def agent_maintenance_list(
         "readOnlyHint": False,
         "destructiveHint": False,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
 )
 async def agent_maintenance_update_status(

@@ -199,8 +199,8 @@ async def update_agent(db: AsyncSession, agent_id: int, update_data: AgentUpdate
     if not agent:
         return None
 
-    # Filter out None values
-    update_dict = {k: v for k, v in update_data.model_dump().items() if v is not None}
+    # Only include fields the caller explicitly sent (allows clearing with null)
+    update_dict = update_data.model_dump(exclude_unset=True)
 
     if not update_dict:
         # No valid updates
@@ -276,6 +276,9 @@ async def assign_agent_to_user(db: AsyncSession, user_id: int, agent_id: int | N
                 assignment_reason="already_assigned"
             )
 
+    # Track whether a specific agent was explicitly requested (before reassignment)
+    is_manual = agent_id is not None
+
     # Determine which agent to assign
     if agent_id:
         # Specific agent requested
@@ -317,7 +320,7 @@ async def assign_agent_to_user(db: AsyncSession, user_id: int, agent_id: int | N
         user_id=user_id,
         agent=agent_schema,
         assigned_at=utc_now(),
-        assignment_reason="auto_assigned" if not agent_id else "manual_assigned"
+        assignment_reason="manual_assigned" if is_manual else "auto_assigned"
     )
 
 async def get_agents_by_type(db: AsyncSession, agent_type: str) -> list[AgentSchema]:

@@ -1,7 +1,9 @@
+from __future__ import annotations
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
 from app.models.agents import Agent
 from app.models.users import User
 from app.schemas.agent import (
@@ -15,6 +17,8 @@ from app.schemas.agent import (
 )
 from app.schemas.pagination import offset_payload, read_offset
 from app.services.agent.interactions import get_daily_interactions, get_weekly_interactions
+
+logger = get_logger(__name__)
 
 
 async def get_agent_with_stats(db: AsyncSession, agent_id: int) -> AgentWithStats | None:
@@ -207,4 +211,5 @@ def _calculate_efficiency_score(agent: Agent, current_users: int) -> float:
         efficiency = (response_score * 0.3 + satisfaction_score * 0.4 + utilization_score * 0.3)
         return round(efficiency, 2)
     except Exception:
+        logger.warning("Failed to calculate efficiency score for agent %s", agent.id, exc_info=True)
         return 50.0  # Default middle score

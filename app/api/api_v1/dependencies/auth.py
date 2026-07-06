@@ -6,9 +6,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthFailureReason, _is_failure, verify_supabase_token
 from app.core.database import get_bg_session_factory, get_db
+from app.core.db_resilience import (
+    extract_db_error_code,
+    is_statement_timeout,
+    is_transient_db_error,
+)
 from app.core.logging import get_logger
 from app.models.enums import UserRole
 from app.models.users import User
+from app.services.auth_user_cache import (
+    AuthUserSnapshot,
+    cache_auth_user,
+    get_cached_auth_user,
+    snapshot_from_user,
+)
 from app.services.user import get_or_create_user_from_supabase
 
 logger = get_logger(__name__)
@@ -31,6 +42,30 @@ def _provider_unavailable_response() -> HTTPException:
         },
         headers={"Retry-After": _RETRY_AFTER_SECONDS},
     )
+
+
+def _auth_db_unavailable_response(exc: Exception) -> HTTPException:
+    """Build a 503 response for transient local auth-sync database failures."""
+    error_code = extract_db_error_code(exc) or (
+        "STATEMENT_TIMEOUT" if is_statement_timeout(exc) else "AUTH_DB_UNAVAILABLE"
+    )
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": "AUTH_DB_UNAVAILABLE",
+            "message": "Authentication data is temporarily unavailable, please retry",
+            "details": {"error_code": error_code},
+        },
+        headers={"Retry-After": _RETRY_AFTER_SECONDS},
+    )
+
+
+async def _rollback_optional_auth(db: AsyncSession) -> None:
+    """Clear a failed optional-auth transaction before public endpoint work continues."""
+    try:
+        await db.rollback()
+    except Exception as rollback_exc:  # noqa: BLE001
+        logger.warning("Optional auth rollback failed: %s", rollback_exc)
 
 
 def _parse_bearer_token(authorization: str | None) -> str:
@@ -128,7 +163,14 @@ async def get_current_user(
             )
 
         db_user = await get_or_create_user_from_supabase(db, supabase_user_data)
+        # Auth sync uses a transaction-scoped advisory lock. It is independent
+        # from endpoint business writes, so release it before endpoint logic runs.
+        await db.commit()
         request.state.user_id = getattr(db_user, "id", None)
+        # Store raw Supabase user data so endpoints that need identity
+        # metadata (e.g. GET /users/me/identities) can access it without
+        # a second round-trip.
+        request.state.supabase_user_data = supabase_user_data
         sentry_sdk.set_user({
             "id": str(getattr(db_user, "id", None)),
             "email": getattr(db_user, "email", None),
@@ -139,6 +181,17 @@ async def get_current_user(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
+        if is_transient_db_error(exc) or is_statement_timeout(exc):
+            logger.warning(
+                "Authentication DB sync temporarily unavailable: %s",
+                exc,
+                exc_info=True,
+                extra={
+                    "reason": "authentication_db_unavailable",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            raise _auth_db_unavailable_response(exc) from exc
         logger.error(
             "Authentication error: %s",
             exc,
@@ -167,6 +220,123 @@ async def get_current_active_user(
             },
         )
     return current_user
+
+
+async def get_current_cached_active_user(
+    request: Request,
+    authorization: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+) -> AuthUserSnapshot:
+    """Resolve active user through a short-lived local auth snapshot cache."""
+    token = _parse_bearer_token(authorization)
+
+    try:
+        supabase_user_data = await verify_supabase_token(token)
+        if _is_failure(supabase_user_data):
+            token_suffix = token[-8:] if len(token) > 8 else token
+            reason = supabase_user_data.get("reason")
+            if reason == AuthFailureReason.PROVIDER_UNREACHABLE.value:
+                logger.warning(
+                    "Auth provider unreachable (suffix=%s): %s",
+                    token_suffix,
+                    supabase_user_data.get("error"),
+                    extra={
+                        "reason": "auth_provider_unreachable",
+                        "token_suffix": token_suffix,
+                    },
+                )
+                raise _provider_unavailable_response()
+            logger.warning(
+                "Auth provider error (suffix=%s): %s",
+                token_suffix,
+                supabase_user_data.get("error"),
+                extra={"reason": "auth_provider_error", "token_suffix": token_suffix},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "TOKEN_INVALID",
+                    "message": "Invalid or expired token",
+                },
+            )
+        if not supabase_user_data:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "TOKEN_INVALID",
+                    "message": "Invalid or expired token",
+                },
+            )
+
+        supabase_user_id = str(supabase_user_data.get("id") or "")
+        if supabase_user_id:
+            cached_user = await get_cached_auth_user(supabase_user_id)
+            if cached_user is not None:
+                if not cached_user.is_active:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail={
+                            "code": "USER_INACTIVE",
+                            "message": "Inactive user",
+                        },
+                    )
+                request.state.user_id = cached_user.id
+                request.state.supabase_user_data = supabase_user_data
+                sentry_sdk.set_user({
+                    "id": str(cached_user.id),
+                    "email": cached_user.email,
+                    "username": cached_user.phone,
+                })
+                return cached_user
+
+        db_user = await get_or_create_user_from_supabase(db, supabase_user_data)
+        await db.commit()
+        snapshot = snapshot_from_user(db_user)
+        await cache_auth_user(snapshot)
+
+        if not snapshot.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "USER_INACTIVE",
+                    "message": "Inactive user",
+                },
+            )
+        request.state.user_id = snapshot.id
+        request.state.supabase_user_data = supabase_user_data
+        sentry_sdk.set_user({
+            "id": str(snapshot.id),
+            "email": snapshot.email,
+            "username": snapshot.phone,
+        })
+        return snapshot
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        if is_transient_db_error(exc) or is_statement_timeout(exc):
+            logger.warning(
+                "Cached authentication DB sync temporarily unavailable: %s",
+                exc,
+                exc_info=True,
+                extra={
+                    "reason": "authentication_db_unavailable",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            raise _auth_db_unavailable_response(exc) from exc
+        logger.error(
+            "Cached authentication error: %s",
+            exc,
+            exc_info=True,
+            extra={"reason": "authentication_exception", "error_type": type(exc).__name__},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "AUTHENTICATION_FAILED",
+                "message": "Authentication failed",
+            },
+        ) from exc
 
 
 async def get_current_user_sse(
@@ -252,6 +422,17 @@ async def get_current_user_sse(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
+        if is_transient_db_error(exc) or is_statement_timeout(exc):
+            logger.warning(
+                "SSE authentication DB sync temporarily unavailable: %s",
+                exc,
+                exc_info=True,
+                extra={
+                    "reason": "authentication_db_unavailable",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            raise _auth_db_unavailable_response(exc) from exc
         logger.error(
             "SSE authentication error: %s",
             exc,
@@ -314,6 +495,7 @@ async def get_current_user_optional(
             return None
 
         db_user = await get_or_create_user_from_supabase(db, supabase_user_data)
+        await db.commit()
         request.state.user_id = getattr(db_user, "id", None)
         sentry_sdk.set_user({
             "id": str(getattr(db_user, "id", None)),
@@ -323,6 +505,7 @@ async def get_current_user_optional(
         return db_user
     except Exception:
         logger.warning("Optional auth resolution failed", exc_info=True)
+        await _rollback_optional_auth(db)
         return None
 
 

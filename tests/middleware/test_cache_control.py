@@ -47,8 +47,8 @@ def _make_app() -> FastAPI:
     async def users_me():
         return {"user": "test"}
 
-    @app.get("/api/v1/flatmates/sse")
-    async def flatmates_sse():
+    @app.get("/api/v1/notifications/sse")
+    async def notifications_sse():
         async def gen():
             yield "data: test\n\n"
 

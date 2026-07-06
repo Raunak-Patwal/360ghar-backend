@@ -6,7 +6,7 @@ Active contributors: Saksham, Ravi
 
 ## Router composition
 
-All REST routers are mounted by `app/api/api_v1/api.py` onto a single `APIRouter` named `api_router`, which the app factory mounts at `/api/v1`. The file imports 38 endpoint modules and calls `include_router` for each, with explicit `prefix` and `tags`. Tags drive the OpenAPI grouping in Swagger UI at `/api/v1/docs`.
+All REST routers are mounted by `app/api/api_v1/api.py` onto a single `APIRouter` named `api_router`, which the app factory mounts at `/api/v1`. The file imports 41 endpoint modules (plus `app/api/deeplinks.py` mounted via `deeplinks_api_router`) and calls `include_router` 43 times, with explicit `prefix` and `tags`. Tags drive the OpenAPI grouping in Swagger UI at `/api/v1/docs`. The authoritative full OpenAPI spec is committed at `docs/openapi.json` (regenerate with `uv run python scripts/generate_openapi.py`); a curated flatmates-only subset lives at `docs/flatmates-openapi.yaml`.
 
 ## Route groups
 
@@ -41,6 +41,7 @@ All REST routers are mounted by `app/api/api_v1/api.py` onto a single `APIRouter
 | `/pm/reports` | pm-reports | `pm_reports.py` | PM financial and occupancy reports. |
 | `/design-studio` | design-studio | `design_studio.py` | AI image generation (auth required). |
 | `/vastu` | vastu | `vastu.py` | Vastu checker (public). |
+| `/deeplinks` | deeplinks | `app/api/deeplinks.py` | Public app deep-link generation/resolution (no auth). |
 | `/tours` | tours | `tours.py` | Virtual tour CRUD. |
 | `/scenes` | scenes | `scenes.py` | Tour scenes. |
 | `/hotspots` | hotspots | `hotspots.py` | Scene hotspots. |

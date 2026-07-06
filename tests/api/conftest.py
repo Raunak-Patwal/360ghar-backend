@@ -28,6 +28,7 @@ async def user_client(test_app, test_user):
     """Authenticated client with user role."""
     from app.api.api_v1.dependencies.auth import (
         get_current_active_user,
+        get_current_cached_active_user,
         get_current_user,
         get_current_user_optional,
     )
@@ -46,6 +47,7 @@ async def user_client(test_app, test_user):
 
     test_app.dependency_overrides[get_current_user] = override_get_current_user
     test_app.dependency_overrides[get_current_active_user] = override_get_current_active_user
+    test_app.dependency_overrides[get_current_cached_active_user] = override_get_current_active_user
     test_app.dependency_overrides[get_current_user_optional] = override_get_current_user_optional
 
     transport = ASGITransport(app=test_app)
@@ -63,6 +65,7 @@ async def agent_client(test_app, test_agent_user):
     from app.api.api_v1.dependencies.auth import (
         get_current_active_user,
         get_current_agent,
+        get_current_cached_active_user,
         get_current_user,
         get_current_user_optional,
     )
@@ -84,6 +87,7 @@ async def agent_client(test_app, test_agent_user):
 
     test_app.dependency_overrides[get_current_user] = override_get_current_user
     test_app.dependency_overrides[get_current_active_user] = override_get_current_active_user
+    test_app.dependency_overrides[get_current_cached_active_user] = override_get_current_active_user
     test_app.dependency_overrides[get_current_user_optional] = override_get_current_user_optional
     test_app.dependency_overrides[get_current_agent] = override_get_current_agent
 
@@ -102,6 +106,7 @@ async def admin_client(test_app, test_admin_user):
     from app.api.api_v1.dependencies.auth import (
         get_current_active_user,
         get_current_admin,
+        get_current_cached_active_user,
         get_current_user,
         get_current_user_optional,
     )
@@ -123,6 +128,7 @@ async def admin_client(test_app, test_admin_user):
 
     test_app.dependency_overrides[get_current_user] = override_get_current_user
     test_app.dependency_overrides[get_current_active_user] = override_get_current_active_user
+    test_app.dependency_overrides[get_current_cached_active_user] = override_get_current_active_user
     test_app.dependency_overrides[get_current_user_optional] = override_get_current_user_optional
     test_app.dependency_overrides[get_current_admin] = override_get_current_admin
 

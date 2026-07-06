@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.exceptions import PropertyNotFoundException
 from app.mcp.apps_sdk import AppsSDKToolResult, AuthRequiredError
 from app.mcp.chatgpt.discovery_tools import (
     discovery_amenities,
@@ -18,6 +19,7 @@ from app.mcp.chatgpt.discovery_tools import (
     discovery_shortlist,
     discovery_swipe,
 )
+from app.mcp.errors import MCPErrorCode
 from app.models.enums import PropertyPurpose, PropertyType
 
 # ---------------------------------------------------------------------------
@@ -160,7 +162,7 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([prop], None, 1))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             result = await discovery_search(city="Delhi", limit=10)
 
@@ -174,7 +176,7 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([], None, 0))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             await discovery_search(query="3BHK Gurugram buy under 2 crore")
 
@@ -190,7 +192,7 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([], None, 0))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             result = await discovery_search(city="Agra")
 
@@ -203,7 +205,7 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([], None, 0))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             await discovery_search(amenities="wifi,pool")
 
@@ -214,7 +216,7 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([], None, 0))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             await discovery_search(amenities=["wifi", "pool"])
 
@@ -225,7 +227,7 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([], None, 0))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             await discovery_search()
 
@@ -236,7 +238,7 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([], None, 0))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             result = await discovery_search(purpose="vacation")
 
@@ -250,7 +252,7 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([], None, 0))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             result = await discovery_search(property_type="spaceship")
 
@@ -263,7 +265,7 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([], None, 0))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             await discovery_search(city="bangalore")
 
@@ -274,13 +276,13 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([], None, 0))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             await discovery_search(limit=0)
         assert mock_search.call_args.kwargs["limit"] == 1
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             await discovery_search(limit=100)
         assert mock_search.call_args.kwargs["limit"] == 50
@@ -291,7 +293,7 @@ class TestDiscoverySearch:
         mock_search = AsyncMock(return_value=([prop], {"offset": 1}, 5))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             result = await discovery_search(city="Delhi")
 
@@ -303,6 +305,27 @@ class TestDiscoverySearch:
         assert sc["has_more"] is True
         assert sc["next_cursor"] is not None
         assert sc["limit"] == 20
+
+    async def test_guest_search_generic_exception_redacts_raw_message(self):
+        db = AsyncMock()
+        mock_search = AsyncMock(
+            side_effect=RuntimeError("raw database host=db.internal")
+        )
+
+        with _patch_env(db, user=None), patch(
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
+        ):
+            result = await discovery_search(city="Delhi")
+
+        assert result.structured_content["error"] is True
+        assert result.structured_content["code"] == MCPErrorCode.INTERNAL_ERROR.value
+        assert (
+            result.structured_content["message"]
+            == "Sorry, there was an error searching properties. Please try again."
+        )
+        assert result.is_error is True
+        assert "db.internal" not in str(result.structured_content)
+        assert "db.internal" not in _content_text(result)
 
 
 # ===========================================================================
@@ -331,7 +354,7 @@ class TestDiscoveryPropertyGet:
 
         with _patch_env(db, user=None), patch(
             "app.services.property.get_property",
-            new=AsyncMock(side_effect=Exception("Property 999 not found")),
+            new=AsyncMock(side_effect=PropertyNotFoundException(property_id=999)),
         ):
             result = await discovery_property_get(property_id=999)
 
@@ -382,7 +405,7 @@ class TestDiscoveryFeed:
         mock_search = AsyncMock(return_value=(props, None, None))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             result = await discovery_feed(limit=2)
 
@@ -395,7 +418,7 @@ class TestDiscoveryFeed:
         mock_search = AsyncMock(return_value=([], None, None))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             await discovery_feed(purpose="rent")
 
@@ -406,7 +429,7 @@ class TestDiscoveryFeed:
         mock_search = AsyncMock(return_value=([], None, None))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             result = await discovery_feed(purpose="vacation")
 
@@ -419,13 +442,13 @@ class TestDiscoveryFeed:
         mock_search = AsyncMock(return_value=([], None, None))
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             await discovery_feed(limit=0)
         assert mock_search.call_args.kwargs["limit"] == 1
 
         with _patch_env(db, user=None), patch(
-            "app.services.property.get_unified_properties_optimized", new=mock_search
+            "app.mcp.chatgpt.discovery_tools.run_property_search", new=mock_search
         ):
             await discovery_feed(limit=100)
         assert mock_search.call_args.kwargs["limit"] == 20

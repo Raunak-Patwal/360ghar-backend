@@ -58,7 +58,7 @@ app/
 | `create_app` | `app/factory.py` | App factory that builds the FastAPI instance, OpenAPI tags, lifespan, middleware, MCP apps |
 | `register_routes` | `app/infrastructure/routing.py` | Mounts `api_router` at `API_V1_STR`, plus WS, share, OAuth well-known, and the two MCP apps |
 | `OPENAPI_TAGS` | `app/factory.py` | Tag descriptions used by Swagger/Redoc grouping |
-| Auth dependencies | `app/api/api_v1/dependencies/auth.py` | `get_current_user`, `get_current_user_optional`, `get_current_active_user`, `get_current_agent`, `get_current_admin`, `get_current_user_sse` |
+| Auth dependencies | `app/api/api_v1/dependencies/auth.py` | `get_current_user`, `get_current_user_optional`, `get_current_active_user`, `get_current_cached_active_user`, `get_current_agent`, `get_current_admin` |
 
 ## How it works
 
@@ -82,7 +82,7 @@ The factory mounts `api_router` at `settings.API_V1_STR` (default `/api/v1`), th
 ## Integration points
 
 - **Auth dependencies** call `app/core/auth.verify_supabase_token` and `app/services/user.get_or_create_user_from_supabase` to resolve a bearer token into a `User` row. See [core-cross-cutting](core-cross-cutting.md).
-- **SSE auth** (`get_current_user_sse`) uses the background DB pool (`get_bg_session_factory`) so long-lived streams do not exhaust the main pool.
+- **Cached flatmates auth** (`get_current_cached_active_user`) verifies the Supabase JWT locally/remotely, then uses a short-lived `supabase_sub -> local user` snapshot cache to reduce repeated DB syncs on flatmates burst paths.
 - **MCP servers** share the OAuth infrastructure at `/mcp/oauth/*` and well-known endpoints. See [features/mcp-servers](../features/mcp-servers.md).
 - **Services** are imported lazily inside endpoints to keep the import graph lean.
 
@@ -90,7 +90,7 @@ The factory mounts `api_router` at `settings.API_V1_STR` (default `/api/v1`), th
 
 - Add a new endpoint module under `app/api/api_v1/endpoints/`, then import and include it in `app/api/api_v1/api.py` with a prefix and tag. Add the tag description to `OPENAPI_TAGS` in `app/factory.py`.
 - Tighten rate limits on a sensitive route with `EndpointRateLimiter` (see `app/middleware/rate_limit.py`); the global limit is 500 req/min per IP.
-- For streaming endpoints, use `get_current_user_sse` and release the main DB session before streaming.
+- For high-burst authenticated flatmates read paths, prefer `get_current_cached_active_user` when only local user id/status/role is needed.
 
 ## Key source files
 

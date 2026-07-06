@@ -110,9 +110,7 @@ def mock_cloudinary_storage():
 
     Returns a mock client that simulates successful file uploads.
     """
-    with patch("app.services.cloudinary.service.cloudinary_service") as mock:
-        mock_client = MagicMock()
-
+    with patch("app.services.cloudinary.service.cloudinary_service") as mock_client:
         # Mock upload method
         mock_client.upload_file.return_value = {
             "public_id": "360ghar/uploads/test_file.jpg",
@@ -145,7 +143,7 @@ def mock_gemini_api():
 
     Returns a mock that simulates successful Vastu analysis results.
     """
-    with patch("app.services.ai.vastu_analyzer.get_ai_provider") as mock:
+    with patch("app.services.ai.vastu.analyzer.get_ai_provider") as mock:
         mock_provider = MagicMock()
         mock_provider.supports_vision = True
         mock_provider.complete_json = AsyncMock(

@@ -8,7 +8,7 @@ This document defines the current backend shape. It is normative: new code shoul
 - Core marketplace and booking flows currently live in the REST endpoint modules under `app/api/api_v1/endpoints/` and shared business logic under `app/services/`.
 - Property Management flows are exposed through the `app/api/api_v1/endpoints/pm_*.py` endpoints and the matching `app/services/pm_*.py` modules.
 - Tours and media flows are exposed through the tour/storage endpoint and service modules.
-- MCP surfaces live in `app/mcp/user/`, `app/mcp/admin/`, and multi-client tool modules such as [`app/mcp/chatgpt/visit_tools.py`](../app/mcp/chatgpt/visit_tools.py). The MCP servers use `AppsSDKFastMCP` with Streamable HTTP transport and support MCP-compatible clients.
+- MCP surfaces live in `app/mcp/user/`, `app/mcp/admin/`, and multi-client tool modules such as [`app/mcp/chatgpt/visit_tools.py`](../app/mcp/chatgpt/visit_tools.py). The MCP servers use `AppsSDKFastMCP` with Streamable HTTP transport and support MCP-compatible clients. Widget resources are registered under both stable `ui://widget/*.html` URIs used in tool metadata and content-hashed `?v=<hash>` aliases used for cache-busted result hints. Mounted MCP HTTP apps must expose FastMCP/Starlette lifespan contexts; `app/infrastructure/lifespan.py` enters those contexts during parent app startup.
 - AI-agent orchestration lives in `app/services/ai_agent/`, especially [`app/services/ai_agent/tool_bridge.py`](../app/services/ai_agent/tool_bridge.py) and `agent_service.py`.
 - Vector search and sync live in `app/vector/` and the vector sync scheduler.
 - Data Hub aggregation flows live in `app/services/data_hub/`, exposed via `app/api/api_v1/endpoints/data_hub/` and scheduled via `app/services/data_hub_scheduler.py`.

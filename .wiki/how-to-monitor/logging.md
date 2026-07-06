@@ -26,6 +26,8 @@ The logging subsystem selects a formatter based on environment:
 | CI / non-TTY dev | `standard` | `YYYY-MM-DDTHH:MM:SS%z \| LEVEL \| logger \| message` |
 | Production | `StructuredFormatter` | One JSON object per line |
 
+In production, `INFO` and `WARNING` records are written to stdout, while `ERROR` and `CRITICAL` records are written to stderr. This lets platform log pipelines filter application errors by stream/severity while preserving structured JSON on both streams.
+
 The `ColorFormatter` maps internal logger names to cleaner display names (`uvicorn.error` -> `uvicorn`) and color-codes levels: DEBUG cyan, INFO green, WARNING yellow, ERROR red, CRITICAL white-on-red.
 
 ## Request ID contextvar

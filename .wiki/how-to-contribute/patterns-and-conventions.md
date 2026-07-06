@@ -33,7 +33,7 @@ One `AsyncIOScheduler` from `app/infrastructure/scheduler.py` is registered in `
 
 ## SSE event bus
 
-`SSEEventBus` in `app/core/sse.py` provides per-user pub/sub. Services call `await sse_bus.emit(user_id, event_dict)` after a DB commit, never before. The endpoint `GET /api/v1/flatmates/sse` consumes from the queue with a 30-second keepalive; the bus drops the oldest event on a full queue. Event types are listed in [the glossary](../overview/glossary.md); adding a new type requires updating `CLAUDE.md` and `AGENTS.md`. Streaming endpoints release the main-pool session before streaming and use the background pool (`get_bg_db`) for tool calls.
+Flatmates app-wide realtime uses Supabase private Broadcast. Services call `queue_flatmates_realtime_event` after domain writes; the publisher sends only after DB commit. Event types are listed in [the glossary](../overview/glossary.md); adding a new type requires updating `CLAUDE.md` and `AGENTS.md`. Private channel authorization is enforced by RLS on `realtime.messages`.
 
 ## 3-tuple cursor pagination
 

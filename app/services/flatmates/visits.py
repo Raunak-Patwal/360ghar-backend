@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import BadRequestException
 from app.models.enums import VisitContext
 from app.models.properties import Visit
+from app.services.flatmates.realtime import EVENT_VISIT_UPDATED, queue_flatmates_realtime_event
 
 
 async def update_visit_status(
@@ -37,19 +38,14 @@ async def update_visit_status(
 
     effective_status = new_status or visit.status
 
-    # --- SSE events to both parties ---
-    try:
-        from app.core.sse import SSE_VISIT_UPDATED, sse_bus
-
-        for uid in (visit.user_id, visit.counterparty_user_id):
-            if uid is None:
-                continue
-            await sse_bus.emit(
-                uid,
-                {"type": SSE_VISIT_UPDATED, "visit_id": visit_id, "status": effective_status},
-            )
-    except Exception:  # noqa: BLE001
-        pass  # best-effort
+    for uid in (visit.user_id, visit.counterparty_user_id):
+        queue_flatmates_realtime_event(
+            db,
+            user_id=uid,
+            event_type=EVENT_VISIT_UPDATED,
+            payload={"visit_id": visit_id, "status": effective_status},
+        )
+    await db.commit()
 
     # Note: Push notifications for visit status changes are handled by
     # app.services.visit.update_visit (canonical endpoint). This stub

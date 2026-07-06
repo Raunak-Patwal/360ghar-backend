@@ -14,6 +14,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.exceptions import ServiceUnavailableException
 from app.models.enums import (
     ListingGenderPreference,
     ListingSharingType,
@@ -148,7 +149,7 @@ class TestListProperties:
     async def test_list_properties_public(self, client: AsyncClient):
         """Test property listing is publicly accessible."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_list:
             mock_list.return_value = ([], None, 0)
@@ -165,7 +166,7 @@ class TestListProperties:
     async def test_list_properties_with_filters(self, client: AsyncClient):
         """Test property listing with query filters."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_list:
             mock_list.return_value = ([], None, 0)
@@ -187,7 +188,7 @@ class TestListProperties:
     async def test_list_properties_with_location(self, client: AsyncClient):
         """Test property listing with location-based search."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_list:
             mock_list.return_value = ([], None, 0)
@@ -207,7 +208,7 @@ class TestListProperties:
     async def test_list_properties_with_ids_filter(self, client: AsyncClient):
         """Test property listing with repeated ids query params."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_list:
             mock_list.return_value = ([], None, 0)
@@ -228,7 +229,7 @@ class TestListProperties:
     ):
         """Test property listing parses specialized listing filters."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_list:
             mock_list.return_value = ([], None, 0)
@@ -249,14 +250,75 @@ class TestListProperties:
             assert filters.sharing_type == ListingSharingType.shared_room
 
     @pytest.mark.asyncio
+    async def test_list_properties_passes_cursor_limit_and_total_flag(
+        self,
+        client: AsyncClient,
+    ):
+        """Test pagination controls are forwarded to search orchestration."""
+        with patch(
+            "app.api.api_v1.endpoints.properties.run_property_search",
+            new_callable=AsyncMock,
+        ) as mock_list:
+            mock_list.return_value = ([], {"v": 1, "o": 5}, 42)
+
+            response = await client.get(
+                "/api/v1/properties",
+                params={"limit": 5, "include_total": "true"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["limit"] == 5
+            assert data["has_more"] is True
+            assert data["next_cursor"]
+            assert data["total"] == 42
+            assert mock_list.await_args.args[4] == 5
+            assert mock_list.await_args.kwargs["with_total"] is True
+
+    @pytest.mark.asyncio
+    async def test_list_properties_semantic_search_requires_query(self, client: AsyncClient):
+        """semantic_search=true without q should return a 400 guard response."""
+        response = await client.get(
+            "/api/v1/properties",
+            params={"semantic_search": "true"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["error"]["message"] == "semantic_search requires a search query (q)"
+
+    @pytest.mark.asyncio
+    async def test_semantic_search_uses_shared_orchestration(self, client: AsyncClient):
+        """Dedicated semantic endpoint should force semantic relevance search."""
+        with patch(
+            "app.api.api_v1.endpoints.properties.run_property_search",
+            new_callable=AsyncMock,
+        ) as mock_search:
+            mock_search.return_value = ([], None, None)
+
+            response = await client.get(
+                "/api/v1/properties/semantic-search",
+                params={"q": "sunny balcony"},
+            )
+
+            assert response.status_code == 200
+            filters = mock_search.await_args.args[1]
+            assert filters.search_query == "sunny balcony"
+            assert mock_search.await_args.kwargs["semantic_required"] is True
+            assert mock_search.await_args.kwargs["force_semantic_relevance"] is True
+
+    @pytest.mark.asyncio
     async def test_list_properties_returns_503_for_transient_db_error(self, client: AsyncClient):
         """Transient DB failures should map to 503."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_list:
-            mock_list.side_effect = SQLAlchemyError(
-                "(ECHECKOUTTIMEOUT) unable to check out connection from the pool"
+            mock_list.side_effect = ServiceUnavailableException(
+                detail="Property search is temporarily unavailable. Please retry shortly.",
+                details={
+                    "error_code": "ECHECKOUTTIMEOUT",
+                    "endpoint": "get_properties_list",
+                },
             )
 
             response = await client.get("/api/v1/properties/")
@@ -410,7 +472,7 @@ class TestPropertyFilters:
     async def test_valid_property_type_filter(self, client: AsyncClient):
         """Test valid property type filter."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_list:
             mock_list.return_value = ([], None, 0)
@@ -426,7 +488,7 @@ class TestPropertyFilters:
     async def test_valid_expanded_property_type_filter(self, client: AsyncClient):
         """Test expanded property type filter values."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_list:
             mock_list.return_value = ([], None, 0)
@@ -442,7 +504,7 @@ class TestPropertyFilters:
     async def test_valid_purpose_filter(self, client: AsyncClient):
         """Test valid purpose filter."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_list:
             mock_list.return_value = ([], None, 0)

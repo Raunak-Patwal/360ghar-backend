@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any, ClassVar
 
 from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +19,33 @@ _ENV_FILE = _ENV_FILE_MAP.get(_CURRENT_ENV, ".env.dev")
 
 
 class Settings(BaseSettings):
+    SECRET_FIELD_NAMES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "CLOUDINARY_API_KEY",
+            "CLOUDINARY_API_SECRET",
+            "DATABASE_URL",
+            "EMAIL_SMTP_PASSWORD",
+            "GLM_API_KEY",
+            "GOOGLE_API_KEY",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "GROQ_API_KEY",
+            "PERPLEXITY_API_KEY",
+            "PEXELS_API_KEY",
+            "PIXABAY_API_KEY",
+            "RAZORPAY_SECRET",
+            "RAZORPAY_WEBHOOK_SECRET",
+            "REDIS_URL",
+            "SENTRY_DSN",
+            "SERPAPI_API_KEY",
+            "SMS_PROVIDER_API_KEY",
+            "SUPABASE_SECRET_KEY",
+            "SUPABASE_WEBHOOK_SECRET",
+            "SECRET_KEY",
+            "VALID_API_KEYS",
+        }
+    )
+    REDACTED_SECRET_VALUE: ClassVar[str] = "********"
+
     # ── Core ────────────────────────────────────────────────────────────────────
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str = "change-me-in-production"
@@ -27,7 +55,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
     SENTRY_DSN: str | None = None
-    SENTRY_TRACES_SAMPLE_RATE: float | None = None  # Free tier default: 0.5 dev, 0.05 prod
+    SENTRY_ENABLE_TRACING: bool = False
+    SENTRY_ENABLE_SQLALCHEMY_TRACING: bool = False
+    SENTRY_TRACES_SAMPLE_RATE: float | None = None
+    ENABLE_SENTRY_TEST_ENDPOINT: bool = False
     VALID_API_KEYS: str = ""  # API keys for middleware (comma-separated)
 
     # ── Serverless ──────────────────────────────────────────────────────────────
@@ -70,6 +101,7 @@ class Settings(BaseSettings):
         "https://www.360ghar.com",
         "https://flatmates.360ghar.com",
         "https://admin.360ghar.com",
+        "https://tours.360ghar.com",
         # ChatGPT App domains (for widget iframes and MCP calls)
         "https://chatgpt.com",
         "https://chat.openai.com",
@@ -112,13 +144,13 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
 
     # Main pool (HTTP/MCP request traffic)
-    DB_POOL_SIZE: int = 10
-    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_SIZE: int = 4
+    DB_MAX_OVERFLOW: int = 0
     DB_POOL_TIMEOUT: int = 15
     DB_POOL_RECYCLE: int = 180
     # Background pool (schedulers, scrapers, long-running tasks)
-    DB_BG_POOL_SIZE: int = 3
-    DB_BG_MAX_OVERFLOW: int = 5
+    DB_BG_POOL_SIZE: int = 1
+    DB_BG_MAX_OVERFLOW: int = 0
     # Per-request statement timeout (ms) for interactive read endpoints such as
     # property search. Bounds a stalled query so it fails fast and frees its
     # pooler connection instead of holding it until the 2-minute server default.
@@ -139,6 +171,14 @@ class Settings(BaseSettings):
     def SUPABASE_CLIENT_KEY(self) -> str:
         """Return the key used for non-privileged Supabase auth flows."""
         return self.SUPABASE_PUBLISHABLE_KEY.strip()
+
+    @property
+    def sentry_test_endpoint_enabled(self) -> bool:
+        """Return True when the intentional Sentry crash route should be mounted."""
+        return (
+            self.ENABLE_SENTRY_TEST_ENDPOINT
+            and self.ENVIRONMENT.lower() != "production"
+        )
 
     # ── Google OAuth client IDs (surfaced to clients via /api/v1/auth/config) ───
     GOOGLE_WEB_CLIENT_ID: str | None = None
@@ -164,33 +204,88 @@ class Settings(BaseSettings):
     CACHE_TTL_BLOG_CATEGORIES: int = 86400  # 24 hours
     CACHE_TTL_BLOG_TAGS: int = 86400  # 24 hours
     CACHE_TTL_FAQS: int = 86400  # 24 hours
-    CACHE_TTL_VERSIONS: int = 86400  # 24 hours
+    CACHE_TTL_VERSIONS: int = 3600  # 1 hour
+    AUTH_USER_CACHE_TTL_SECONDS: int = 45
+
+    # ── Flatmates Realtime ────────────────────────────────────────────────────
+    FLATMATES_REALTIME_ENABLED: bool = True
+    SUPABASE_REALTIME_BROADCAST_TIMEOUT_SECONDS: float = 2.0
 
     # ── AI Providers ─────────────────────────────────────────────────────────────
     # Gemini
     GOOGLE_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-3.1-flash-lite-preview"
-    GEMINI_EMBED_MODEL: str = "text-embedding-004"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_EMBED_MODEL: str = "gemini-embedding-2"
     # GLM (ZhipuAI) — used for Vastu and other AI features
     GLM_API_KEY: str | None = None
     GLM_API_URL: str = "https://api.z.ai/api/coding/paas/v4/chat/completions"
     GLM_MODEL: str = "glm-5v-turbo"
     # Vastu analyzer
-    VASTU_DEFAULT_PROVIDER: str = "glm"  # "gemini" or "glm"
+    VASTU_DEFAULT_PROVIDER: str = "gemini"  # "gemini" or "glm"
     VASTU_FALLBACK_PROVIDER: str = ""  # Auto-derived if empty (swaps to the other provider)
-    # Pydantic AI Agent — fallback chain: GLM -> Gemini -> Groq
-    AI_AGENT_MODEL: str = "glm-4.7-flash"  # ZhipuAI GLM-4.7-Flash (primary)
-    AI_AGENT_API_BASE: str = "https://api.z.ai/api/coding/paas/v4"
-    AI_AGENT_API_KEY: str | None = None  # Defaults to GLM_API_KEY
-    AI_AGENT_FALLBACK_MODEL: str | None = None
-    AI_AGENT_FALLBACK_API_BASE: str = "https://generativelanguage.googleapis.com/v1beta/openai"
-    AI_AGENT_FALLBACK_API_KEY: str | None = None  # Defaults to GOOGLE_API_KEY
-    AI_AGENT_FALLBACK2_MODEL: str = "qwen/qwen3-32b"
-    AI_AGENT_FALLBACK2_API_BASE: str = "https://api.groq.com/openai/v1"
-    AI_AGENT_FALLBACK2_API_KEY: str | None = None  # Groq API key
-    AI_AGENT_MAX_TOKENS: int = 64096
-    AI_AGENT_TEMPERATURE: float = 0.7
-    AI_AGENT_MAX_HISTORY: int = 50
+    # Pydantic AI Agent — fallback chain: Gemini -> GLM -> Groq
+    # API keys come from the shared provider credentials (GOOGLE_API_KEY,
+    # GLM_API_KEY, GROQ_API_KEY) via the AI_AGENT_PROVIDERS property.
+    # Only set model/base vars here if the agent needs different values.
+    # NOTE: ``AI_AGENT_API_BASE`` is only used by the OpenAI-compatible
+    # fallback providers (GLM, Groq). The Gemini primary uses Pydantic AI's
+    # native ``GoogleModel``/``GoogleProvider``, which ignores ``api_base``
+    # and targets Google's own endpoint.
+    AI_AGENT_MODEL: str = "gemini-3.5-flash"
+    AI_AGENT_API_BASE: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    AI_AGENT_FALLBACK_MODEL: str = "glm-4.7-flash"
+    AI_AGENT_FALLBACK_API_BASE: str = "https://api.z.ai/api/coding/paas/v4"
+    AI_AGENT_FALLBACK2_MODEL: str | None = None  # Defaults to GROQ_MODEL when unset
+
+    @property
+    def AI_AGENT_PROVIDERS(self) -> list[dict[str, str]]:
+        """Ordered fallback chain for the Pydantic AI Agent.
+
+        API keys come from the shared provider credentials (GOOGLE_API_KEY,
+        GLM_API_KEY, GROQ_API_KEY) rather than separate AI_AGENT_*_API_KEY
+        env vars. Each entry has ``label``, ``model``, ``api_base``,
+        and ``api_key``.
+        """
+        providers: list[dict[str, str]] = []
+
+        # Primary: Gemini via Pydantic AI's native Google provider.
+        # ``backend: "gemini"`` makes the agent use ``GoogleModel`` (not the
+        # OpenAI-compatible shim) so multi-turn tool calls work — thinking
+        # Gemini models return a thought_signature on function calls that the
+        # OpenAI shim drops (HTTP 400).
+        if self.GOOGLE_API_KEY:
+            providers.append({
+                "label": "gemini",
+                "backend": "gemini",
+                "model": self.AI_AGENT_MODEL,
+                "api_base": self.AI_AGENT_API_BASE,
+                "api_key": self.GOOGLE_API_KEY,
+            })
+
+        # Fallback 1: GLM via OpenAI-compatible endpoint
+        if self.AI_AGENT_FALLBACK_MODEL and self.GLM_API_KEY:
+            providers.append({
+                "label": "glm",
+                "backend": "openai",
+                "model": self.AI_AGENT_FALLBACK_MODEL,
+                "api_base": self.AI_AGENT_FALLBACK_API_BASE,
+                "api_key": self.GLM_API_KEY,
+            })
+
+        # Fallback 2: Groq (model falls back to GROQ_MODEL when
+        # AI_AGENT_FALLBACK2_MODEL is not set)
+        fb2_model = self.AI_AGENT_FALLBACK2_MODEL or self.GROQ_MODEL
+        if fb2_model and self.GROQ_API_KEY:
+            providers.append({
+                "label": "groq",
+                "backend": "openai",
+                "model": fb2_model,
+                "api_base": self.GROQ_API_BASE,
+                "api_key": self.GROQ_API_KEY,
+            })
+
+        return providers
+
     # Groq
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "qwen/qwen3-32b"
@@ -252,6 +347,17 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: str = ""
     MAX_UPLOAD_SIZE_MB: int = 50
 
+    # ── Reverse-proxy / IP extraction ──────────────────────────────────────────
+    # Number of trusted reverse-proxy hops in front of the app. X-Forwarded-For
+    # is a comma-separated chain appended to by each proxy. To get the real
+    # client IP we take the entry that is ``TRUSTED_PROXY_HOPS`` from the right
+    # (0 = peer address is the client, 1 = one proxy in front, etc.). Default 1
+    # works for Railway's single-layer proxy; bump if you chain CDN + app.
+    # Setting this >0 is REQUIRED for rate limiters to be effective — without
+    # it a client can spoof a different X-Forwarded-For on every request and
+    # bypass the per-IP limit.
+    TRUSTED_PROXY_HOPS: int = 1
+
     # ── Tax & Service Rates ────────────────────────────────────────────────────
     GST_RATE: float = 0.18  # 18% GST for booking tax calculation
     SERVICE_CHARGE_RATE: float = 0.05  # 5% service charge for bookings
@@ -275,6 +381,46 @@ class Settings(BaseSettings):
     STAMP_DUTY_RATE_FEMALE: float = 5.0
     STAMP_DUTY_RATE_JOINT: float = 6.0
 
+    # ── Deep Links / App Links / Universal Links ────────────────────────────────
+    # Centralised, backend-driven deep linking for all 360Ghar apps. Replaces the
+    # separate static-hosted repos (ghar_sale_links / the360ghar_links).
+    #
+    # The canonical public domain that the mobile apps declare in their
+    # AndroidManifest intent-filters and iOS associated-domains. The backend must
+    # be reachable at this host (directly or via reverse-proxy) for Android App
+    # Link / iOS Universal Link verification to succeed.
+    DEEPLINK_DOMAIN: str = "the360ghar.com"
+    # Apple Developer Team ID used to build the AASA appID values (TEAMID.bundle_id).
+    # MUST be overridden in production with the real 10-character Team ID.
+    DEEPLINK_APPLE_TEAM_ID: str = "TEAMID"
+    # Android release signing SHA-256 cert fingerprints per app (comma-separated,
+    # colon-delimited hex). These are the canonical Play Console App-signing
+    # fingerprints supplied by the product owner. SHA-256 cert fingerprints are
+    # public (they appear in the served assetlinks.json), so they live here.
+    DEEPLINK_GHAR_ANDROID_SHA256: str = (
+        "E2:9C:60:26:A3:79:20:19:25:5F:93:BE:D1:35:CF:5F:3A:89:52:DD:44:EA:F9:41:08:87:7C:08:74:B0:64:E2"
+    )
+    DEEPLINK_ESTATE_ANDROID_SHA256: str = (
+        "22:D1:C2:25:DA:5E:3A:A9:98:C3:22:A7:C9:1D:F5:D8:1D:DD:FB:E3:31:3A:A5:C1:7B:40:D8:E0:79:07:85:3F"
+    )
+    DEEPLINK_FLATMATES_ANDROID_SHA256: str = (
+        "5F:D6:8C:1A:EB:C0:9C:85:B3:69:3C:D1:E4:C3:59:0B:E4:F8:9B:57:2C:3F:09:26:2D:2D:C7:31:F9:B0:F3:65"
+    )
+    # Legacy FlatMates package (com.the360ghar.flatmates) signing fingerprint(s).
+    # Left empty by default: the legacy entry is emitted with an empty
+    # fingerprint list until the old app-signing SHA-256 is supplied, so it can
+    # never verify against the wrong key. Set this to re-enable App Links for
+    # users still on the old build.
+    DEEPLINK_FLATMATES_LEGACY_ANDROID_SHA256: str = ""
+    DEEPLINK_STAYS_ANDROID_SHA256: str = (
+        "EE:6D:96:51:3A:2C:53:0D:33:66:6B:26:02:C4:1B:20:F3:5B:5D:65:94:CE:46:EF:B9:16:53:B3:5A:13:96:0D"
+    )
+    # When True, the lifespan startup hook raises if DEEPLINK_APPLE_TEAM_ID is
+    # the placeholder "TEAMID" (or otherwise malformed). Defaults False so
+    # local dev and CI can boot with the placeholder; production must set
+    # this to True via env (the deploy templates set it as part of prod).
+    DEEPLINK_FAIL_ON_PLACEHOLDER: bool = False
+
     # ── Vector Embeddings & Sync ────────────────────────────────────────────────
     VECTOR_SYNC_ENABLED: bool = True
     VECTOR_SYNC_CRON: str | None = "0 9 * * *"  # once daily at 9:00 AM
@@ -287,6 +433,47 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore",
     )
+
+    def __repr_args__(self):
+        for field_name, value in super().__repr_args__():
+            if self._should_redact_field(field_name):
+                yield field_name, self._redact_secret_value(value)
+            else:
+                yield field_name, value
+
+    def model_dump(self, *args: Any, redact_secrets: bool = True, **kwargs: Any) -> dict[str, Any]:
+        data = super().model_dump(*args, **kwargs)
+        if not redact_secrets:
+            return data
+        return self._redact_mapping(data)
+
+    def model_dump_redacted(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        kwargs.pop("redact_secrets", None)
+        return self.model_dump(*args, redact_secrets=True, **kwargs)
+
+    def safe_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        return self.model_dump_redacted(*args, **kwargs)
+
+    @classmethod
+    def _redact_mapping(cls, data: dict[str, Any]) -> dict[str, Any]:
+        return {
+            field_name: (
+                cls._redact_secret_value(value)
+                if cls._should_redact_field(field_name)
+                else value
+            )
+            for field_name, value in data.items()
+        }
+
+    @classmethod
+    def _should_redact_field(cls, field_name: str) -> bool:
+        return field_name in cls.SECRET_FIELD_NAMES
+
+    @classmethod
+    def _redact_secret_value(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return value
+        return cls.REDACTED_SECRET_VALUE
 
 
 settings = Settings()  # type: ignore[call-arg]

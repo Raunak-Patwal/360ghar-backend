@@ -3,8 +3,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.api_v1.dependencies.auth import get_current_active_user
+from app.api.api_v1.dependencies.auth import (
+    get_current_active_user,
+    get_current_cached_active_user,
+)
 from app.core.database import get_db
+from app.core.db_resilience import raise_read_service_unavailable
 from app.models.enums import UserRole
 from app.models.users import User
 from app.schemas.booking import (
@@ -18,6 +22,7 @@ from app.schemas.booking import (
 )
 from app.schemas.common import MessageResponse
 from app.schemas.pagination import CursorPage, CursorParams, build_cursor_page
+from app.services.auth_user_cache import AuthUserSnapshot
 from app.services.booking import (
     add_review,
     calculate_pricing,
@@ -75,50 +80,77 @@ async def create_new_booking(
 @router.get("", response_model=CursorPage[Booking], summary="List my bookings")
 async def get_my_bookings(
     page: CursorParams = Depends(),
-    current_user: User = Depends(get_current_active_user),
+    current_user: AuthUserSnapshot = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List my bookings."""
-    rows, next_payload, total = await get_user_bookings(
-        db, current_user.id,
-        cursor_payload=page.decoded(), limit=page.limit, with_total=page.include_total,
-    )
-    return build_cursor_page(
-        [Booking.model_validate(r, from_attributes=True) for r in rows],
-        limit=page.limit, next_payload=next_payload, total=total,
-    )
+    try:
+        rows, next_payload, total = await get_user_bookings(
+            db, current_user.id,
+            cursor_payload=page.decoded(), limit=page.limit, with_total=page.include_total,
+        )
+        return build_cursor_page(
+            [Booking.model_validate(r, from_attributes=True) for r in rows],
+            limit=page.limit, next_payload=next_payload, total=total,
+        )
+    except Exception as exc:
+        raise_read_service_unavailable(
+            exc,
+            endpoint="bookings_list",
+            detail="Bookings are temporarily unavailable. Please retry shortly.",
+            extra={"user": current_user.id},
+        )
+        raise
 
 @router.get("/upcoming", response_model=CursorPage[Booking], summary="List upcoming bookings")
 async def get_upcoming_bookings(
     page: CursorParams = Depends(),
-    current_user: User = Depends(get_current_active_user),
+    current_user: AuthUserSnapshot = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List upcoming bookings."""
-    rows, next_payload, total = await get_user_upcoming_bookings(
-        db, current_user.id,
-        cursor_payload=page.decoded(), limit=page.limit, with_total=page.include_total,
-    )
-    return build_cursor_page(
-        [Booking.model_validate(r, from_attributes=True) for r in rows],
-        limit=page.limit, next_payload=next_payload, total=total,
-    )
+    try:
+        rows, next_payload, total = await get_user_upcoming_bookings(
+            db, current_user.id,
+            cursor_payload=page.decoded(), limit=page.limit, with_total=page.include_total,
+        )
+        return build_cursor_page(
+            [Booking.model_validate(r, from_attributes=True) for r in rows],
+            limit=page.limit, next_payload=next_payload, total=total,
+        )
+    except Exception as exc:
+        raise_read_service_unavailable(
+            exc,
+            endpoint="bookings_upcoming",
+            detail="Upcoming bookings are temporarily unavailable. Please retry shortly.",
+            extra={"user": current_user.id},
+        )
+        raise
 
 @router.get("/past", response_model=CursorPage[Booking], summary="List past bookings")
 async def get_past_bookings(
     page: CursorParams = Depends(),
-    current_user: User = Depends(get_current_active_user),
+    current_user: AuthUserSnapshot = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List past bookings."""
-    rows, next_payload, total = await get_user_past_bookings(
-        db, current_user.id,
-        cursor_payload=page.decoded(), limit=page.limit, with_total=page.include_total,
-    )
-    return build_cursor_page(
-        [Booking.model_validate(r, from_attributes=True) for r in rows],
-        limit=page.limit, next_payload=next_payload, total=total,
-    )
+    try:
+        rows, next_payload, total = await get_user_past_bookings(
+            db, current_user.id,
+            cursor_payload=page.decoded(), limit=page.limit, with_total=page.include_total,
+        )
+        return build_cursor_page(
+            [Booking.model_validate(r, from_attributes=True) for r in rows],
+            limit=page.limit, next_payload=next_payload, total=total,
+        )
+    except Exception as exc:
+        raise_read_service_unavailable(
+            exc,
+            endpoint="bookings_past",
+            detail="Past bookings are temporarily unavailable. Please retry shortly.",
+            extra={"user": current_user.id},
+        )
+        raise
 
 @router.post("/check-availability", summary="Check booking availability")
 async def check_booking_availability(
@@ -155,7 +187,7 @@ async def list_all_bookings(
     agent_id: int | None = Query(None, description="Admin only: filter by agent id"),
     property_id: int | None = Query(None),
     user_id: int | None = Query(None),
-    current_user: User = Depends(get_current_active_user),
+    current_user: AuthUserSnapshot = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Global bookings listing. Admins see all; agents see their managed users/properties."""
@@ -169,25 +201,34 @@ async def list_all_bookings(
     else:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    rows, next_payload, total = await get_all_bookings(
-        db,
-        cursor_payload=page.decoded(),
-        limit=page.limit,
-        with_total=page.include_total,
-        status=status,
-        filter_agent_id=effective_agent_id,
-        property_id=property_id,
-        user_id=user_id,
-    )
-    return build_cursor_page(
-        [Booking.model_validate(r, from_attributes=True) for r in rows],
-        limit=page.limit, next_payload=next_payload, total=total,
-    )
+    try:
+        rows, next_payload, total = await get_all_bookings(
+            db,
+            cursor_payload=page.decoded(),
+            limit=page.limit,
+            with_total=page.include_total,
+            status=status,
+            filter_agent_id=effective_agent_id,
+            property_id=property_id,
+            user_id=user_id,
+        )
+        return build_cursor_page(
+            [Booking.model_validate(r, from_attributes=True) for r in rows],
+            limit=page.limit, next_payload=next_payload, total=total,
+        )
+    except Exception as exc:
+        raise_read_service_unavailable(
+            exc,
+            endpoint="bookings_all",
+            detail="Bookings are temporarily unavailable. Please retry shortly.",
+            extra={"user": current_user.id},
+        )
+        raise
 
 @router.get("/{booking_id}", response_model=Booking, summary="Get booking details")
 async def get_booking_details(
     booking_id: int,
-    current_user: User = Depends(get_current_active_user),
+    current_user: AuthUserSnapshot = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get booking details."""

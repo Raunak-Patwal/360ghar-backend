@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Sequence
+from typing import Any
 
 from app.config import settings
 from app.core.logging import get_logger
@@ -28,8 +29,21 @@ def _get_client():
     return _client
 
 
-def _embed_one(client: object, model: str, text: str, *, task_type: str = "retrieval_document") -> list[float]:
+def _embed_one(client: Any, model: str, text: str, *, task_type: str = "retrieval_document") -> list[float]:
     from google.genai import types
+
+    # gemini-embedding-2-* ignores task_type; the task is an in-prompt instruction instead.
+    # Asymmetric retrieval format per https://ai.google.dev/gemini-api/docs/embeddings
+    is_v2 = model.startswith("gemini-embedding-2")
+    if is_v2:
+        if task_type == "retrieval_query":
+            content = f"task: search result | query: {text}"
+        else:
+            content = f"title: none | text: {text}"
+        config = types.EmbedContentConfig(output_dimensionality=768)  # matches vector(768) column
+    else:
+        content = text
+        config = types.EmbedContentConfig(task_type=task_type, output_dimensionality=768)
 
     retries = max(1, int(settings.VECTOR_SYNC_MAX_RETRIES))
     delay = 1.0
@@ -38,8 +52,8 @@ def _embed_one(client: object, model: str, text: str, *, task_type: str = "retri
         try:
             resp = client.models.embed_content(
                 model=model,
-                contents=text,
-                config=types.EmbedContentConfig(task_type=task_type),
+                contents=content,
+                config=config,
             )
             if resp.embeddings:
                 return list(resp.embeddings[0].values)
@@ -58,7 +72,7 @@ def _embed_one(client: object, model: str, text: str, *, task_type: str = "retri
 def embed_sync(texts: Sequence[str]) -> list[list[float]]:
     """Embed a list of texts synchronously using Gemini (per-item API call).
 
-    Returns a list of vectors (lists of floats). Length should be 768 for text-embedding-004.
+    Returns a list of 768-d vectors (output_dimensionality pinned to match the pgvector column).
     """
     client = _get_client()
     model = settings.GEMINI_EMBED_MODEL

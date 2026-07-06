@@ -75,7 +75,7 @@ graph TD
     ToolBridge --> ToolOps
 ```
 
-Services own the unit of work: they begin queries on the injected session, commit on success, and roll back on error. After a commit that changes user-visible state, services call `await sse_bus.emit(user_id, event)` to push real-time updates. List endpoints follow the recent cursor pagination refactor (June 2026): property list, search, recommendations, users, agents, bookings, visits, and blog all return `(items, next_cursor, has_more)` tuples.
+Services own the unit of work: they begin queries on the injected session, commit on success, and roll back on error. Flatmates user-visible state changes queue Supabase Realtime broadcasts via `queue_flatmates_realtime_event`, which publishes only after commit. List endpoints follow the recent cursor pagination refactor (June 2026): property list, search, recommendations, users, agents, bookings, visits, and blog all return `(items, next_cursor, has_more)` tuples.
 
 ## Integration points
 

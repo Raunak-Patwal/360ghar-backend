@@ -64,7 +64,7 @@ graph TD
     MKT --> SUPA
     Flat[flatmates events] --> PUSH[push_notification.py]
     PUSH --> DISP
-    PUSH --> SSE[sse_bus.emit new_notification]
+    PUSH --> RT[Supabase Broadcast new_notification]
     Client -->|GET /notifications| EP[app/api/.../notifications.py]
     EP --> List[list_notifications_for_user]
     Client -->|POST /notifications/device-token| REG[register_device_token]
@@ -72,14 +72,14 @@ graph TD
 
 Push uses Firebase Cloud Messaging through Supabase's push API. `notifications/fcm.py` mints an OAuth2 access token for the `FCM_SCOPE` using the Firebase service account credentials (`_fcm_credentials`, `_fcm_token_expiry`), `build_message` constructs the FCM HTTP v1 message, and `send_message` performs the HTTP send. `push.py` exposes `send_to_user` (resolves device tokens for the user), `send_to_token` (direct), `send_to_topic` (broadcast), and `send_bulk` (batch). Device tokens are registered and unregistered through the `/api/v1/notifications/device-token` endpoint.
 
-The flatmates module has its own thin push helper in `push_notification.py` that wraps `dispatch_notification_to_user` for flatmates events (`new_match`, `new_message`, listing approved, visit scheduled/confirmed) and always emits an SSE `new_notification` event to the user's [SSE bus](../systems/core-cross-cutting.md) queue, falling back to a log-only stub if the dispatcher is unavailable.
+The flatmates module has its own thin push helper in `push_notification.py` that wraps `dispatch_notification_to_user` for flatmates events (`new_match`, `new_message`, listing approved, visit scheduled/confirmed) and queues a Supabase Realtime `new_notification` broadcast to the user's private flatmates channel.
 
 The scheduler in `notification_scheduler.py` registers a daily 09:00 marketing push job on the shared `AsyncIOScheduler` if `ENABLE_NOTIF_SCHEDULER` is true. It calls `send_to_topic("marketing", ...)` with a `promotion_generic` type key. In serverless mode the scheduler is skipped.
 
 ## Integration points
 
 - **Type registry contract**: every new notification type must be added to `NOTIFICATION_TYPES` in `notification_config.py` per [AGENTS.md](../../AGENTS.md).
-- **SSE bus**: push dispatch also emits `new_notification` events through `app/core/sse.py` for real-time in-app delivery.
+- **Flatmates realtime**: push dispatch also queues `new_notification` events through `app/services/flatmates/realtime.py` for real-time in-app delivery.
 - **User settings**: `users.notification_settings` JSON drives per-user channel selection; the dispatcher tolerates both 360 Ghar and Stays app shapes.
 - **Schedulers**: the marketing push job registers on the shared `AsyncIOScheduler` (see [infrastructure](../systems/infrastructure.md)).
 - **Supabase**: FCM dispatch goes through the Supabase push API; the `_supa` helper in `notifications/helpers.py` provides the client.

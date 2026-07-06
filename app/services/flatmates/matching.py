@@ -31,6 +31,7 @@ from app.services.flatmates.helpers import (
     _ensure_match,
     _is_blocked,
 )
+from app.services.flatmates.realtime import EVENT_NEW_MATCH, queue_flatmates_realtime_event
 
 logger = get_logger(__name__)
 
@@ -101,6 +102,7 @@ async def record_swipe(
                 property_obj.interest_count = (property_obj.interest_count or 0) + 1
 
         await db.flush()
+        await db.commit()
         return {
             "stored": True,
             "action": payload.action,
@@ -169,69 +171,62 @@ async def record_swipe(
             did_match = True
             match_id = match.id
             conversation_id = conversation.id
+            await db.flush()
 
             # --- Push notifications to both users ---
             try:
                 from app.services.push_notification import notify_new_match
 
-                swiper = await db.get(User, user_id)
-                target = await db.get(User, payload.target_user_id)
-                swiper_name = swiper.full_name or "Someone" if swiper else "Someone"
-                target_name = target.full_name or "Someone" if target else "Someone"
-                assert payload.target_user_id is not None
-                await notify_new_match(
-                    db,
-                    recipient_db_id=payload.target_user_id,
-                    peer_name=swiper_name,
-                    match_id=match_id,
-                )
-                await notify_new_match(
-                    db,
-                    recipient_db_id=user_id,
-                    peer_name=target_name,
-                    match_id=match_id,
-                )
+                async with db.begin_nested():
+                    swiper = await db.get(User, user_id)
+                    target = await db.get(User, payload.target_user_id)
+                    swiper_name = swiper.full_name or "Someone" if swiper else "Someone"
+                    target_name = target.full_name or "Someone" if target else "Someone"
+                    assert payload.target_user_id is not None
+                    await notify_new_match(
+                        db,
+                        recipient_db_id=payload.target_user_id,
+                        peer_name=swiper_name,
+                        match_id=match_id,
+                    )
+                    await notify_new_match(
+                        db,
+                        recipient_db_id=user_id,
+                        peer_name=target_name,
+                        match_id=match_id,
+                    )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Match notification failed (best-effort): %s", exc, exc_info=True)
                 pass  # best-effort; never block swipe recording
 
-            # --- SSE events for new match ---
-            try:
-                from app.core.sse import SSE_SWIPE, sse_bus
-
-                assert payload.target_user_id is not None
-                await sse_bus.emit(
-                    user_id,
-                    {
-                        "type": SSE_SWIPE,
-                        "data": {
-                            "target_user_id": payload.target_user_id,
-                            "action": payload.action.value,
-                            "target_type": payload.target_type.value,
-                            "did_match": True,
-                            "match_id": match_id,
-                            "conversation_id": conversation_id,
-                        },
-                    },
-                )
-                await sse_bus.emit(
-                    payload.target_user_id,
-                    {
-                        "type": SSE_SWIPE,
-                        "data": {
-                            "target_user_id": user_id,
-                            "action": payload.action.value,
-                            "target_type": payload.target_type.value,
-                            "did_match": True,
-                            "match_id": match_id,
-                            "conversation_id": conversation_id,
-                        },
-                    },
-                )
-            except Exception:  # noqa: BLE001
-                pass  # best-effort
+            assert payload.target_user_id is not None
+            queue_flatmates_realtime_event(
+                db,
+                user_id=user_id,
+                event_type=EVENT_NEW_MATCH,
+                payload={
+                    "peer_user_id": payload.target_user_id,
+                    "action": payload.action.value,
+                    "target_type": payload.target_type.value,
+                    "match_id": match_id,
+                    "conversation_id": conversation_id,
+                },
+            )
+            queue_flatmates_realtime_event(
+                db,
+                user_id=payload.target_user_id,
+                event_type=EVENT_NEW_MATCH,
+                payload={
+                    "peer_user_id": user_id,
+                    "action": payload.action.value,
+                    "target_type": payload.target_type.value,
+                    "match_id": match_id,
+                    "conversation_id": conversation_id,
+                },
+            )
 
     await db.flush()
+    await db.commit()
     return {
         "stored": True,
         "action": payload.action,
@@ -457,6 +452,7 @@ async def unmatch_user_pair(db: AsyncSession, user_id: int, other_user_id: int) 
     if conversation:
         conversation.status = ConversationStatus.closed
     await db.flush()
+    await db.commit()
     return {"id": match.id, "status": match.status, "unmatched": True}
 
 
@@ -480,4 +476,5 @@ async def unmatch_match(db: AsyncSession, user_id: int, match_id: int) -> dict[s
         conversation.status = ConversationStatus.closed
 
     await db.flush()
+    await db.commit()
     return {"id": match.id, "status": match.status, "unmatched": True}

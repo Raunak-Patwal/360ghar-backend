@@ -33,6 +33,36 @@ pytest tests/test_file.py::test_func -v      # Single test
 pytest tests/ --cov=app --cov-report=html    # With coverage
 ```
 
+#### Hosted Supabase Test Runs
+
+Use Supabase itself for integration/QA tests when local Postgres cannot reproduce hosted behavior, but only against a clearly identified development or staging Supabase project. Never point tests, seeders, cleanup scripts, or ad-hoc SQL at the production/live Supabase database unless the user explicitly asks and approves the exact operation.
+
+Before running tests against hosted Supabase, verify the active env file and database URL. Do not use `.env.prod` for test runs. Prefer a dedicated `TEST_DATABASE_URL` or non-production env file whose project name makes the target obvious.
+
+Test data written to Supabase must be scoped for cleanup: set `is_seed_data = true` where the model supports it, add a unique test marker such as `test_run_id`, slug/email/phone prefixes like `agent_test_`, or use dedicated test users. Do not update rows that lack a test marker or seed flag.
+
+Prefer transaction rollback for automated tests. If committed writes are needed to test real Supabase behavior, record the inserted IDs/markers and clean them up at the end of the run using exact `WHERE` predicates. Run a count/select preview before cleanup and never use bare `DELETE`, `TRUNCATE`, or `DROP`.
+
+After hosted Supabase testing, clean test data before reporting completion. If cleanup fails or cannot be verified, report the remaining marker/IDs and stop rather than attempting broad destructive cleanup.
+
+### Testing without Docker (default approach)
+
+**The default way to test the backend is to run the server directly against the dev environment — do not use `docker-compose` for testing.** The dev env (`.env.dev`) already points `DATABASE_URL` at the hosted Supabase dev project, so no local database container is required.
+
+```bash
+uv run python run.py                          # boots the API on :3600; loads dev env automatically
+ENVIRONMENT=development uv run python run.py  # explicitly select .env.dev
+```
+
+- The env file is auto-selected by the `ENVIRONMENT` variable in `app/core/config.py` (`development`→`.env.dev`, `test`→`.env.test`, `production`→`.env.prod`). You do **not** need to `source` the env file manually — pydantic-settings loads it on import.
+- Exercise endpoints via Swagger (`/api/v1/docs`), ReDoc, or `curl` against `http://localhost:3600`.
+
+**Automated tests (`pytest`) follow a separate, hard rule — do not confuse the two:**
+
+- `tests/conftest.py` issues `DROP TABLE ... CASCADE` on every non-extension table in `public` against `TEST_DATABASE_URL` at session start/end. **Never point `TEST_DATABASE_URL` at the hosted Supabase dev/staging URL** — it will wipe the shared database.
+- To run `pytest` locally without Docker you need a local Postgres with both `postgis` **and** `pgvector` extensions, then set `TEST_DATABASE_URL` to it (e.g. `postgresql+psycopg://test_user:test_password@localhost:5432/test_db`). Install dev deps first (`uv sync --extra dev`), then `uv run pytest tests/ -v`.
+- `docker-compose up -d db redis` only provisions a throwaway Postgres+Redis for local `pytest` runs — it is **not** needed for day-to-day server-run testing against the dev Supabase DB.
+
 ### Data Population
 ```bash
 # Using uv (recommended)
@@ -141,7 +171,7 @@ app/
 │   ├── http.py             # Shared httpx.AsyncClient singletons (scraper, blog, general)
 │   ├── constants.py        # Vision provider defaults, valid providers
 │   ├── db_resilience.py    # Transient DB error detection + retry-with-rollback
-│   ├── sse.py              # SSE event bus (subscribe/emit/keepalive for real-time flatmates events)
+│   ├── sse.py              # Legacy SSE event bus for non-flatmates streaming surfaces
 │   ├── logging.py          # Structured logging, RequestIDFilter, request-id context vars
 │   └── utils.py            # UTC helpers, timezone awareness
 ├── middleware/             # Rate limiting (sliding window), security headers, request ID, request logging, trailing slash
@@ -166,7 +196,7 @@ app/
 
 **Serverless/Scale-to-Zero**: When `SERVERLESS_ENABLED=True`, the app uses `NullPool` for both main and background DB engines (no persistent connections), skips in-process schedulers, and uses in-memory cache fallback. PgBouncer handles server-side pooling. Trade-off: ~10-50ms added latency per request.
 
-**SSE Real-Time Events**: `SSEEventBus` in `app/core/sse.py` provides per-user pub/sub via `subscribe`/`emit`/`unsubscribe`. Service methods call `await sse_bus.emit(user_id, event_dict)` after DB commit. The SSE endpoint (`GET /api/v1/flatmates/sse`) consumes from the queue with 30s keepalive. Non-blocking: drops oldest event on queue full, periodically reaps dead queues. Event types: `new_match`, `new_message`, `conversation_updated`, `visit_updated`, `listing_status_changed`, `new_notification`.
+**Flatmates Realtime Events**: Flatmates app-wide realtime uses Supabase Realtime private Broadcast channels through `app/services/flatmates/realtime.py`. Service methods queue events on the SQLAlchemy session and publish only after DB commit to `flatmates:user:{local_user_id}`. Supabase Realtime Authorization on `realtime.messages` restricts each authenticated user to their own channel. Event types: `new_match`, `new_message`, `conversation_updated`, `visit_updated`, `listing_status_changed`, `new_notification`.
 
 **DB Session Hygiene for Streaming**: SSE and other streaming endpoints release the main-pool DB session before streaming and use a background-pool session (`get_bg_db`) for tool calls.
 
@@ -279,7 +309,7 @@ async def get_properties(
 
 ## Coding Conventions
 
-- **Python 3.10+**, FastAPI, SQLAlchemy 2.x async, Pydantic v2
+- **Python 3.12+**, FastAPI, SQLAlchemy 2.x async, Pydantic v2
 - **snake_case** for modules/functions/variables; **PascalCase** for classes
 - Full type hints everywhere
 - Custom exceptions from `app/core/exceptions.py` (e.g., `UserNotFoundException`)
@@ -340,7 +370,7 @@ All code must pass `uv run ruff check app/` before commit. The CI pipeline (`lin
 - **Research before integrating**: Before implementing any 3rd party integration (APIs, SDKs, libraries, AI models, protocols), look up the current official documentation and latest version. Do not rely on training data alone — docs, APIs, model names, and SDKs change frequently. Always verify from official sources.
 - **Use Context7 MCP or web search**: Use the `context7` MCP tools (`resolve-library-id` + `query-docs`) or `WebSearch`/`WebFetch`/`google_search` to retrieve up-to-date documentation, latest version numbers, API references, and code examples for any library, service, model, or SDK being used.
 - **Verify everything latest**: When referencing package versions, AI/LLM model names, API endpoints or signatures, SDK methods, protocol versions (e.g., MCP protocol version), or any external service reference, always confirm the latest from official sources (docs sites, GitHub releases, PyPI, npm, official changelogs). Never assume a version or API shape from memory.
-- **Verify compatibility**: Confirm that new dependencies are compatible with the project's Python 3.10+ requirement and existing stack (FastAPI, SQLAlchemy 2.x async, Pydantic v2).
+- **Verify compatibility**: Confirm that new dependencies are compatible with the project's Python 3.12+ requirement and existing stack (FastAPI, SQLAlchemy 2.x async, Pydantic v2).
 - **Check changelogs for breaking changes**: When upgrading a dependency, review its changelog/migration guide to avoid breaking changes.
 - **Stay current with ecosystem**: Periodically check for newer versions of key dependencies (FastAPI, SQLAlchemy, Pydantic, Supabase, FastMCP, etc.) and update when safe. Prefer latest docs and examples over outdated tutorials or blog posts.
 
@@ -522,7 +552,6 @@ When running locally:
 - WebSocket (notifications): `ws://localhost:3600/ws/notifications?token=...`
 - AI Agent chat (auth): `POST /api/v1/agent/chat`
 - AI Agent chat (guest): `POST /api/v1/agent/chat-public`
-- Flatmates SSE: `GET /api/v1/flatmates/sse` (real-time event stream for authenticated users)
 
 ## MCP Server
 

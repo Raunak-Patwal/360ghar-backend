@@ -9,7 +9,7 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.mcp.admin.agent_tools.common import (
-    MCP_SECURITY_SCHEMES_MIXED,
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     AuthRequiredError,
     MCPErrorCode,
     MCPResponse,
@@ -24,10 +24,17 @@ from app.mcp.admin.agent_tools.common import (
     logger,
     make_tz_aware,
     not_found_response,
-    utc_now,
 )
+from app.mcp.apps_sdk import build_widget_tool_meta
+from app.mcp.tool_ops.rent import compute_rent_due_items
 from app.models.enums import UserRole
-from app.schemas.pagination import encode_cursor, offset_payload
+from app.schemas.pagination import decode_cursor
+
+AGENT_RENT_COLLECTION_META = build_widget_tool_meta(
+    widget_uri="ui://widget/rentcollectionwidget.html",
+    invoking="Loading rent data...",
+    invoked="Rent data loaded",
+)
 
 
 @admin_mcp.tool(
@@ -37,8 +44,9 @@ from app.schemas.pagination import encode_cursor, offset_payload
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
+    meta=AGENT_RENT_COLLECTION_META,
 )
 async def agent_rent_list_due(
     owner_id: int | None = None,
@@ -57,16 +65,8 @@ async def agent_rent_list_due(
         limit: Items per page
     """
     try:
-        from sqlalchemy import select
-
-        from app.models.enums import LeaseStatus
-        from app.models.pm_leases import Lease
-        from app.schemas.pagination import decode_cursor
-        from app.schemas.pagination import read_offset as _read_offset
-
         limit = min(max(1, limit), 100)
         cursor_payload = decode_cursor(cursor) if cursor else {}
-        offset = _read_offset(cursor_payload)
 
         async for db in get_db():
             user = await _get_user(db)
@@ -86,67 +86,36 @@ async def agent_rent_list_due(
             from app.services.pm_authz import get_accessible_owner_ids
 
             user_role = get_user_role(user)
-
-            # Get active leases
-            stmt = select(Lease).where(Lease.status == LeaseStatus.active)
+            owner_ids: list[int] | None = None
 
             if user_role != UserRole.admin:
                 accessible_owners = await get_accessible_owner_ids(db, actor=user)
-                if accessible_owners is not None:
-                    stmt = stmt.where(Lease.owner_id.in_(accessible_owners))
+                if owner_id and accessible_owners is not None and owner_id not in accessible_owners:
+                    return MCPResponse.success({
+                        "items": [],
+                        "total_due": 0,
+                        "overdue_count": 0,
+                        "next_cursor": None,
+                        "has_more": False,
+                        "limit": limit,
+                        "total": 0,
+                    }).model_dump()
+                owner_ids = accessible_owners
 
             if owner_id:
-                stmt = stmt.where(Lease.owner_id == owner_id)
-            if property_id:
-                stmt = stmt.where(Lease.property_id == property_id)
+                owner_ids = [owner_id]
 
-            result = await db.execute(stmt)
-            leases = result.scalars().all()
+            due_data = await compute_rent_due_items(
+                db,
+                owner_ids=owner_ids,
+                property_id=property_id,
+                overdue_only=overdue_only,
+                cursor_payload=cursor_payload,
+                limit=limit,
+            )
+            due_data["total"] = len(due_data["items"])
 
-            # Calculate due amounts for each lease
-            today = utc_now().date()
-            due_items = []
-
-            for lease in leases:
-                payment_due_day = lease.payment_due_day or 1
-                grace_days = lease.grace_period_days or 5
-
-                # Determine if rent is due this month
-                due_date = today.replace(day=min(payment_due_day, 28))
-                grace_end = due_date.replace(day=min(payment_due_day + grace_days, 28))
-
-                is_overdue = today > grace_end
-                is_due = today >= due_date
-
-                if overdue_only and not is_overdue:
-                    continue
-
-                if is_due:
-                    due_items.append({
-                        "lease_id": lease.id,
-                        "property_id": lease.property_id,
-                        "owner_id": lease.owner_id,
-                        "tenant_user_id": lease.tenant_user_id,
-                        "monthly_rent": float(lease.monthly_rent or 0),
-                        "due_date": due_date.isoformat(),
-                        "is_overdue": is_overdue,
-                        "days_overdue": (today - grace_end).days if is_overdue else 0,
-                    })
-
-            # Paginate
-            start = offset
-            end = start + limit
-            paginated = due_items[start:end]
-            next_payload = offset_payload(end) if end < len(due_items) else None
-
-            return MCPResponse.success({
-                "total": len(due_items),
-                "overdue_count": sum(1 for i in due_items if i["is_overdue"]),
-                "next_cursor": encode_cursor(next_payload) if next_payload else None,
-                "has_more": next_payload is not None,
-                "limit": limit,
-                "items": paginated,
-            }).model_dump()
+            return MCPResponse.success(due_data).model_dump()
     except AuthRequiredError:
         raise
     except BadRequestException as e:
@@ -163,8 +132,9 @@ async def agent_rent_list_due(
         "readOnlyHint": False,
         "destructiveHint": False,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
+    meta=AGENT_RENT_COLLECTION_META,
 )
 async def agent_rent_record_payment(
     lease_id: int,

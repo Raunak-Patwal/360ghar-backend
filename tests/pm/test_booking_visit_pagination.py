@@ -51,6 +51,7 @@ async def booking_client(test_app, booking_user) -> AsyncClient:
     """Authenticated client for booking_user."""
     from app.api.api_v1.dependencies.auth import (
         get_current_active_user,
+        get_current_cached_active_user,
         get_current_user,
         get_current_user_optional,
     )
@@ -63,6 +64,7 @@ async def booking_client(test_app, booking_user) -> AsyncClient:
 
     test_app.dependency_overrides[get_current_user] = _active
     test_app.dependency_overrides[get_current_active_user] = _active
+    test_app.dependency_overrides[get_current_cached_active_user] = _active
     test_app.dependency_overrides[get_current_user_optional] = _active
 
     transport = ASGITransport(app=test_app)

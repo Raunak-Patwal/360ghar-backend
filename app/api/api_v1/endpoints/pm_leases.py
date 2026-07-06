@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.models.enums import LeaseStatus, UserRole
 from app.schemas.pagination import CursorPage, CursorParams, build_cursor_page
 from app.schemas.pm_lease import Lease as LeaseSchema
-from app.schemas.pm_lease import LeaseCreate, LeaseRenew, LeaseUploadSigned
+from app.schemas.pm_lease import LeaseCreate, LeaseRenew, LeaseTerminate, LeaseUploadSigned
 from app.schemas.user import User as UserSchema
 from app.services.pm_leases import (
     create_lease,
@@ -175,10 +175,17 @@ async def renew(
 @router.post("/{lease_id}/terminate", response_model=LeaseSchema, summary="Terminate lease")
 async def terminate(
     lease_id: int,
+    payload: LeaseTerminate | None = None,
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Terminate lease."""
-    lease = await terminate_lease(db, actor=current_user, lease_id=lease_id)  # type: ignore[arg-type]
+    lease = await terminate_lease(
+        db,
+        actor=current_user,  # type: ignore[arg-type]
+        lease_id=lease_id,
+        termination_date=payload.termination_date if payload else None,
+        reason=payload.reason if payload else None,
+    )
     return LeaseSchema.model_validate(lease)
 

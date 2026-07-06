@@ -2,6 +2,7 @@
 Tests for app.core.logging module.
 """
 
+import io
 import json
 import logging
 from unittest.mock import patch
@@ -353,6 +354,29 @@ class TestSetupLogging:
             assert len(console_handlers) >= 1
             handler = console_handlers[0]
             assert isinstance(handler.formatter, StructuredFormatter)
+
+    def test_production_routes_error_records_to_stderr(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with patch("app.core.logging.settings") as mock_settings, \
+             patch("sys.stdout", stdout), \
+             patch("sys.stderr", stderr):
+            mock_settings.DEBUG = False
+            mock_settings.ENVIRONMENT = "production"
+            setup_logging()
+
+            logger = logging.getLogger("test.production.streams")
+            logger.warning("warning event")
+            logger.error("error event")
+
+        stdout_lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        stderr_lines = [json.loads(line) for line in stderr.getvalue().splitlines()]
+
+        assert [line["message"] for line in stdout_lines] == ["warning event"]
+        assert [line["message"] for line in stderr_lines] == ["error event"]
+        assert stdout_lines[0]["level"] == "WARNING"
+        assert stderr_lines[0]["level"] == "ERROR"
 
     def test_development_uses_color_formatter_on_tty(self):
         """In development with TTY, the root handler should use ColorFormatter."""

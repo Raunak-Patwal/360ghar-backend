@@ -11,6 +11,7 @@ Compatible with FastMCP 3.0+.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, NoReturn
 
 from fastmcp import FastMCP
@@ -21,8 +22,14 @@ from mcp import types as mcp_types
 from pydantic import Field
 
 from app.core.logging import get_logger
+from app.mcp.errors import mcp_exception_payload
+from app.mcp.logging_filters import AuthRequiredExcFilter
 
 logger = get_logger(__name__)
+
+# Suppress FastMCP's internal ERROR log for AuthRequiredError — it is
+# expected control flow handled by AppsSDKFastMCP._call_tool_mcp.
+logging.getLogger("fastmcp.tools.tool").addFilter(AuthRequiredExcFilter())
 
 
 # Required MIME type for MCP App widget resources (per Apps SDK spec).
@@ -332,10 +339,9 @@ class AppsSDKFastMCP(FastMCP):
         except (NotFoundError, ToolError):
             raise
         except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.error(
-                "MCP tool failed", extra={"tool": key, "error": str(exc)}, exc_info=True
-            )
+            payload = mcp_exception_payload(exc, logger=logger, tool_name=key)
             return mcp_types.CallToolResult(
-                content=[mcp_types.TextContent(type="text", text=str(exc))],
+                content=[mcp_types.TextContent(type="text", text=payload["message"])],
+                structuredContent=payload,
                 isError=True,
             )

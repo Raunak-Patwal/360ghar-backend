@@ -48,6 +48,7 @@ async def record_profile_view_event(
     db.add(event)
     await db.flush()
     await db.refresh(event)
+    await db.commit()
     return event
 
 
@@ -136,6 +137,7 @@ async def record_society_tag_vote(
 
     listing.listing_preferences = preferences
     await db.flush()
+    await db.commit()
 
     return {
         "property_id": listing.id,

@@ -10,7 +10,7 @@ from app.mcp.admin.server import (
     _require_auth,
     admin_mcp,
 )
-from app.mcp.apps_sdk import MCP_SECURITY_SCHEMES_MIXED, AuthRequiredError
+from app.mcp.apps_sdk import MCP_SECURITY_SCHEMES_OAUTH2_ONLY, AuthRequiredError
 from app.mcp.errors import (
     MCPErrorCode,
     MCPResponse,
@@ -30,7 +30,7 @@ from app.mcp.utils import (
 )
 
 __all__ = [
-    "MCP_SECURITY_SCHEMES_MIXED",
+    "MCP_SECURITY_SCHEMES_OAUTH2_ONLY",
     "AuthRequiredError",
     "MCPErrorCode",
     "MCPResponse",

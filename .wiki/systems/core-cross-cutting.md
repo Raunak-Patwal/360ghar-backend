@@ -33,7 +33,8 @@ app/core/
 | `engine` / `bg_engine` | `app/core/database.py` | Main and background async engines, NullPool in serverless mode |
 | `AsyncSessionLocal` / `AsyncSessionLocalBG` | `app/core/database.py` | Session factories for request and background work |
 | Shared httpx clients | `app/core/http.py` | `get_scraper_client`, `get_blog_client`, `get_general_client`, `get_supabase_auth_http_client` |
-| `SSEEventBus` / `sse_bus` | `app/core/sse.py` | Per-user pub/sub with queue caps, TTL reaping, global subscriber cap |
+| `Flatmates realtime publisher` | `app/services/flatmates/realtime.py` | Supabase private Broadcast publisher with after-commit queue |
+| `SSEEventBus` / `sse_bus` | `app/core/sse.py` | Legacy per-user pub/sub for non-flatmates streaming surfaces |
 | `execute_with_transient_retry` | `app/core/db_resilience.py` | One retry with rollback on transient DB errors; fast-fail on pool exhaustion |
 | `BaseAPIException` | `app/core/exceptions.py` | Standardized `{error: {code, message, details}}` exception hierarchy |
 | `ConnectionManager` / `manager` | `app/core/websocket.py` | Job and user WebSocket connection registry |
@@ -63,7 +64,7 @@ graph TD
 
 ### Database
 
-`app/core/database.py` creates two async engines. The main engine (`engine`) serves HTTP/MCP traffic; the background engine (`bg_engine`, application name `360ghar_bg`) serves schedulers and SSE streams. Both use `prepare_threshold=None` for PgBouncer compatibility and a small pool ( PgBouncer handles server-side pooling). When `SERVERLESS_ENABLED=True`, both engines use `NullPool` so no persistent connections generate outbound packets that would prevent Railway scale-to-zero (trade-off: 10-50ms added latency per request). `Base` is the `DeclarativeBase` all models inherit from. Session factories `AsyncSessionLocal` and `AsyncSessionLocalBG` produce `AsyncSession` objects.
+`app/core/database.py` creates two async engines. The main engine (`engine`) serves HTTP/MCP traffic; the background engine (`bg_engine`, application name `360ghar_bg`) serves schedulers and SSE streams. Both use `prepare_threshold=None` for Supabase/PgBouncer compatibility. When `SERVERLESS_ENABLED=True`, both engines use `NullPool` so no persistent connections generate outbound packets that would prevent Railway scale-to-zero (trade-off: 10-50ms added latency per request). Production Supabase pooler URLs must use transaction pooling on port `6543`; startup rejects session-pooler URLs on port `5432` and unknown Supabase pooler ports in production. In non-serverless development mode, app-side pool defaults are intentionally small (`4 + 0` main, `1 + 0` background) to stay below small Supabase session-pool caps. `Base` is the `DeclarativeBase` all models inherit from. Session factories `AsyncSessionLocal` and `AsyncSessionLocalBG` produce `AsyncSession` objects.
 
 ### Shared HTTP clients
 
@@ -78,9 +79,13 @@ graph TD
 
 `close_all_clients()` is called from lifespan shutdown. Services must use these clients instead of creating ephemeral `async with httpx.AsyncClient()` blocks.
 
+### Flatmates realtime
+
+Flatmates app-wide realtime uses Supabase Realtime private Broadcast channels. Services call `queue_flatmates_realtime_event` from `app/services/flatmates/realtime.py`; events are stored on the SQLAlchemy session and published only after commit to `flatmates:user:{local_user_id}`. The Supabase migration `20260703000000_flatmates_realtime_authorization.sql` adds a `realtime.messages` RLS policy so an authenticated user can subscribe only to their own channel.
+
 ### SSE event bus
 
-`SSEEventBus` in `app/core/sse.py` maps `user_id` to a list of `asyncio.Queue` objects (one per active SSE response). Services call `await sse_bus.emit(user_id, event_dict)` after a DB commit. `emit` is non-blocking: when a queue is full it drops the oldest item and pushes the new one. Every 10 emits the bus reaps dead queues (full for 3 consecutive cycles, or inactive for 30 minutes). A global subscriber cap of 500 prevents unbounded growth. The SSE endpoint consumes from its queue with a 30s keepalive.
+`SSEEventBus` in `app/core/sse.py` remains available for non-flatmates streaming surfaces. It maps `user_id` to a list of `asyncio.Queue` objects (one per active SSE response). `emit` is non-blocking: when a queue is full it drops the oldest item and pushes the new one. Every 10 emits the bus reaps dead queues (full for 3 consecutive cycles, or inactive for 30 minutes). A global subscriber cap of 500 prevents unbounded growth.
 
 ### Logging
 
@@ -102,14 +107,14 @@ graph TD
 
 - **API dependencies** call `verify_supabase_token` and use `get_db` / `get_bg_db`. See [api-layer](api-layer.md).
 - **Infrastructure lifespan** initializes the cache, engines, HTTP clients, scheduler, and shuts them all down. See [infrastructure](infrastructure.md).
-- **Services** use `AsyncSession`, the shared HTTP clients, the SSE bus, and `execute_with_transient_retry`. See [services-layer](services-layer.md).
+- **Services** use `AsyncSession`, the shared HTTP clients, flatmates realtime publishing, and `execute_with_transient_retry`. See [services-layer](services-layer.md).
 - **Cache** subsystem lives under `app/core/cache/`. See [cache-subsystem](cache-subsystem.md).
 
 ## Entry points for modification
 
 - New setting: add it to `Settings` in `app/core/config.py` and document the env var.
 - New shared HTTP client domain: add a singleton and a `close_*` hook in `app/core/http.py`, call it from `close_all_clients`, and document the client in the table above and in `CLAUDE.md`.
-- New SSE event type: emit it via `sse_bus.emit` and document it in `CLAUDE.md` and `AGENTS.md`.
+- New flatmates realtime event type: add it in `app/services/flatmates/realtime.py`, queue it after the domain write, and document it in `CLAUDE.md` and `AGENTS.md`.
 - New transient DB error signature: add the message marker or code to `db_resilience.py`.
 
 ## Key source files

@@ -31,6 +31,7 @@ from app.services.flatmates.helpers import (
     _build_profile_payload,
     _serialize_flatmate_notification,
 )
+from app.services.flatmates.realtime import flatmates_realtime_config
 from app.services.notifications import _supa, list_notifications_for_user
 from app.utils.validators import ValidationUtils
 
@@ -379,6 +380,7 @@ async def update_flatmates_profile(
     user.flatmates_last_active_at = datetime.now(timezone.utc)
     await db.flush()
     await db.refresh(user)
+    await db.commit()
     return _build_profile_payload(user)
 
 
@@ -522,4 +524,5 @@ async def get_bootstrap(db: AsyncSession, user_id: int) -> dict[str, Any]:
         "active_listing_count": listing_count,
         "conversation_count": conversation_count,
         "unread_message_count": unread_count,
+        "realtime": flatmates_realtime_config(user_id),
     }

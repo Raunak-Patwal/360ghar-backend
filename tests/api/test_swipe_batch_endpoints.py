@@ -24,7 +24,8 @@ class TestBatchRemoveSwipesEndpoint:
 
             assert response.status_code == 200
             data = response.json()
-            assert "message" in data
+            assert data["removed_count"] == 3
+            assert data["failed_property_ids"] == []
             assert "3" in data["message"]
             mock_batch.assert_awaited_once()
 
@@ -42,7 +43,10 @@ class TestBatchRemoveSwipesEndpoint:
             )
 
             assert response.status_code == 200
-            assert "0" in response.json()["message"]
+            data = response.json()
+            assert data["removed_count"] == 0
+            assert data["failed_property_ids"] == []
+            assert "0" in data["message"]
 
     @pytest.mark.asyncio
     async def test_batch_remove_unauthorized(self, client: AsyncClient):

@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import asyncio
-import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import StreamingResponse
 
-from app.api.api_v1.dependencies.auth import get_current_active_user, get_current_user_sse
+from app.api.api_v1.dependencies.auth import get_current_cached_active_user
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.schemas.flatmates import (
@@ -78,54 +75,9 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/sse", summary="Stream flatmates events (SSE)")
-async def flatmates_sse(
-    current_user: UserSchema = Depends(get_current_user_sse),
-):
-    """SSE stream for flatmates real-time events."""
-    from app.core.sse import SSESubscriberLimitError, sse_bus
-
-    user_id = current_user.id
-    try:
-        queue = await sse_bus.subscribe(user_id)
-    except SSESubscriberLimitError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Too many real-time subscribers. Please retry shortly.",
-        ) from exc
-
-    async def event_stream():
-        try:
-            yield "event: connected\ndata: {\"status\":\"ok\"}\n\n"
-            while True:
-                try:
-                    event = await asyncio.wait_for(queue.get(), timeout=60)
-                    await sse_bus.touch(queue)
-                    event_type = event.get("type", "update")
-                    payload = json.dumps(event, default=str)
-                    yield f"event: {event_type}\ndata: {payload}\n\n"
-                except asyncio.TimeoutError:
-                    await sse_bus.touch(queue)
-                    yield ": keepalive\n\n"
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await sse_bus.unsubscribe(user_id, queue)
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
-
-
 @router.get("/bootstrap", response_model=FlatmatesBootstrap, summary="Get flatmates bootstrap")
 async def get_flatmates_bootstrap(
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get flatmates bootstrap."""
@@ -142,7 +94,7 @@ async def get_flatmates_catalogs(
 
 @router.get("/profile", response_model=FlatmatesProfile, summary="Get current flatmate profile")
 async def get_profile(
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get current flatmate profile."""
@@ -152,7 +104,7 @@ async def get_profile(
 @router.put("/profile", response_model=FlatmatesProfile, summary="Update flatmate profile")
 async def update_profile(
     payload: FlatmatesProfileUpdate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update flatmate profile."""
@@ -162,7 +114,7 @@ async def update_profile(
 @router.patch("/profile", response_model=FlatmatesProfile, summary="Patch flatmate profile")
 async def patch_profile(
     payload: FlatmatesProfileUpdate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Patch flatmate profile."""
@@ -172,7 +124,7 @@ async def patch_profile(
 @router.post("/profile", response_model=FlatmatesProfile, summary="Create flatmate profile")
 async def create_profile(
     payload: FlatmatesProfileUpdate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create flatmate profile."""
@@ -182,7 +134,7 @@ async def create_profile(
 @router.get("/profiles/{user_id}", response_model=FlatmatesPeer, summary="Get flatmate profile by user")
 async def get_user_profile(
     user_id: int,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get flatmate profile by user."""
@@ -206,7 +158,7 @@ async def get_discoverable_profiles(
         description="Comma-separated non-negotiable deal-breakers",
     ),
     page: CursorParams = Depends(),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Discover flatmate profiles."""
@@ -239,7 +191,7 @@ async def get_discoverable_profiles(
 @router.post("/swipes", response_model=SwipeResult, summary="Swipe flatmate profile")
 async def swipe(
     payload: SwipeRequest,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Swipe flatmate profile."""
@@ -249,7 +201,7 @@ async def swipe(
 @router.get("/likes", response_model=CursorPage[IncomingLikeSummary], summary="List incoming likes")
 async def get_incoming_likes(
     page: CursorParams = Depends(),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List incoming likes."""
@@ -271,7 +223,7 @@ async def get_incoming_likes(
 @router.get("/outgoing-likes", response_model=CursorPage[IncomingLikeSummary], summary="List outgoing likes")
 async def get_outgoing_likes(
     page: CursorParams = Depends(),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List outgoing likes."""
@@ -293,7 +245,7 @@ async def get_outgoing_likes(
 @router.post("/profile-views", response_model=ProfileViewEventOut, summary="Record profile view")
 async def record_profile_view(
     payload: ProfileViewEventCreate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Record profile view."""
@@ -304,7 +256,7 @@ async def record_profile_view(
 async def vote_society_tag(
     listing_id: int,
     payload: SocietyTagVoteCreate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Vote on society tag."""
@@ -314,7 +266,7 @@ async def vote_society_tag(
 @router.get("/conversations", response_model=CursorPage[ConversationSummary], summary="List conversations")
 async def get_conversations(
     page: CursorParams = Depends(),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List conversations."""
@@ -336,7 +288,7 @@ async def get_conversations(
 @router.post("/conversations", response_model=ConversationSummary, summary="Create conversation")
 async def create_conversation(
     payload: ConversationCreate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create conversation."""
@@ -346,7 +298,7 @@ async def create_conversation(
 @router.get("/conversations/{conversation_id}", response_model=ConversationSummary, summary="Get conversation detail")
 async def get_conversation_detail(
     conversation_id: int,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get conversation detail."""
@@ -356,19 +308,33 @@ async def get_conversation_detail(
 @router.get("/conversations/{conversation_id}/messages", response_model=MessageListResponse, summary="List conversation messages")
 async def get_conversation_messages(
     conversation_id: int,
-    current_user: UserSchema = Depends(get_current_active_user),
+    limit: int = Query(50, ge=1, le=200, description="Page size (1-200)"),
+    before_id: int | None = Query(None, ge=1, description="Cursor: return messages with id < before_id"),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List conversation messages."""
-    messages = await list_messages(db, conversation_id, current_user.id)
-    return MessageListResponse(messages=messages, total=len(messages), has_more=False)
+    """List conversation messages with cursor-based pagination.
+
+    ``limit`` is bounded to [1, 200] and ``before_id`` must be a positive
+    message id — without these constraints a client can request ``?limit=0``
+    or ``?limit=-1`` and the SQL would run with LIMIT 1, returning an empty
+    page with has_more=True and hammering the DB in an infinite loop.
+    """
+    messages, has_more = await list_messages(
+        db, conversation_id, current_user.id, limit=limit, before_id=before_id
+    )
+    return MessageListResponse(
+        messages=[MessageOut.model_validate(m) for m in messages],
+        total=len(messages),
+        has_more=has_more,
+    )
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageOut, summary="Send conversation message")
 async def post_conversation_message(
     conversation_id: int,
     payload: MessageCreate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Send conversation message."""
@@ -378,7 +344,7 @@ async def post_conversation_message(
 @router.get("/matches", response_model=CursorPage[MatchSummary], summary="List matches")
 async def get_matches(
     page: CursorParams = Depends(),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List matches."""
@@ -400,7 +366,7 @@ async def get_matches(
 @router.put("/matches/{match_id}/unmatch", summary="Unmatch conversation")
 async def unmatch(
     match_id: int,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Unmatch conversation."""
@@ -410,7 +376,7 @@ async def unmatch(
 @router.get("/blocks", response_model=CursorPage[BlockedUserOut], summary="List blocked users")
 async def get_blocked_users(
     page: CursorParams = Depends(),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List blocked users."""
@@ -432,7 +398,7 @@ async def get_blocked_users(
 @router.delete("/blocks/{blocked_user_id}", response_model=dict[str, Any], summary="Unblock user")
 async def unblock_user(
     blocked_user_id: int,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Unblock user."""
@@ -442,7 +408,7 @@ async def unblock_user(
 @router.post("/blocks", response_model=BlockOut | dict[str, Any], summary="Block user")
 async def block_user(
     payload: BlockCreate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Block user."""
@@ -454,7 +420,7 @@ async def block_user(
 @router.post("/reports", response_model=ReportOut, summary="Report user")
 async def report_user(
     payload: ReportCreate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Report user."""
@@ -464,7 +430,7 @@ async def report_user(
 @router.get("/notifications", response_model=CursorPage[FlatmatesNotificationOut], summary="List flatmates notifications")
 async def get_flatmates_notifications(
     page: CursorParams = Depends(),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List flatmates notifications."""
@@ -486,7 +452,7 @@ async def get_flatmates_notifications(
 @router.put("/notifications", response_model=dict[str, Any], summary="Mark flatmates notifications")
 async def mark_flatmates_notifications(
     payload: FlatmatesNotificationUpdate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Mark flatmates notifications."""
@@ -498,7 +464,7 @@ async def mark_flatmates_notifications(
 async def mark_flatmates_notification(
     notification_id: str,
     payload: FlatmatesNotificationUpdate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Mark flatmates notification."""
@@ -510,7 +476,7 @@ async def mark_flatmates_notification(
 async def update_flatmate_visit(
     visit_id: int,
     payload: FlatmateVisitUpdate,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update flatmate visit."""
@@ -522,7 +488,7 @@ async def update_flatmate_visit(
 @router.post("/conversations/{conversation_id}/mark-read", summary="Mark conversation as read")
 async def mark_conversation_as_read(
     conversation_id: int,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Mark conversation as read."""
@@ -534,7 +500,7 @@ async def mark_conversation_as_read(
 async def save_qna_answers(
     conversation_id: int,
     payload: QnAAnswers,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: UserSchema = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Save Q&A answers."""

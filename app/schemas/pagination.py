@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import datetime as _dt
 import json
+from collections.abc import Callable, Sequence
 from typing import Any, Generic, TypeVar
 
 from fastapi import Query
@@ -87,6 +88,41 @@ def offset_payload(offset: int) -> dict[str, Any]:
     by raw offset (a known offset-pagination limitation).
     """
     return {"v": CURSOR_VERSION, "o": offset}
+
+
+def trim_lookahead(items: Sequence[T], *, limit: int) -> tuple[list[T], bool]:
+    """Trim a limit+1 result set and report whether another page exists."""
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    return list(items[:limit]), len(items) > limit
+
+
+def trim_keyset_lookahead(
+    items: Sequence[T],
+    *,
+    limit: int,
+    sort_value: Callable[[T], Any],
+    item_id: Callable[[T], int | str],
+) -> tuple[list[T], dict[str, Any] | None]:
+    """Trim keyset lookahead rows and build the next cursor payload."""
+    page_items, has_more = trim_lookahead(items, limit=limit)
+    if not has_more or not page_items:
+        return page_items, None
+    last = page_items[-1]
+    return page_items, keyset_payload(keyset_sort_value(sort_value(last)), item_id(last))
+
+
+def trim_offset_lookahead(
+    items: Sequence[T],
+    *,
+    limit: int,
+    offset: int,
+) -> tuple[list[T], dict[str, Any] | None]:
+    """Trim offset lookahead rows and build the next offset cursor payload."""
+    page_items, has_more = trim_lookahead(items, limit=limit)
+    if not has_more or not page_items:
+        return page_items, None
+    return page_items, offset_payload(offset + len(page_items))
 
 
 def read_offset(payload: dict[str, Any]) -> int:

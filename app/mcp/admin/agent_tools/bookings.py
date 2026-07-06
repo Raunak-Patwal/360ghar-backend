@@ -4,7 +4,7 @@ from typing import Any
 
 from app.core.exceptions import BadRequestException
 from app.mcp.admin.agent_tools.common import (
-    MCP_SECURITY_SCHEMES_MIXED,
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     AuthRequiredError,
     MCPErrorCode,
     MCPResponse,
@@ -20,8 +20,15 @@ from app.mcp.admin.agent_tools.common import (
     not_found_response,
     serialize_booking,
 )
-from app.models.enums import UserRole
+from app.mcp.apps_sdk import build_widget_tool_meta
+from app.models.enums import BookingStatus, UserRole
 from app.schemas.pagination import decode_cursor, encode_cursor
+
+AGENT_BOOKINGS_LIST_META = build_widget_tool_meta(
+    widget_uri="ui://widget/visitlistwidget.html",
+    invoking="Loading bookings...",
+    invoked="Bookings loaded",
+)
 
 
 @admin_mcp.tool(
@@ -31,8 +38,9 @@ from app.schemas.pagination import decode_cursor, encode_cursor
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
+    meta=AGENT_BOOKINGS_LIST_META,
 )
 async def agent_bookings_list_all(
     property_id: int | None = None,
@@ -112,7 +120,7 @@ async def agent_bookings_list_all(
         "readOnlyHint": False,
         "destructiveHint": False,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
 )
 async def agent_bookings_update_status(
@@ -153,18 +161,16 @@ async def agent_bookings_update_status(
             if not booking:
                 return not_found_response("Booking", booking_id)
 
-            # Update booking status
-            from app.schemas.booking import BookingUpdate
-            update_data = BookingUpdate(booking_status=status.lower())
+            booking.booking_status = BookingStatus(status.lower())
             if notes:
-                update_data.notes = notes
-
-            updated = await booking_svc.update_booking(db, booking_id, update_data)
+                booking.internal_notes = notes
+            await db.flush()
+            await db.refresh(booking)
             await db.commit()
 
             return MCPResponse.success({
                 "message": f"Booking status updated to {status}",
-                "booking": serialize_booking(updated) if updated else None,
+                "booking": serialize_booking(booking),
             }).model_dump()
     except AuthRequiredError:
         raise

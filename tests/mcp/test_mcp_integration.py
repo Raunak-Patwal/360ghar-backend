@@ -6,6 +6,7 @@ Tests the full flow from HTTP request to tool execution.
 
 from __future__ import annotations
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -365,6 +366,41 @@ class TestMCPOAuthTokenStore:
         assert token_data["scope"] == "mcp:read mcp:write"
 
     @pytest.mark.asyncio
+    async def test_store_tokens_discards_malformed_user_token_references(self):
+        """Stale malformed user token references should not break token issuance."""
+        from app.core.cache import get_cache_manager
+        from app.services.oauth_token_store import oauth_token_store
+
+        cache = get_cache_manager()
+        user_id = "user_malformed_token_refs"
+        user_tokens_key = oauth_token_store._key("user_tokens", user_id)
+        await cache.set(
+            user_tokens_key,
+            [
+                "not-a-token-reference",
+                {"created_at": 0, "access_token": "expired"},
+                {"created_at": time.time(), "access_token": "existing"},
+            ],
+            ttl=60,
+        )
+
+        result = await oauth_token_store.store_oauth_tokens(
+            access_token="access_token_malformed_refs_no_dots_longer_than_40",
+            refresh_token="refresh_token_malformed_refs_no_dots_longer_than_40",
+            user_id=user_id,
+            scope="mcp:read mcp:write",
+            client_id="test_client",
+        )
+
+        assert result is True
+        references = await cache.get(user_tokens_key)
+        assert isinstance(references, list)
+        assert all(isinstance(token, dict) for token in references)
+        assert references[-1]["access_token"] == (
+            "access_token_malformed_refs_no_dots_longer_than_40"
+        )
+
+    @pytest.mark.asyncio
     async def test_revoke_token(self):
         """Test token revocation."""
         from app.services.oauth_token_store import oauth_token_store
@@ -546,14 +582,14 @@ class TestMCPEndToEnd:
 
         mock_user_obj = MockUser()
 
-        with patch("app.mcp.admin.agent._get_user", new_callable=AsyncMock) as mock_user:
+        with patch("app.mcp.admin.agent_tools.properties._get_user", new_callable=AsyncMock) as mock_user:
             mock_user.return_value = mock_user_obj
 
             # list_managed_properties is in app.services.pm_properties
             with patch("app.services.pm_properties.list_managed_properties", new_callable=AsyncMock) as mock_list:
                 mock_list.return_value = ([], None, None)
 
-                with patch("app.mcp.admin.agent.get_db") as mock_db:
+                with patch("app.mcp.admin.agent_tools.properties.get_db") as mock_db:
                     mock_db.return_value = AsyncIteratorMock([MagicMock()])
 
                     # List properties - admin server returns dict via MCPResponse

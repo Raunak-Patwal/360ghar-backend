@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.config import settings
+from app.core.db_resilience import apply_statement_timeout, execute_with_transient_retry
 from app.core.exceptions import (
     BadRequestException,
     BookingConflictError,
@@ -19,7 +20,7 @@ from app.models.enums import BookingStatus, PaymentStatus
 from app.models.properties import Property
 from app.models.users import User
 from app.schemas.booking import BookingCreate, BookingPayment, BookingReview, BookingUpdate
-from app.schemas.pagination import keyset_filter, keyset_payload, keyset_sort_value
+from app.schemas.pagination import keyset_filter, trim_keyset_lookahead
 
 logger = get_logger(__name__)
 
@@ -110,19 +111,33 @@ async def get_user_bookings(
     with_total: bool = False,
 ) -> tuple[list, dict | None, int | None]:
     """Get all bookings for a user (keyset-paginated)."""
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     stmt = select(Booking).where(Booking.user_id == user_id)
     count_total = None
     if with_total:
-        count_total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(count_stmt),
+            operation_name="booking_user_list_count",
+        )
+        count_total = count_result.scalar_one()
     predicate = keyset_filter(Booking.created_at, Booking.id, cursor_payload, descending=True)
     if predicate is not None:
         stmt = stmt.where(predicate)
     stmt = stmt.order_by(Booking.created_at.desc(), Booking.id.desc()).limit(limit + 1)
-    rows = list((await db.execute(stmt)).scalars().all())
-    next_payload = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].created_at), rows[-1].id)
+    result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(stmt),
+        operation_name="booking_user_list_query",
+    )
+    rows = list(result.scalars().all())
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda booking: booking.created_at,
+        item_id=lambda booking: booking.id,
+    )
     return rows, next_payload, count_total
 
 async def get_user_upcoming_bookings(
@@ -133,6 +148,7 @@ async def get_user_upcoming_bookings(
     with_total: bool = False,
 ) -> tuple[list, dict | None, int | None]:
     """Get upcoming bookings for a user (keyset-paginated)."""
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     now = datetime.now(timezone.utc)
     stmt = select(Booking).where(
         Booking.user_id == user_id,
@@ -141,16 +157,29 @@ async def get_user_upcoming_bookings(
     )
     count_total = None
     if with_total:
-        count_total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(count_stmt),
+            operation_name="booking_upcoming_list_count",
+        )
+        count_total = count_result.scalar_one()
     predicate = keyset_filter(Booking.check_in_date, Booking.id, cursor_payload, descending=False)
     if predicate is not None:
         stmt = stmt.where(predicate)
     stmt = stmt.order_by(Booking.check_in_date.asc(), Booking.id.asc()).limit(limit + 1)
-    rows = list((await db.execute(stmt)).scalars().all())
-    next_payload = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].check_in_date), rows[-1].id)
+    result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(stmt),
+        operation_name="booking_upcoming_list_query",
+    )
+    rows = list(result.scalars().all())
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda booking: booking.check_in_date,
+        item_id=lambda booking: booking.id,
+    )
     return rows, next_payload, count_total
 
 async def get_user_past_bookings(
@@ -161,6 +190,7 @@ async def get_user_past_bookings(
     with_total: bool = False,
 ) -> tuple[list, dict | None, int | None]:
     """Get past bookings for a user (keyset-paginated)."""
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     now = datetime.now(timezone.utc)
     stmt = select(Booking).where(
         Booking.user_id == user_id,
@@ -168,16 +198,29 @@ async def get_user_past_bookings(
     )
     count_total = None
     if with_total:
-        count_total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(count_stmt),
+            operation_name="booking_past_list_count",
+        )
+        count_total = count_result.scalar_one()
     predicate = keyset_filter(Booking.check_out_date, Booking.id, cursor_payload, descending=True)
     if predicate is not None:
         stmt = stmt.where(predicate)
     stmt = stmt.order_by(Booking.check_out_date.desc(), Booking.id.desc()).limit(limit + 1)
-    rows = list((await db.execute(stmt)).scalars().all())
-    next_payload = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].check_out_date), rows[-1].id)
+    result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(stmt),
+        operation_name="booking_past_list_query",
+    )
+    rows = list(result.scalars().all())
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda booking: booking.check_out_date,
+        item_id=lambda booking: booking.id,
+    )
     return rows, next_payload, count_total
 
 async def update_booking(db: AsyncSession, booking_id: int, booking_update: BookingUpdate):
@@ -357,9 +400,13 @@ async def calculate_pricing(db: AsyncSession, property_id: int, check_in_date: d
     if nights <= 0:
         return {"error": "Invalid date range"}
 
-    # Choose a per-night rate: prefer daily_rate, else fall back to base_price
-    per_night_rate = property_obj.daily_rate if property_obj.daily_rate is not None else property_obj.base_price
-    per_night_rate = float(per_night_rate or 0.0)
+   # Choose a per-night rate: prefer daily_rate, else derive from monthly_rent ÷ 30, else fall back to base_price ÷ 30
+    if property_obj.daily_rate is not None:
+        per_night_rate = float(property_obj.daily_rate)
+    elif property_obj.monthly_rent is not None:
+        per_night_rate = float(property_obj.monthly_rent) / 30
+    else:
+        per_night_rate = float(property_obj.base_price or 0.0) / 30
 
     if per_night_rate <= 0:
         return {"error": "Property has no valid rate configured"}
@@ -411,6 +458,7 @@ async def get_all_bookings(
     user_id: int | None = None,
 ) -> tuple[list, dict | None, int | None]:
     """Global bookings listing with optional filters and keyset pagination."""
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     Owner = aliased(User)
 
     stmt = select(Booking)
@@ -431,15 +479,28 @@ async def get_all_bookings(
 
     count_total = None
     if with_total:
-        count_total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(count_stmt),
+            operation_name="booking_all_list_count",
+        )
+        count_total = count_result.scalar_one()
 
     predicate = keyset_filter(Booking.created_at, Booking.id, cursor_payload, descending=True)
     if predicate is not None:
         stmt = stmt.where(predicate)
     stmt = stmt.order_by(Booking.created_at.desc(), Booking.id.desc()).limit(limit + 1)
-    rows = list((await db.execute(stmt)).scalars().all())
-    next_payload = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        next_payload = keyset_payload(keyset_sort_value(rows[-1].created_at), rows[-1].id)
+    result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(stmt),
+        operation_name="booking_all_list_query",
+    )
+    rows = list(result.scalars().all())
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda booking: booking.created_at,
+        item_id=lambda booking: booking.id,
+    )
     return rows, next_payload, count_total

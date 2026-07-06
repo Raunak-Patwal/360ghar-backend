@@ -3,13 +3,15 @@ Tests for core endpoints (health, config, etc.).
 """
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.exceptions import ServiceUnavailableException
 from app.models.enums import BugSeverity, BugStatus, BugType
-from app.schemas.core import BugReportResponse
+from app.schemas.core import AppVersionCheckRequest, BugReportResponse
 
 
 def create_mock_bug_report_response() -> BugReportResponse:
@@ -132,6 +134,89 @@ class TestVersionEndpoints:
             )
 
             assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_check_for_updates_returns_503_for_pool_capacity_error(self):
+        """Supabase pool exhaustion should be a retryable 503, not an unhandled 500."""
+        from app.api.api_v1.endpoints.core import check_for_updates
+
+        core_service = MagicMock()
+        with patch(
+            "app.api.api_v1.endpoints.core.check_for_updates_cached",
+            new_callable=AsyncMock,
+        ) as mock_check:
+            mock_check.side_effect = SQLAlchemyError(
+                "(psycopg.OperationalError) connection failed: FATAL: "
+                "(EMAXCONNSESSION) max clients reached in session mode"
+            )
+
+            with pytest.raises(ServiceUnavailableException) as exc_info:
+                await check_for_updates(
+                    AppVersionCheckRequest(
+                        app="flatmates",
+                        platform="android",
+                        current_version="1.0.4",
+                    ),
+                    core_service=core_service,
+                )
+
+        exc = exc_info.value
+        assert exc.status_code == 503
+        assert exc.headers == {"Retry-After": "30"}
+        assert exc.details == {
+            "error_code": "EMAXCONNSESSION",
+            "endpoint": "check_for_updates",
+        }
+
+    @pytest.mark.asyncio
+    async def test_check_for_updates_cache_key_varies_by_request_fields(self):
+        """The cached helper must not share one cache key across all version checks."""
+        from app.api.api_v1.endpoints.core import check_for_updates_cached
+
+        class RecordingCache:
+            def __init__(self):
+                self.get_keys: list[str] = []
+                self.set_keys: list[str] = []
+
+            def is_available(self) -> bool:
+                return True
+
+            async def get(self, key: str):
+                self.get_keys.append(key)
+                return None
+
+            async def set(self, key: str, value, ttl: int | None = None) -> bool:
+                self.set_keys.append(key)
+                return True
+
+        cache = RecordingCache()
+        core_service = MagicMock()
+        core_service.check_for_updates = AsyncMock(
+            return_value={
+                "update_available": False,
+                "latest_version": "1.0.4",
+                "force_update": False,
+            }
+        )
+
+        with patch("app.core.cache.get_cache_manager", return_value=cache):
+            await check_for_updates_cached(
+                core_service,
+                app="flatmates",
+                platform="android",
+                current_version="1.0.4",
+            )
+            await check_for_updates_cached(
+                core_service,
+                app="360ghar",
+                platform="android",
+                current_version="1.0.4",
+            )
+
+        assert len(cache.set_keys) == 2
+        assert cache.set_keys[0].startswith("versions:check:")
+        assert cache.set_keys[1].startswith("versions:check:")
+        assert cache.set_keys[0] != cache.set_keys[1]
 
 
 class TestBugEndpoints:

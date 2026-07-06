@@ -14,10 +14,20 @@ class TestSanitizeString:
     def test_strip_whitespace(self):
         assert ValidationUtils.sanitize_string("  hello  ") == "hello"
 
-    def test_html_escaping(self):
+    def test_html_stripping(self):
+        # HTML tags are stripped entirely (more secure than entity escaping,
+        # and preserves the plain-text content).
         result = ValidationUtils.sanitize_string("<script>alert('xss')</script>")
         assert "<script>" not in result
-        assert "&lt;script&gt;" in result
+        assert "&lt;script&gt;" not in result
+        assert result == "alert('xss')"
+
+    def test_preserves_apostrophes(self):
+        # Regression: html.escape() previously turned "O'Brien" into "O&#x27;Brien".
+        # bleach.clean strips tags but leaves the apostrophe intact.
+        result = ValidationUtils.sanitize_string("O'Brien")
+        assert "'" in result
+        assert result == "O'Brien"
 
     def test_max_length_truncation(self):
         long_str = "a" * 300

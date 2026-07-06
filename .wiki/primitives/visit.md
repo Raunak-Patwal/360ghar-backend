@@ -37,4 +37,4 @@ For `property_tour` visits, the service picks an agent using the load-balancing 
 
 ## REST and MCP surfaces
 
-The `/api/v1/visits` router covers schedule, list, get, cancel, and reschedule. The user MCP server exposes `visits_schedule`, `visits_list`, `visits_get`, and `visits_cancel`. Visit scheduling also fires an SSE `visit_updated` event for real-time UI updates.
+The `/api/v1/visits` router covers schedule, list, get, cancel, and reschedule. The user MCP server exposes `visits_schedule`, `visits_list`, `visits_get`, and `visits_cancel`. Flatmate visit scheduling queues a Supabase Realtime `visit_updated` Broadcast event for real-time UI updates.

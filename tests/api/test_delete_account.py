@@ -13,7 +13,7 @@ Both call the shared ``delete_user_account`` service which:
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from app.core.exceptions import ServiceUnavailableException
 from app.models.enums import FlatmatesProfileStatus
@@ -60,13 +60,20 @@ class TestDeleteAccountViaUsersMe:
         assert response.headers.get("retry-after") == "30"
 
     @pytest.mark.asyncio
-    async def test_supabase_error_returns_500(self, user_client: AsyncClient):
+    async def test_supabase_error_returns_500(self, user_client: AsyncClient, test_app):
+        # Starlette's ServerErrorMiddleware re-raises unhandled exceptions after
+        # sending the 500 response, so the test transport must not re-raise in
+        # order to observe the generic-exception-handler's 500 response.
+        transport = ASGITransport(app=test_app, raise_app_exceptions=False)
         with patch(
             "app.api.api_v1.endpoints.users.delete_user_account",
             new_callable=AsyncMock,
             side_effect=Exception("Unexpected error"),
         ):
-            response = await user_client.delete("/api/v1/users/me")
+            async with AsyncClient(
+                transport=transport, base_url="http://test", timeout=60.0
+            ) as client:
+                response = await client.delete("/api/v1/users/me")
 
         assert response.status_code == 500
 
@@ -81,7 +88,9 @@ class TestDeleteAccountViaAuthRoute:
 
     @pytest.mark.asyncio
     async def test_unauthenticated_returns_401(self, client: AsyncClient):
-        response = await client.post("/api/v1/auth/delete-account")
+        response = await client.post(
+            "/api/v1/auth/delete-account", json={"confirm": True}
+        )
         assert response.status_code == 401
 
     @pytest.mark.asyncio
@@ -90,7 +99,9 @@ class TestDeleteAccountViaAuthRoute:
             "app.api.api_v1.endpoints.auth.delete_user_account",
             new_callable=AsyncMock,
         ) as mock_delete:
-            response = await user_client.post("/api/v1/auth/delete-account")
+            response = await user_client.post(
+                "/api/v1/auth/delete-account", json={"confirm": True}
+            )
 
         assert response.status_code == 204
         assert response.content == b""  # No Content
@@ -106,7 +117,9 @@ class TestDeleteAccountViaAuthRoute:
                 headers={"Retry-After": "30"},
             ),
         ):
-            response = await user_client.post("/api/v1/auth/delete-account")
+            response = await user_client.post(
+                "/api/v1/auth/delete-account", json={"confirm": True}
+            )
 
         assert response.status_code == 503
 

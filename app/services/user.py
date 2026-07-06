@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import _is_failure, admin_delete_user
+from app.core.db_resilience import extract_db_error_code
 from app.core.exceptions import (
     BadRequestException,
     BaseAPIException,
@@ -162,18 +163,24 @@ async def get_or_create_user_from_supabase(
 
         inactive_user = None
 
+        # Hot path: existing active users do not need serialization. The lock
+        # below is only needed for first-time creates or duplicate-repoint work.
+        if supabase_id:
+            user = await get_user_by_supabase_id(db, supabase_id)
+            if user and user.is_active:
+                logger.debug("User already exists with ID %s", user.id)
+                return user
+
         # Serialize concurrent first-time creates for the SAME Supabase user.
         # Right after login the frontend fires several authenticated requests in
         # parallel (profile + auth-state); without this lock two of them can
         # both reach the create branch (3) below and INSERT the same new row.
         # The loser's flush raises IntegrityError, and the reconciliation below
-        # then can't see the winner's still-uncommitted row (READ COMMITTED;
-        # get_db commits only at request end) → it re-raises → the auth
-        # dependency returns a spurious 401 AUTHENTICATION_FAILED → the frontend
-        # loop. A transaction-scoped advisory lock keyed on supabase_user_id
-        # makes the loser block until the winner commits, so its lookup sees the
-        # committed row instead of racing. xact-scoped (not session-scoped) so
-        # it is safe under PgBouncer transaction pooling and released at commit.
+        # then can't see the winner's still-uncommitted row under READ COMMITTED.
+        # A transaction-scoped advisory lock keyed on supabase_user_id makes the
+        # loser block until the winner commits, so its lookup sees the committed
+        # row instead of racing. xact-scoped (not session-scoped) so it is safe
+        # under PgBouncer transaction pooling and released at commit.
         if supabase_id:
             await db.execute(
                 text("SELECT pg_advisory_xact_lock(hashtext(:sid))"),
@@ -288,6 +295,9 @@ async def get_or_create_user_from_supabase(
                 user.email_verified = True
             if phone_verified:
                 user.phone_verified = True
+            # is_verified = True when EITHER channel is confirmed.
+            if email_verified or phone_verified:
+                user.is_verified = True
         else:
             # (3) Create a new local user.
             logger.info(
@@ -306,7 +316,8 @@ async def get_or_create_user_from_supabase(
                 full_name=full_name,
                 phone=phone,
                 is_active=True,
-                is_verified=email_verified,
+                # is_verified = True when EITHER channel is confirmed.
+                is_verified=email_verified or phone_verified,
                 email_verified=email_verified,
                 phone_verified=phone_verified,
             )
@@ -350,7 +361,7 @@ async def set_last_auth_method(db: AsyncSession, user: User, method: AuthMethod)
     timestamp. Returns the refreshed user.
     """
     logger.debug("Setting last_auth_method=%s for user %s", method, user.id)
-    user.last_auth_method = method.value
+    user.last_auth_method = method
     user.last_auth_method_at = utc_now()
     await db.flush()
     await db.refresh(user)
@@ -406,6 +417,23 @@ async def delete_user_account(db: AsyncSession, user: User) -> None:
     # (mirrors the existing ``__migrated__`` convention in user reconciliation).
     user.is_active = False
     user.supabase_user_id = f"__deleted__{user.id}"
+
+    # Delete avatar from storage before nullifying the URL so we don't leave
+    # orphaned files.  Best-effort: a failure here should not abort the
+    # account deletion (the Supabase auth user is already hard-deleted).
+    if user.profile_image_url:
+        try:
+            from app.services.storage import storage_service
+
+            old_path = storage_service.extract_path_from_url(user.profile_image_url)
+            if old_path:
+                storage_service.delete_file(old_path)
+        except Exception:
+            logger.warning(
+                "Failed to delete avatar from storage for user %s during account deletion",
+                user.id,
+            )
+
     # Identity & contact PII
     user.email = None
     user.phone = None
@@ -453,20 +481,21 @@ async def delete_user_account(db: AsyncSession, user: User) -> None:
     )
 
 
-def _normalize_phone_to_e164(identifier: str) -> str:
+def _normalize_phone_to_e164(identifier: str) -> str | None:
     """Normalize a phone identifier to E.164 for matching ``auth.users.phone``.
 
-    Reuses :meth:`ValidationUtils.validate_phone` (India default +91). On a
-    malformed input it returns the stripped raw value unchanged so the
-    ``WHERE phone = :phone`` clause simply yields no match (``exists=False``),
-    mirroring the prior not-found semantics — it NEVER raises.
+    Reuses :meth:`ValidationUtils.validate_phone` (India default +91). Returns
+    ``None`` when the input cannot be parsed as a phone number so callers can
+    safely treat the identifier as non-existent instead of querying with garbage.
     """
     raw = identifier.strip()
+    if not raw:
+        return None
     try:
         normalized = ValidationUtils.validate_phone(raw)
     except ValidationException:
-        return raw
-    return normalized or raw
+        return None
+    return normalized or None
 
 
 async def get_identifier_status(db: AsyncSession, identifier: str) -> dict[str, Any]:
@@ -517,6 +546,14 @@ async def get_identifier_status(db: AsyncSession, identifier: str) -> dict[str, 
             # removeprefix strips at most one "+" so malformed input can't be
             # massaged into a valid key (lstrip would strip every "+").
             phone_value = _normalize_phone_to_e164(identifier)
+            if phone_value is None:
+                return {
+                    "exists": False,
+                    "verified": False,
+                    "has_password": False,
+                    "channel": channel,
+                    "next_step": "otp",
+                }
             phone_noplus = phone_value.removeprefix("+")
             stmt = text(
                 """
@@ -541,8 +578,11 @@ async def get_identifier_status(db: AsyncSession, identifier: str) -> dict[str, 
             channel,
             type(exc).__name__,
         )
+        error_code = extract_db_error_code(exc) or type(exc).__name__
         raise ServiceUnavailableException(
             detail="Identity provider is temporarily unavailable, please retry",
+            headers={"Retry-After": "30"},
+            details={"error_code": error_code, "channel": channel},
         ) from exc
 
     exists = row is not None
@@ -821,10 +861,11 @@ async def update_user(
                 # Ensure the agent is assigned to this user
                 if actor.agent_id is None or user.agent_id != actor.agent_id:
                     raise ForbiddenException(detail="Agent not authorized to update this user")
+                # Agents can update display and preference fields but NOT
+                # identity/contact fields (email, phone) — changing those
+                # would let an agent take over a user's account.
                 allowed_fields = {
-                    "email",
                     "full_name",
-                    "phone",
                     "profile_image_url",
                     "preferences",
                     "notification_settings",
@@ -847,6 +888,24 @@ async def update_user(
             if new_email == user.email:
                 logger.debug("Email unchanged for user %s, skipping email update", user_id)
                 del update_data["email"]
+            else:
+                # Email changed — reset email_verified so the new address
+                # must be confirmed before it is trusted.  Without this,
+                # a user could swap to an unverified address and retain
+                # the verified flag from the old one.
+                user.email_verified = False
+                logger.debug("Email changed for user %s, resetting email_verified", user_id)
+
+        # Handle phone update symmetrically: a changed phone must be
+        # re-confirmed via OTP, so reset phone_verified.  Without this a user
+        # could change their phone via PUT /users/me and keep phone_verified=True.
+        if "phone" in update_data and update_data["phone"] != user.phone:
+            user.phone_verified = False
+            logger.debug("Phone changed for user %s, resetting phone_verified", user_id)
+
+        # Recompute the aggregate is_verified flag after any per-channel reset
+        # above so it stays consistent with email_verified / phone_verified.
+        user.is_verified = bool(user.email_verified or user.phone_verified)
 
         # Apply updates
         for field, value in update_data.items():
@@ -855,7 +914,12 @@ async def update_user(
                 and value is not None
                 and not ValidationUtils.is_absolute_url(value)
             ):
-                logger.warning("Non-absolute profile_image_url for user %s: %s", user_id, value)
+                # Reject non-http(s) URLs instead of silently storing them —
+                # a ``javascript:`` / ``data:`` value would be a stored XSS
+                # vector if ever rendered in an <img src> or <a href>.
+                raise BadRequestException(
+                    detail="profile_image_url must be an absolute http(s) URL"
+                )
             setattr(user, field, value)
 
         await db.flush()

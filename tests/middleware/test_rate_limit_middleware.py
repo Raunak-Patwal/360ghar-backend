@@ -36,7 +36,6 @@ class TestRateLimitMiddleware:
             "/docs",
             "/redoc",
             "/openapi.json",
-            "/api/v1/flatmates/sse",
             "/api/v1/notifications/sse",
         ]
         for path in exempt_paths:

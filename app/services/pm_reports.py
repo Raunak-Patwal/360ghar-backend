@@ -6,6 +6,8 @@ from typing import Any
 from sqlalchemy import and_, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
+from app.core.db_resilience import apply_statement_timeout, execute_with_transient_retry
 from app.models.enums import LeaseStatus
 from app.models.pm_finance import Expense, RentPayment
 from app.models.pm_leases import Lease
@@ -25,6 +27,7 @@ async def rent_roll_report(
     limit: int = 20,
     with_total: bool = False,
 ) -> tuple[list[dict[str, Any]], dict | None, int | None]:
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     if cursor_payload is None:
         cursor_payload = {}
     offset = read_offset(cursor_payload)
@@ -35,33 +38,47 @@ async def rent_roll_report(
     if owner_ids is not None:
         stmt = stmt.where(Property.owner_id.in_(owner_ids))
 
-    # Materialize the property set in a single query so we can issue one
-    # batched lease lookup afterwards. Streaming here would hold a cursor
-    # open across the second query (an anti-pattern) and force N follow-up
-    # queries for the per-property active lease.
-    props = list((await db.execute(stmt)).scalars().all())
+    total: int | None = None
+    if with_total:
+        count_stmt = select(func.count(Property.id)).where(Property.is_managed)
+        if owner_ids is not None:
+            count_stmt = count_stmt.where(Property.owner_id.in_(owner_ids))
+        count_result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(count_stmt),
+            operation_name="pm_reports_rent_roll_count",
+        )
+        total = int(count_result.scalar_one() or 0)
 
-    total: int | None = len(props) if with_total else None
+    stmt = stmt.order_by(Property.created_at.desc(), Property.id.desc()).offset(offset).limit(limit + 1)
+    props_result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(stmt),
+        operation_name="pm_reports_rent_roll_properties",
+    )
+    props = list(props_result.scalars().all())
+    has_more = len(props) > limit
+    props = props[:limit]
 
     # Batched: one query for the newest active lease per property, instead
     # of one query per property (the original N+1 pattern).
     latest_lease: dict[int, Lease] = {}
     if props:
         prop_ids = [p.id for p in props]
-        lease_rows = (
-            (
-                await db.execute(
-                    select(Lease)
-                    .where(
-                        Lease.property_id.in_(prop_ids),
-                        Lease.status == LeaseStatus.active,
-                    )
-                    .order_by(Lease.property_id, Lease.created_at.desc())
-                )
+        lease_stmt = (
+            select(Lease)
+            .where(
+                Lease.property_id.in_(prop_ids),
+                Lease.status == LeaseStatus.active,
             )
-            .scalars()
-            .all()
+            .order_by(Lease.property_id, Lease.created_at.desc())
         )
+        lease_result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(lease_stmt),
+            operation_name="pm_reports_rent_roll_active_leases",
+        )
+        lease_rows = lease_result.scalars().all()
         # Keep only the newest active lease per property (created_at desc).
         for row in lease_rows:
             latest_lease.setdefault(row.property_id, row)
@@ -80,10 +97,8 @@ async def rent_roll_report(
             }
         )
 
-    page_items = all_items[offset: offset + limit]
-    has_more = (offset + limit) < len(all_items)
     next_payload = offset_payload(offset + limit) if has_more else None
-    return page_items, next_payload, total
+    return all_items, next_payload, total
 
 
 async def income_report(
@@ -94,6 +109,7 @@ async def income_report(
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> dict[str, Any]:
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     owner_ids = await _resolve_owner_scope(db, actor=actor, owner_id=owner_id)
     stmt = select(func.coalesce(func.sum(RentPayment.amount_paid), 0.0))
     if start is not None:
@@ -102,7 +118,12 @@ async def income_report(
         stmt = stmt.where(RentPayment.paid_at <= end)
     if owner_ids is not None:
         stmt = stmt.where(RentPayment.owner_id.in_(owner_ids))
-    total = float((await db.execute(stmt)).scalar_one() or 0.0)
+    result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(stmt),
+        operation_name="pm_reports_income",
+    )
+    total = float(result.scalar_one() or 0.0)
     return {"total_income": total, "start": start, "end": end}
 
 
@@ -114,6 +135,7 @@ async def expense_report(
     start: date | None = None,
     end: date | None = None,
 ) -> dict[str, Any]:
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     owner_ids = await _resolve_owner_scope(db, actor=actor, owner_id=owner_id)
     stmt = select(func.coalesce(func.sum(Expense.amount), 0.0))
     if start is not None:
@@ -122,7 +144,12 @@ async def expense_report(
         stmt = stmt.where(Expense.expense_date <= end)
     if owner_ids is not None:
         stmt = stmt.where(Expense.owner_id.in_(owner_ids))
-    total = float((await db.execute(stmt)).scalar_one() or 0.0)
+    result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(stmt),
+        operation_name="pm_reports_expenses",
+    )
+    total = float(result.scalar_one() or 0.0)
     return {"total_expenses": total, "start": start, "end": end}
 
 
@@ -134,18 +161,44 @@ async def pnl_report(
     start: date | None = None,
     end: date | None = None,
 ) -> dict[str, Any]:
-    income = await income_report(
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
+    owner_ids = await _resolve_owner_scope(db, actor=actor, owner_id=owner_id)
+
+    income_start = datetime.combine(start, datetime.min.time()) if start else None
+    income_end = datetime.combine(end, datetime.max.time()) if end else None
+
+    income_stmt = select(func.coalesce(func.sum(RentPayment.amount_paid), 0.0))
+    if income_start is not None:
+        income_stmt = income_stmt.where(RentPayment.paid_at >= income_start)
+    if income_end is not None:
+        income_stmt = income_stmt.where(RentPayment.paid_at <= income_end)
+    if owner_ids is not None:
+        income_stmt = income_stmt.where(RentPayment.owner_id.in_(owner_ids))
+
+    expense_stmt = select(func.coalesce(func.sum(Expense.amount), 0.0))
+    if start is not None:
+        expense_stmt = expense_stmt.where(Expense.expense_date >= start)
+    if end is not None:
+        expense_stmt = expense_stmt.where(Expense.expense_date <= end)
+    if owner_ids is not None:
+        expense_stmt = expense_stmt.where(Expense.owner_id.in_(owner_ids))
+
+    income_result = await execute_with_transient_retry(
         db,
-        actor=actor,
-        owner_id=owner_id,
-        start=datetime.combine(start, datetime.min.time()) if start else None,
-        end=datetime.combine(end, datetime.max.time()) if end else None,
+        lambda: db.execute(income_stmt),
+        operation_name="pm_reports_pnl_income",
     )
-    expenses = await expense_report(db, actor=actor, owner_id=owner_id, start=start, end=end)
-    net = float(income["total_income"]) - float(expenses["total_expenses"])
+    expense_result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(expense_stmt),
+        operation_name="pm_reports_pnl_expenses",
+    )
+    total_income = float(income_result.scalar_one() or 0.0)
+    total_expenses = float(expense_result.scalar_one() or 0.0)
+    net = total_income - total_expenses
     return {
-        "total_income": income["total_income"],
-        "total_expenses": expenses["total_expenses"],
+        "total_income": total_income,
+        "total_expenses": total_expenses,
         "net_income": net,
         "start": start,
         "end": end,
@@ -158,20 +211,24 @@ async def occupancy_report(
     actor: User,
     owner_id: int | None = None,
 ) -> dict[str, int]:
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     owner_ids = await _resolve_owner_scope(db, actor=actor, owner_id=owner_id)
-
-    total_stmt = select(func.count(Property.id)).where(Property.is_managed)
-    if owner_ids is not None:
-        total_stmt = total_stmt.where(Property.owner_id.in_(owner_ids))
-    total = int((await db.execute(total_stmt)).scalar_one() or 0)
 
     active_lease_exists = exists(
         select(1).where(and_(Lease.property_id == Property.id, Lease.status == LeaseStatus.active))
     )
-    occupied_stmt = select(func.count(Property.id)).where(Property.is_managed, active_lease_exists)
+    occupancy_stmt = select(
+        func.count(Property.id),
+        func.count(Property.id).filter(active_lease_exists),
+    ).where(Property.is_managed)
     if owner_ids is not None:
-        occupied_stmt = occupied_stmt.where(Property.owner_id.in_(owner_ids))
-    occupied = int((await db.execute(occupied_stmt)).scalar_one() or 0)
+        occupancy_stmt = occupancy_stmt.where(Property.owner_id.in_(owner_ids))
+    result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(occupancy_stmt),
+        operation_name="pm_reports_occupancy",
+    )
+    total, occupied = (int(value or 0) for value in result.one())
 
     return {"total": total, "occupied": occupied, "vacant": max(total - occupied, 0)}
 
@@ -182,9 +239,15 @@ async def maintenance_report(
     actor: User,
     owner_id: int | None = None,
 ) -> dict[str, int]:
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     owner_ids = await _resolve_owner_scope(db, actor=actor, owner_id=owner_id)
     stmt = select(func.count(MaintenanceRequest.id))
     if owner_ids is not None:
         stmt = stmt.where(MaintenanceRequest.owner_id.in_(owner_ids))
-    total = int((await db.execute(stmt)).scalar_one() or 0)
+    result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(stmt),
+        operation_name="pm_reports_maintenance",
+    )
+    total = int(result.scalar_one() or 0)
     return {"total_requests": total}

@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
+from app.core.exceptions import FileTooLargeException
+
 
 class TestUploadFileEndpoint:
     """Tests for POST /api/v1/upload/ endpoint."""
@@ -100,3 +102,31 @@ class TestUploadFileEndpoint:
             assert response.status_code == 200
             payload = response.json()
             assert payload["public_url"].endswith("document.pdf")
+
+    @pytest.mark.asyncio
+    async def test_upload_file_oversize_returns_413(self, authenticated_client: AsyncClient):
+        """Test oversized direct upload surfaces as HTTP 413."""
+        with patch("app.api.api_v1.endpoints.upload.storage_service") as mock_storage:
+            mock_storage.upload_and_track = AsyncMock(
+                side_effect=FileTooLargeException(detail="File too large. Maximum size is 50MB")
+            )
+
+            files = {"file": ("huge.jpg", BytesIO(b"oversize"), "image/jpeg")}
+            response = await authenticated_client.post("/api/v1/upload/", files=files)
+
+            assert response.status_code == 413
+            assert response.json()["error"]["code"] == "FILE_TOO_LARGE"
+
+    @pytest.mark.asyncio
+    async def test_upload_batch_oversize_returns_413(self, authenticated_client: AsyncClient):
+        """Test oversized batch member surfaces as HTTP 413."""
+        with patch("app.api.api_v1.endpoints.upload.storage_service") as mock_storage:
+            mock_storage.upload_batch = AsyncMock(
+                side_effect=FileTooLargeException(detail="File too large. Maximum size is 50MB")
+            )
+
+            files = [("files", ("huge.jpg", BytesIO(b"oversize"), "image/jpeg"))]
+            response = await authenticated_client.post("/api/v1/upload/batch", files=files)
+
+            assert response.status_code == 413
+            assert response.json()["error"]["code"] == "FILE_TOO_LARGE"

@@ -63,6 +63,7 @@ class TestCreateProperty:
             mock_repo = MagicMock()
             mock_property = MagicMock()
             mock_repo.create = AsyncMock(return_value=mock_property)
+            mock_repo.get_property_with_owner = AsyncMock(return_value=mock_property)
             mock_repo_class.return_value = mock_repo
 
             with patch("app.services.property.crud.PropertyCacheManager.invalidate_property_caches", new_callable=AsyncMock):
@@ -287,13 +288,14 @@ class TestUpdateProperty:
             with patch.object(db_session, "flush", new_callable=AsyncMock):
                 with patch.object(db_session, "refresh", new_callable=AsyncMock):
                     with patch("app.services.property.crud.PropertyCacheManager.invalidate_property_caches", new_callable=AsyncMock):
-                        with patch("app.services.property.crud.PropertySchema.model_validate", return_value=mock_result):
-                            result = await update_property(
-                                db_session, test_property.id, update_data, test_user
-                            )
+                        with patch("app.services.property.crud.PropertyCacheManager.invalidate_property_detail_cache", new_callable=AsyncMock):
+                            with patch("app.services.property.crud.PropertySchema.model_validate", return_value=mock_result):
+                                result = await update_property(
+                                    db_session, test_property.id, update_data, test_user
+                                )
 
-                            assert result is not None
-                            assert result.title == "Updated Title"
+                                assert result is not None
+                                assert result.title == "Updated Title"
 
     @pytest.mark.asyncio
     async def test_update_property_rejects_pg_with_non_rent_purpose(
@@ -353,7 +355,8 @@ class TestDeleteProperty:
 
         # Mock the cache invalidation to avoid MagicMock await issues
         with patch("app.services.property.crud.PropertyCacheManager.invalidate_property_caches", new_callable=AsyncMock):
-            result = await delete_property(db_session, property_id, test_user)
+            with patch("app.services.property.crud.PropertyCacheManager.invalidate_property_detail_cache", new_callable=AsyncMock):
+                result = await delete_property(db_session, property_id, test_user)
 
         assert result is True
 

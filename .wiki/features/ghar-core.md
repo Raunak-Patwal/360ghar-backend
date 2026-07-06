@@ -71,7 +71,7 @@ Swipes are idempotent: `record_swipe` looks up an existing `UserSwipe` row by `(
 
 - **MCP servers**: discovery, visit, and owner tools in `app/mcp/user/discovery.py`, `visits.py`, `owner.py` call the same service functions. The [AI agent](ai-agent.md) guest tools wrap `get_unified_properties_optimized`.
 - **Cache**: `PropertyCacheManager` from [core cache](../systems/cache-subsystem.md) caches property detail and anonymous recommendations (24h TTL on `recs:anon:v1:l{limit}`).
-- **SSE**: visit status changes in flatmate context emit `SSE_VISIT_UPDATED` via the [SSE bus](../systems/core-cross-cutting.md).
+- **Flatmates realtime**: visit status changes in flatmate context queue `visit_updated` via the [flatmates realtime publisher](../systems/core-cross-cutting.md).
 - **Vector sync**: `property_embeddings` rows are kept in sync by the [vector sync scheduler](../systems/vector-search.md).
 - **Auth**: `get_current_user_optional` lets anonymous users browse; `get_current_active_user` is required for swipes, visits, and the `/me` endpoint.
 

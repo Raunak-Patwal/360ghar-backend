@@ -56,7 +56,7 @@ class AmenityInDB(AmenityBase):
 
 
 class Amenity(AmenityInDB):
-    pass
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PropertyAmenityCreate(BaseModel):

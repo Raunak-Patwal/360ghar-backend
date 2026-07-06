@@ -73,20 +73,20 @@ The backend exposes two MCP servers from a single FastAPI app. Both use `AppsSDK
 | `/mcp` | `ghar360-user` | Owners, tenants, seekers, guests |
 | `/mcp-admin` | `ghar360-admin` | Agents, platform admins |
 
-Transport is streamable HTTP (stateless, binary JSON-RPC), not SSE. The protocol version advertised is `2025-11-25`, with the `io.modelcontextprotocol/ui` experimental capability signaling support for interactive HTML widgets. Widget resources are registered with a dual-metadata strategy: standard MCP keys (`ui.resourceUri`, `ui.visibility`) alongside OpenAI-compatible aliases (`openai/outputTemplate`, `openai/widgetAccessible`), so the same server renders widgets on any MCP host. The bridge in `chatgpt-widgets/src/utils/bridge.ts` detects the host at load time and adapts.
+Transport is streamable HTTP (stateless, binary JSON-RPC), not SSE. The protocol version advertised is `2025-11-25`, with the `io.modelcontextprotocol/ui` experimental capability signaling support for interactive HTML widgets. Widget resources are registered with stable `ui://widget/*.html` URIs plus content-hashed `?v=<hash>` aliases, and tool metadata uses a dual-metadata strategy: standard MCP keys (`ui.resourceUri`, `ui.visibility`) alongside OpenAI-compatible aliases (`openai/outputTemplate`, `openai/widgetAccessible`). The bridge in `chatgpt-widgets/src/utils/bridge.ts` detects the host at load time and adapts.
 
 ## Realtime and streaming
 
 Two realtime channels run alongside REST:
 
 - **WebSocket** (`app/core/websocket.py`) — job progress and notification streams at `ws://.../ws/jobs/{job_id}` and `ws://.../ws/notifications`.
-- **SSE event bus** (`app/core/sse.py`) — per-user pub/sub consumed at `GET /api/v1/flatmates/sse`. Services call `await sse_bus.emit(user_id, event)` after a DB commit. Event types: `new_match`, `new_message`, `conversation_updated`, `visit_updated`, `listing_status_changed`, `new_notification`.
+- **Flatmates realtime** (`app/services/flatmates/realtime.py`) — Supabase private Broadcast publisher. Services queue events on the SQLAlchemy session and publish after commit to `flatmates:user:{local_user_id}`. Event types: `new_match`, `new_message`, `conversation_updated`, `visit_updated`, `listing_status_changed`, `new_notification`.
 
 Streaming endpoints release the main-pool DB session before streaming and use the background pool (`get_bg_db`) for any tool calls, so held-open connections don't consume request-pool slots.
 
 ## Background work
 
-A single `AsyncIOScheduler` from `app/infrastructure/scheduler.py` is registered in lifespan. Four job families attach to it: blog auto-publish, notifications, vector sync, and data hub scraping. No module creates its own scheduler instance. When `SERVERLESS_ENABLED=True`, schedulers are skipped entirely, both DB engines switch to `NullPool`, and the cache falls back to in-memory so the app can scale to zero behind PgBouncer.
+A single `AsyncIOScheduler` from `app/infrastructure/scheduler.py` is registered in lifespan. Four job families attach to it: blog auto-publish, notifications, vector sync, and data hub scraping. No module creates its own scheduler instance. When `SERVERLESS_ENABLED=True`, schedulers are skipped entirely, both DB engines switch to `NullPool`, and the cache falls back to in-memory so the app can scale to zero behind Supabase transaction pooling.
 
 ## Database and storage
 

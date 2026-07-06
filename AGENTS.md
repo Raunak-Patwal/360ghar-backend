@@ -1,5 +1,7 @@
 # 360Ghar Backend Operating Contract
 
+> **Canonical guide: [CLAUDE.md](./CLAUDE.md).** Read it first for stack, structure, commands, and conventions.
+
 This repository uses repo-local docs as the source of truth for contributors and agents. The goal is to keep architecture, contribution rules, and test expectations explicit and lightly enforced.
 
 ## Operating Docs
@@ -10,11 +12,15 @@ This repository uses repo-local docs as the source of truth for contributors and
 - [Machine Contract Inventory](docs/repo-contract.json)
 
 ## Build And Validation
+
+**Default: run the server directly against the dev env — no Docker.** See CLAUDE.md › *Testing without Docker*.
+
 ```bash
-docker-compose up -d db redis
-uv run python run.py
-uv run pytest tests/ -v
+uv run python run.py            # dev env (.env.dev → hosted Supabase), API on :3600
+uv run pytest tests/ -v         # needs a local Postgres+PostGIS+pgvector at TEST_DATABASE_URL — NEVER the Supabase URL
 ```
+
+`docker-compose up -d db redis` only provisions a throwaway Postgres+Redis for local `pytest` — it is not needed for server-run testing.
 
 > **Note:** Dev dependencies (pytest, ruff, mypy) are in the `dev` optional group. Install with `uv sync --extra dev`.
 
@@ -39,6 +45,14 @@ The script tracks applied versions in a `schema_migrations` table, making it ide
 - **Before destructive operations**: Always confirm the target database is a development environment, not production. Use `--dry-run` flags where available to preview changes.
 - **New seeded models**: When adding a new model that is populated by seed scripts, either add an `is_seed_data` boolean column (with `server_default=text("false")`) or ensure a FK cascade chain links it back to a parent with `is_seed_data`.
 
+## Hosted Supabase Test Runs
+
+- Use Supabase itself for integration/QA tests when local Postgres cannot reproduce hosted behavior, but only against a clearly identified development or staging Supabase project. Never point tests, seeders, cleanup scripts, or ad-hoc SQL at the production/live Supabase database unless the user explicitly asks and approves the exact operation.
+- Before running tests against hosted Supabase, verify the active env file and database URL. Do not use `.env.prod` for test runs. Prefer a dedicated `TEST_DATABASE_URL` or non-production env file whose project name makes the target obvious.
+- Test data written to Supabase must be scoped for cleanup: set `is_seed_data = true` where the model supports it, add a unique test marker such as `test_run_id`, slug/email/phone prefixes like `agent_test_`, or use dedicated test users. Do not update rows that lack a test marker or seed flag.
+- Prefer transaction rollback for automated tests. If committed writes are needed to test real Supabase behavior, record the inserted IDs/markers and clean them up at the end of the run using exact `WHERE` predicates. Run a count/select preview before cleanup and never use bare `DELETE`, `TRUNCATE`, or `DROP`.
+- After hosted Supabase testing, clean test data before reporting completion. If cleanup fails or cannot be verified, report the remaining marker/IDs and stop rather than attempting broad destructive cleanup.
+
 ## Layering Rules
 - HTTP endpoints in `app/api/api_v1/endpoints/` validate input, enforce auth through dependencies, and delegate business logic to `app/services/`.
 - REST route composition lives in `app/api/api_v1/api.py`; `app/factory.py` is the composition root, while app wiring, middleware, lifespan, and MCP mounts live in `app/infrastructure/`.
@@ -49,7 +63,7 @@ The script tracks applied versions in a `schema_migrations` table, making it ide
 - Shared MCP tool business logic lives in `app/mcp/tool_ops/`. These functions are called by both MCP servers (`user_server.py`, `app/mcp/admin/`) and the AI agent tool bridge (`tool_bridge.py`) — do not duplicate this logic.
 - AI-agent orchestration lives in `app/services/ai_agent/`. Tool registration and model streaming belong there, but tool behavior should still call shared service-layer code.
 - Notification dispatch flows through `app/services/notification_config.py` (type registry with channel, priority, frequency caps) → `app/services/notification_dispatcher.py` (multi-channel send) → `app/services/notifications/` (CRUD + Supabase push, sub-modules: crud, fcm, helpers, push) → `app/services/push_notification.py` (FCM). New notification types must be registered in the `NOTIFICATION_TYPES` dict.
-- SSE real-time events flow through `SSEEventBus` in `app/core/sse.py`. Service methods call `await sse_bus.emit(user_id, event_dict)` after DB commit. The SSE endpoint is `GET /api/v1/flatmates/sse`. Event types: `new_match`, `new_message`, `conversation_updated`, `visit_updated`, `listing_status_changed`, `new_notification`. New SSE event types or subscriptions must update CLAUDE.md and AGENTS.md.
+- Flatmates app-wide real-time events flow through Supabase Realtime private Broadcast channels via `app/services/flatmates/realtime.py`. Service methods queue events on the SQLAlchemy session and publish only after commit. Clients subscribe to `flatmates:user:{local_user_id}` with Realtime Authorization policies on `realtime.messages`. Event types: `new_match`, `new_message`, `conversation_updated`, `visit_updated`, `listing_status_changed`, `new_notification`. New flatmates realtime event types or subscriptions must update CLAUDE.md and AGENTS.md.
 - OAuth token/code persistence uses `app/services/oauth_token_store.py` backed by CacheManager. Token stores require a real (non-null) cache backend in production.
 - `app/modules/` is reserved for future physical domain entrypoints. Do not recreate shim-only re-export packages; use the current concrete homes (`app/api`, `app/services`, `app/models`, `app/schemas`, `app/repositories`, `app/mcp`) until a domain is migrated.
 - Cross-cutting infrastructure belongs in `app/infrastructure/`, `app/core/`, `app/middleware/`, and `app/vector/`.
@@ -66,7 +80,7 @@ The script tracks applied versions in a `schema_migrations` table, making it ide
 - New service modules must follow existing naming conventions, keep I/O async when touching the database, and be registered in `docs/repo-contract.json`.
 - New MCP tools, widget bindings, or AI-agent tool bridges must update the architecture and terminology docs when they add a new public surface or execution pattern.
 - New background jobs or schedulers must be wired through `app/infrastructure/lifespan.py` startup, register their jobs on the shared scheduler from `app/infrastructure/scheduler.py`, and be documented in the architecture contract. Do not create new `AsyncIOScheduler` instances — use `get_scheduler()` to add jobs.
-- Do not add new dependencies without checking current upstream documentation and compatibility with Python 3.10+, FastAPI, SQLAlchemy 2.x, and Pydantic v2.
+- Do not add new dependencies without checking current upstream documentation and compatibility with Python 3.12+, FastAPI, SQLAlchemy 2.x, and Pydantic v2.
 - New outbound HTTP call sites must use the shared httpx clients from `app/core/http.py` (`get_scraper_client()`, `get_blog_client()`, `get_general_client()`, `get_supabase_auth_http_client()`) instead of creating ephemeral `async with httpx.AsyncClient()` per request. Use per-request `timeout=` overrides when the call needs a different timeout than the client default.
 
 ## Use Latest Versions & References

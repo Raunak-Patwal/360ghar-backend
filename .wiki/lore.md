@@ -22,11 +22,11 @@ March 28, 2026 is the data hub day. A base scraper class lands, followed by 11 s
 
 ## Era 5: Major refactor (May 2026)
 
-May 2026 is the biggest structural month. Monolith service files are decomposed into packages: flatmates becomes a seven-module package, the MCP server is restructured, and the data hub is improved. Database pool tuning and blog enhancements ride along. The flatmates social feature, with swipe matching, conversations, moderation, and SSE event delivery, is the headline addition.
+May 2026 is the biggest structural month. Monolith service files are decomposed into packages: flatmates becomes a seven-module package, the MCP server is restructured, and the data hub is improved. Database pool tuning and blog enhancements ride along. The flatmates social feature, with swipe matching, conversations, moderation, and realtime event delivery, is the headline addition.
 
 ## Era 6: Flatmates deepening (May to June 2026)
 
-Through late May and June 2026 the flatmates module thickens: interactions, super likes, moderation flows, profile filters, and property and move-in filters. The SSE event bus settles into its current set of event types. The data hub also picks up improvements in this window.
+Through late May and June 2026 the flatmates module thickens: interactions, super likes, moderation flows, profile filters, and property and move-in filters. Flatmates realtime settles into per-user event types and later moves to Supabase Realtime private Broadcast channels. The data hub also picks up improvements in this window.
 
 ## Era 7: API standardization (June 2026, ongoing)
 

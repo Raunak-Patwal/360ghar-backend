@@ -1,14 +1,20 @@
 """
 Tests for app.mcp.errors module — MCPErrorCode, MCPResponse, helper functions.
 """
+from __future__ import annotations
 
+from unittest.mock import MagicMock
 
+from app.core.exceptions import PropertyNotFoundException
 from app.mcp.errors import (
     MCPError,
     MCPErrorCode,
     MCPResponse,
     internal_error_response,
     invalid_input_response,
+    map_mcp_exception,
+    mcp_exception_payload,
+    mcp_exception_response,
     not_found_response,
 )
 
@@ -122,3 +128,62 @@ class TestHelperFunctions:
     def test_internal_error_custom_message(self):
         result = internal_error_response("Database timeout")
         assert result["error"]["message"] == "Database timeout"
+
+
+class TestExceptionMapper:
+    """Tests for centralized MCP exception mapping."""
+
+    def test_generic_exception_response_redacts_raw_message(self):
+        logger = MagicMock()
+        exc = RuntimeError("database password=secret-token")
+
+        result = mcp_exception_response(
+            exc,
+            logger=logger,
+            tool_name="test_tool",
+            fallback_message="Failed safely.",
+        )
+
+        assert result["ok"] is False
+        assert result["error"]["code"] == MCPErrorCode.INTERNAL_ERROR.value
+        assert result["error"]["message"] == "Failed safely."
+        assert "secret-token" not in str(result)
+        logger.error.assert_called_once()
+        assert logger.error.call_args.kwargs["exc_info"] is True
+        assert logger.error.call_args.kwargs["extra"]["error"] == str(exc)
+
+    def test_generic_exception_payload_redacts_raw_message(self):
+        logger = MagicMock()
+
+        result = mcp_exception_payload(
+            RuntimeError("raw upstream timeout: host=db.internal"),
+            logger=logger,
+            tool_name="test_chatgpt_tool",
+            fallback_message="Please try again.",
+        )
+
+        assert result == {
+            "error": True,
+            "code": MCPErrorCode.INTERNAL_ERROR.value,
+            "message": "Please try again.",
+        }
+        assert "db.internal" not in str(result)
+        logger.error.assert_called_once()
+
+    def test_base_api_exception_uses_public_safe_detail(self):
+        mapped = map_mcp_exception(
+            PropertyNotFoundException(property_id=42),
+            fallback_message="Failed safely.",
+        )
+
+        assert mapped.code == MCPErrorCode.NOT_FOUND
+        assert mapped.message == "Property not found"
+
+    def test_value_error_is_redacted_as_invalid_input(self):
+        mapped = map_mcp_exception(
+            ValueError("raw parser details"),
+            fallback_message="Failed safely.",
+        )
+
+        assert mapped.code == MCPErrorCode.INVALID_INPUT
+        assert mapped.message == "Invalid input."

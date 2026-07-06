@@ -72,7 +72,7 @@ class TestCreateDocument:
         actor = User(id=1, supabase_user_id="abc", role=UserRole.admin.value, is_active=True)
 
         with patch("app.services.pm_documents.assert_can_manage_owner_portfolio", new_callable=AsyncMock):
-            doc = await create_document(
+            await create_document(
                 db,
                 actor=actor,
                 owner_id=1,

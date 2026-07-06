@@ -159,7 +159,7 @@ class TestPropertyListingFlow:
 
         # Step 2: List properties
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_list:
             mock_list.return_value = (
@@ -180,7 +180,7 @@ class TestPropertySearchFlow:
     async def test_search_properties_by_location(self, client: AsyncClient):
         """Test searching properties by location."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_search:
             mock_search.return_value = ([], None, 0)
@@ -200,7 +200,7 @@ class TestPropertySearchFlow:
     async def test_search_properties_by_filters(self, client: AsyncClient):
         """Test searching with multiple filters."""
         with patch(
-            "app.api.api_v1.endpoints.properties.get_unified_properties_optimized",
+            "app.api.api_v1.endpoints.properties.run_property_search",
             new_callable=AsyncMock,
         ) as mock_search:
             mock_search.return_value = ([], None, 0)

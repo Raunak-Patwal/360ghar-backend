@@ -84,6 +84,7 @@ async def _dispatch_moderation_notification(
         body=body,
         data={"route": deep_link},
         deep_link=deep_link,
+        realtime_publish_immediately=True,
     )
 
 
@@ -187,22 +188,22 @@ async def moderate_listing(
     await db.commit()
     await db.refresh(listing)
 
-    # --- SSE event to listing owner ---
-    try:
-        from app.core.sse import SSE_PROPERTY_UPDATE, sse_bus
+    from app.services.flatmates.realtime import (
+        EVENT_LISTING_STATUS_CHANGED,
+        FlatmatesRealtimeEvent,
+        publish_flatmates_realtime_event,
+    )
 
-        await sse_bus.emit(
-            listing.owner_id,
-            {
-                "type": SSE_PROPERTY_UPDATE,
-                "data": {
-                    "property_id": listing.id,
-                    "change_type": moderation_status,
-                },
+    await publish_flatmates_realtime_event(
+        FlatmatesRealtimeEvent(
+            user_id=listing.owner_id,
+            event_type=EVENT_LISTING_STATUS_CHANGED,
+            payload={
+                "property_id": listing.id,
+                "change_type": moderation_status,
             },
         )
-    except Exception:  # noqa: BLE001
-        logger.warning("SSE emit for listing_status_changed failed (best-effort)")
+    )
 
     from app.services.push_notification import notify_listing_approved
 
@@ -212,6 +213,7 @@ async def moderate_listing(
             recipient_db_id=listing.owner_id,
             listing_title=listing.title or "Your listing",
             boosted_for_hours=24 if approval_boost_granted else None,
+            realtime_publish_immediately=True,
         )
     elif payload.action == "reject":
         await _dispatch_moderation_notification(

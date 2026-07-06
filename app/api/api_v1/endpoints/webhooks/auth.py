@@ -25,6 +25,7 @@ from app.core.exceptions import RateLimitException
 from app.core.logging import get_logger
 from app.middleware.rate_limit import EndpointRateLimiter
 from app.services.auth.session_revocation import revoke_all_user_sessions
+from app.services.auth_user_cache import invalidate_auth_user
 
 logger = get_logger(__name__)
 
@@ -98,4 +99,5 @@ async def password_changed_webhook(
         payload.user_id,
     )
     await revoke_all_user_sessions(payload.user_id)
+    await invalidate_auth_user(payload.user_id)
     return {"status": "revoked", "user_id": payload.user_id}

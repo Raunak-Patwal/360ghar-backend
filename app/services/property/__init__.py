@@ -17,12 +17,17 @@ from app.services.property.crud import (
 from app.services.property.helpers import (
     _validate_listing_contract,
     build_location_wkt,
+    validate_listing_contract,
 )
 from app.services.property.recommendations import get_property_recommendations
 from app.services.property.search import (
     TEXT_WEIGHT,
     VECTOR_WEIGHT,
     get_unified_properties_optimized,
+)
+from app.services.property.search_orchestration import (
+    build_property_search_filters,
+    run_property_search,
 )
 
 # ``property_embeddings_table`` is intentionally NOT re-exported eagerly: it is
@@ -42,11 +47,14 @@ __all__ = [
     "update_property",
     # Search
     "get_unified_properties_optimized",
+    "build_property_search_filters",
+    "run_property_search",
     "VECTOR_WEIGHT",
     "TEXT_WEIGHT",
     # Recommendations
     "get_property_recommendations",
     # Helpers
+    "validate_listing_contract",
     "_validate_listing_contract",
     "build_location_wkt",
 ]

@@ -72,7 +72,7 @@ Middleware is registered in a specific order because Starlette executes middlewa
 
 ### MCP HTTP apps
 
-`build_mcp_http_apps` returns two `LazyMCPHTTPApp` instances. These are ASGI proxies that build the concrete MCP app on first request, so the heavy `mcp` and widget registration imports stay off the app import path. The concrete builder registers ChatGPT widgets, wires `BearerAuthBackend` with the `SupabaseTokenVerifier` (requiring `mcp:read` and `mcp:write` scopes), and creates the FastMCP HTTP app with `stateless_http=True`. The inner MCP lifespans are entered when the parent app lifespan runs.
+`build_mcp_http_apps` returns two `LazyMCPHTTPApp` instances. These are ASGI proxies that build the concrete MCP app on first request, so the heavy `mcp` and widget registration imports stay off the app import path. The concrete builder registers ChatGPT widgets, wires `BearerAuthBackend` with the `SupabaseTokenVerifier` (requiring `mcp:read` and `mcp:write` scopes), and creates the FastMCP HTTP app with `stateless_http=True`. The inner MCP lifespans are entered through the public FastMCP/Starlette lifespan context when the parent app lifespan runs; a mounted MCP app without such a context is rejected at startup with an explicit type error.
 
 ### Shared scheduler
 

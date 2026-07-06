@@ -18,7 +18,7 @@ from app.core.exceptions import (
 )
 from app.core.logging import get_logger
 from app.mcp.apps_sdk import (
-    MCP_SECURITY_SCHEMES_MIXED,
+    MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     AuthRequiredError,
     build_widget_tool_meta,
     raise_auth_required,
@@ -55,6 +55,12 @@ OWNER_DASHBOARD_META = build_widget_tool_meta(
     invoked="Properties loaded",
 )
 
+PROPERTY_DETAILS_META = build_widget_tool_meta(
+    widget_uri="ui://widget/propertydetailswidget.html",
+    invoking="Loading property details...",
+    invoked="Property details loaded",
+)
+
 
 # ============================================================================
 # Owner Property Tools
@@ -68,7 +74,7 @@ OWNER_DASHBOARD_META = build_widget_tool_meta(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
     meta=OWNER_DASHBOARD_META,
 )
@@ -127,7 +133,7 @@ async def owner_properties_list(
         "readOnlyHint": False,
         "destructiveHint": False,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
 )
 async def owner_properties_create(
@@ -247,8 +253,9 @@ async def owner_properties_create(
         "readOnlyHint": True,
         "openWorldHint": False,
         "destructiveHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
+    meta=PROPERTY_DETAILS_META,
 )
 async def owner_properties_get(
     property_id: int,
@@ -301,7 +308,7 @@ async def owner_properties_get(
         "readOnlyHint": False,
         "destructiveHint": False,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
 )
 async def owner_properties_update(
@@ -378,7 +385,7 @@ async def owner_properties_update(
         "readOnlyHint": False,
         "destructiveHint": False,
         "openWorldHint": False,
-        "securitySchemes": MCP_SECURITY_SCHEMES_MIXED,
+        "securitySchemes": MCP_SECURITY_SCHEMES_OAUTH2_ONLY,
     },
 )
 async def owner_properties_toggle_availability(

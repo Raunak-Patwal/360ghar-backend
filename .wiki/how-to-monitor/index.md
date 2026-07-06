@@ -20,7 +20,7 @@ Noisy libraries are silenced: `httpx` at WARNING, `asyncio` at WARNING, `sqlalch
 
 File: `app/main.py`
 
-Sentry initializes when `SENTRY_DSN` is set. Key config: `send_default_pii=False`, `traces_sample_rate` defaults to 0.5 in dev and 0.05 in prod (overridable), `release=f"360ghar-backend@{settings.APP_VERSION}"`, a `before_send` hook that strips `authorization` and `x-api-key` headers, and integrations for FastAPI, SQLAlchemy, and logging (WARNING-and-above as breadcrumbs, no events). The auth dependency tags the Sentry user context with `id`, `email`, and `phone` after successful authentication.
+Sentry initializes when `SENTRY_DSN` is set. Key config: `send_default_pii=False`, `traces_sample_rate` defaults to 0.5 in dev and 0.05 in prod (overridable), `release=f"360ghar-backend@{settings.APP_VERSION}"`, a `before_send` hook that strips `authorization` and `x-api-key` headers, and integrations for FastAPI, SQLAlchemy, and logging (WARNING-and-above as breadcrumbs, no events). The auth dependency tags the Sentry user context with `id`, `email`, and `phone` after successful authentication. The intentional crash route `GET /debug-sentry` is only mounted when `ENABLE_SENTRY_TEST_ENDPOINT=true` and `ENVIRONMENT` is not `production`.
 
 ## Health endpoint
 
@@ -28,7 +28,7 @@ Sentry initializes when `SENTRY_DSN` is set. Key config: `send_default_pii=False
 
 ## SSE monitoring
 
-The SSE event bus in `app/core/sse.py` is per-user, not system-wide. Services emit events (`new_match`, `new_message`, `conversation_updated`, `visit_updated`, `listing_status_changed`, `new_notification`) after a DB commit, and `GET /api/v1/flatmates/sse` consumes from the user's queue with a 30s keepalive. The bus drops the oldest event on queue full and reaps dead queues, so a slow consumer does not destabilize the process. There is no system-wide SSE stream for ops monitoring - use logs and Sentry for that.
+Flatmates realtime is per-user, not system-wide. Services queue Supabase Realtime Broadcast events (`new_match`, `new_message`, `conversation_updated`, `visit_updated`, `listing_status_changed`, `new_notification`) and publish after DB commit to private `flatmates:user:{local_user_id}` channels. There is no system-wide realtime stream for ops monitoring - use logs and Sentry for that.
 
 ## Further reading
 

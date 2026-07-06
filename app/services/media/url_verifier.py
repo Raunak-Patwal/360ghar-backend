@@ -42,6 +42,7 @@ _FIRST_PARTY_HOSTS = frozenset(
 # path and must not dominate request latency. The shared general client
 # already follows redirects.
 _DEFAULT_TIMEOUT = 4.0
+_BATCH_VERIFY_CONCURRENCY = 8
 
 
 def _is_first_party(url: str) -> bool:
@@ -121,13 +122,19 @@ async def verify_image_urls(
     if not urls:
         return [], []
 
+    semaphore = asyncio.Semaphore(_BATCH_VERIFY_CONCURRENCY)
+
+    async def _verify_limited(url: str) -> bool:
+        async with semaphore:
+            return await verify_image_url(url, timeout=timeout)
+
     results = await asyncio.gather(
-        *(verify_image_url(u, timeout=timeout) for u in urls),
+        *(_verify_limited(u) for u in urls),
         return_exceptions=False,
     )
     kept: list[str] = []
     dropped: list[str] = []
-    for url, ok in zip(urls, results, strict=False):
+    for url, ok in zip(urls, results, strict=True):
         if ok:
             kept.append(url)
         else:

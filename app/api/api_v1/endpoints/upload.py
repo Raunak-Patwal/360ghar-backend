@@ -6,8 +6,17 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.api_v1.dependencies.auth import get_current_active_user
+from app.api.api_v1.dependencies.auth import (
+    get_current_active_user,
+    get_current_cached_active_user,
+)
+from app.config import settings
 from app.core.database import get_db
+from app.core.db_resilience import (
+    apply_statement_timeout,
+    execute_with_transient_retry,
+    raise_read_service_unavailable,
+)
 from app.models.tours import MediaFile
 from app.schemas.pagination import (
     CursorPage,
@@ -28,6 +37,7 @@ from app.schemas.storage import (
     UploadConfirmResponse,
 )
 from app.schemas.user import User as UserSchema
+from app.services.auth_user_cache import AuthUserSnapshot
 from app.services.storage import storage_service
 from app.services.storage_paths import StorageFolder
 
@@ -80,7 +90,7 @@ async def upload_file(
 
 @router.post("/batch", response_model=dict[str, Any], summary="Upload files in batch")
 async def upload_batch(
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] = File(..., max_length=20),
     current_user: UserSchema = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
     folder: str = Form("uploads"),
@@ -187,6 +197,9 @@ async def create_presigned_uploads(
             "upload_id": result["upload_id"],
             "signed_url": result["signed_url"],
             "token": result["token"],
+            "api_key": result.get("api_key"),
+            "timestamp": result.get("timestamp"),
+            "public_id": result.get("public_id"),
             "path": result["path"],
             "public_url": result["public_url"],
         })
@@ -225,48 +238,69 @@ async def list_media(
     visibility: str | None = Query(None),
     is_processed: bool | None = Query(None),
     upload_status: str | None = Query(None, description="Filter by upload status: pending, complete, failed"),
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: AuthUserSnapshot = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List uploaded media files for the current user."""
-    cursor_payload = page.decoded()
+    try:
+        await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
+        cursor_payload = page.decoded()
 
-    stmt = select(MediaFile).where(MediaFile.user_id == current_user.id)
-    if tour_id:
-        stmt = stmt.where(MediaFile.tour_id == tour_id)
-    if folder:
-        stmt = stmt.where(MediaFile.folder == folder)
-    if mime_type:
-        stmt = stmt.where(MediaFile.mime_type == mime_type)
-    if visibility:
-        stmt = stmt.where(MediaFile.visibility == visibility)
-    if is_processed is not None:
-        stmt = stmt.where(MediaFile.is_processed == is_processed)
-    if upload_status:
-        stmt = stmt.where(MediaFile.upload_status == upload_status)
+        stmt = select(MediaFile).where(MediaFile.user_id == current_user.id)
+        if tour_id:
+            stmt = stmt.where(MediaFile.tour_id == tour_id)
+        if folder:
+            stmt = stmt.where(MediaFile.folder == folder)
+        if mime_type:
+            stmt = stmt.where(MediaFile.mime_type == mime_type)
+        if visibility:
+            stmt = stmt.where(MediaFile.visibility == visibility)
+        if is_processed is not None:
+            stmt = stmt.where(MediaFile.is_processed == is_processed)
+        if upload_status:
+            stmt = stmt.where(MediaFile.upload_status == upload_status)
 
-    count_total = None
-    if page.include_total:
-        count_total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+        count_total = None
+        if page.include_total:
+            count_stmt = select(func.count()).select_from(stmt.subquery())
+            count_result = await execute_with_transient_retry(
+                db,
+                lambda: db.execute(count_stmt),
+                operation_name="media_list_count",
+            )
+            count_total = count_result.scalar_one()
 
-    predicate = keyset_filter(MediaFile.created_at, MediaFile.id, cursor_payload, descending=True)
-    if predicate is not None:
-        stmt = stmt.where(predicate)
+        predicate = keyset_filter(MediaFile.created_at, MediaFile.id, cursor_payload, descending=True)
+        if predicate is not None:
+            stmt = stmt.where(predicate)
 
-    stmt = stmt.order_by(MediaFile.created_at.desc(), MediaFile.id.desc()).limit(page.limit + 1)
-    items = list((await db.execute(stmt)).scalars().all())
+        stmt = stmt.order_by(MediaFile.created_at.desc(), MediaFile.id.desc()).limit(page.limit + 1)
+        result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(stmt),
+            operation_name="media_list_query",
+        )
+        items = list(result.scalars().all())
 
-    next_payload = None
-    if len(items) > page.limit:
-        items = items[:page.limit]
-        next_payload = keyset_payload(keyset_sort_value(items[-1].created_at), items[-1].id)
+        next_payload = None
+        if len(items) > page.limit:
+            items = items[:page.limit]
+            next_payload = keyset_payload(keyset_sort_value(items[-1].created_at), items[-1].id)
 
-    return build_cursor_page(
-        [MediaFileResponse.model_validate(item) for item in items],
-        limit=page.limit,
-        next_payload=next_payload,
-        total=count_total,
-    )
+        return build_cursor_page(
+            [MediaFileResponse.model_validate(item) for item in items],
+            limit=page.limit,
+            next_payload=next_payload,
+            total=count_total,
+        )
+    except Exception as exc:
+        raise_read_service_unavailable(
+            exc,
+            endpoint="media_list",
+            detail="Media files are temporarily unavailable. Please retry shortly.",
+            extra={"user": current_user.id},
+        )
+        raise
 
 
 @router.post(
@@ -290,19 +324,35 @@ async def batch_delete_media(
 @router.get("/media/{media_id}", response_model=MediaFileResponse, summary="Get media file")
 async def get_media(
     media_id: str,
-    current_user: UserSchema = Depends(get_current_active_user),
+    current_user: AuthUserSnapshot = Depends(get_current_cached_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single media file for the current user."""
-    query = select(MediaFile).where(
-        MediaFile.id == media_id,
-        MediaFile.user_id == current_user.id,
-    )
-    result = await db.execute(query)
-    media = result.scalar_one_or_none()
-    if not media:
-        raise HTTPException(status_code=404, detail="Media file not found")
-    return MediaFileResponse.model_validate(media)
+    try:
+        await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
+        query = select(MediaFile).where(
+            MediaFile.id == media_id,
+            MediaFile.user_id == current_user.id,
+        )
+        result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(query),
+            operation_name="media_get",
+        )
+        media = result.scalar_one_or_none()
+        if not media:
+            raise HTTPException(status_code=404, detail="Media file not found")
+        return MediaFileResponse.model_validate(media)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise_read_service_unavailable(
+            exc,
+            endpoint="media_get",
+            detail="Media file is temporarily unavailable. Please retry shortly.",
+            extra={"user": current_user.id},
+        )
+        raise
 
 
 @router.delete("/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete media file")

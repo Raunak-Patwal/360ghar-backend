@@ -12,7 +12,9 @@ state-machine:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, Response
+import hashlib
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +22,12 @@ from app.api.api_v1.dependencies.auth import get_current_active_user
 from app.config import settings
 from app.core.auth import AuthFailureReason, _is_failure, admin_link_identity
 from app.core.database import get_db
-from app.core.exceptions import BadRequestException, RateLimitException, ServiceUnavailableException
+from app.core.exceptions import (
+    BadRequestException,
+    BaseAPIException,
+    RateLimitException,
+    ServiceUnavailableException,
+)
 from app.core.logging import get_logger
 from app.middleware.rate_limit import EndpointRateLimiter
 from app.models.enums import AuthMethod
@@ -31,9 +38,10 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
-# Per-IP guard for the public identifier-status probe. Reuses the project's
-# EndpointRateLimiter (cache-backed, sliding window).
-_identifier_status_limiter = EndpointRateLimiter(calls=60, period=60)
+# Per-IP and per-identifier guards for the public identifier-status probe.
+_identifier_status_ip_limiter = EndpointRateLimiter(calls=10, period=60)
+_identifier_status_identifier_limiter = EndpointRateLimiter(calls=5, period=3600)
+_auth_mutation_limiter = EndpointRateLimiter(calls=30, period=60)
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -62,6 +70,13 @@ class LinkIdentityRequest(BaseModel):
 
 class LinkIdentityResponse(BaseModel):
     linked: bool
+
+
+class DeleteAccountRequest(BaseModel):
+    confirm: bool = Field(
+        ...,
+        description="Must be true to permanently delete the authenticated account.",
+    )
 
 
 class AuthConfigResponse(BaseModel):
@@ -103,12 +118,20 @@ async def identifier_status(
     has a password credential (``encrypted_password`` present); otherwise
     ``"otp"``.
     """
-    client_id = _identifier_status_limiter.get_client_id(request)
     endpoint = f"{request.method}:{request.url.path}"
-    if not await _identifier_status_limiter.check_rate_limit(client_id, endpoint):
+    client_id = _identifier_status_ip_limiter.get_client_id(request)
+    if not await _identifier_status_ip_limiter.check_rate_limit(client_id, endpoint):
         raise RateLimitException(detail="Too many requests; please slow down")
 
     identifier = body.identifier.strip()
+    identifier_hash = hashlib.sha256(identifier.lower().encode()).hexdigest()
+    identifier_client = f"identifier:{identifier_hash}"
+    if not await _identifier_status_identifier_limiter.check_rate_limit(
+        identifier_client, endpoint
+    ):
+        raise RateLimitException(
+            detail="Too many attempts for this identifier; please try again later"
+        )
     status_data = await get_identifier_status(db, identifier)
     return IdentifierStatusResponse(**status_data)
 
@@ -119,11 +142,16 @@ async def identifier_status(
     summary="Record the last authentication method used by the current user",
 )
 async def last_method(
+    request: Request,
     body: LastMethodRequest,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     """AUTH required. Persist ``method`` on the current user. Returns 204 No Content."""
+    endpoint = f"{request.method}:{request.url.path}"
+    client_id = _auth_mutation_limiter.get_client_id(request)
+    if not await _auth_mutation_limiter.check_rate_limit(client_id, endpoint):
+        raise RateLimitException(detail="Too many requests; please slow down")
     await set_last_auth_method(db, current_user, body.method)
     return Response(status_code=204)
 
@@ -145,10 +173,15 @@ async def last_method(
     },
 )
 async def link_identity(
+    request: Request,
     body: LinkIdentityRequest,
     current_user: User = Depends(get_current_active_user),
 ) -> LinkIdentityResponse:
     """AUTH required. Wrap the GoTrue Admin identity-linking call."""
+    endpoint = f"{request.method}:{request.url.path}"
+    client_id = _auth_mutation_limiter.get_client_id(request)
+    if not await _auth_mutation_limiter.check_rate_limit(client_id, endpoint):
+        raise RateLimitException(detail="Too many requests; please slow down")
     linked = await admin_link_identity(
         current_user.supabase_user_id,
         body.provider,
@@ -161,9 +194,11 @@ async def link_identity(
                 detail="Identity provider is temporarily unreachable, please retry",
                 headers={"Retry-After": "30"},
             )
-        raise BadRequestException(detail="Failed to link identity")
+        raise BadRequestException(detail="Identity provider is temporarily unreachable")
     if not linked:
-        raise BadRequestException(detail="Failed to link identity")
+        raise BadRequestException(
+            detail="Failed to link identity. The account may already be linked or the token is invalid."
+        )
     return LinkIdentityResponse(linked=True)
 
 
@@ -187,6 +222,8 @@ async def auth_config() -> AuthConfigResponse:
     summary="Permanently delete the current user's account",
 )
 async def delete_account(
+    request: Request,
+    body: DeleteAccountRequest,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
@@ -198,5 +235,25 @@ async def delete_account(
     Returns 204 No Content (alternate mobile-friendly route; the canonical
     ``DELETE /users/me`` returns 200 + MessageResponse).
     """
-    await delete_user_account(db, current_user)
+    if not body.confirm:
+        raise BadRequestException(detail="Account deletion requires confirm: true")
+    endpoint = f"{request.method}:{request.url.path}"
+    client_id = _auth_mutation_limiter.get_client_id(request)
+    if not await _auth_mutation_limiter.check_rate_limit(client_id, endpoint):
+        raise RateLimitException(detail="Too many requests; please slow down")
+    try:
+        await delete_user_account(db, current_user)
+    except (BaseAPIException, HTTPException):
+        raise
+    except Exception as exc:
+        logger.error(
+            "Unexpected delete account failure for user %s: %s",
+            current_user.id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error. Please try again later.",
+        ) from None
     return Response(status_code=204)

@@ -1,6 +1,8 @@
 """
 Custom Domain schemas for branded tour URLs.
 """
+from __future__ import annotations
+
 import re
 from datetime import datetime
 
@@ -28,7 +30,7 @@ class CustomDomainBase(BaseModel):
 
 class CustomDomainCreate(CustomDomainBase):
     """Schema for creating a custom domain."""
-    pass
+    model_config = ConfigDict(json_schema_extra={"title": "CustomDomainCreate"})
 
 
 class CustomDomainResponse(CustomDomainBase):

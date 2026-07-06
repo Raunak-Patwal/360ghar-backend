@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import random
 import re
@@ -9,6 +11,7 @@ from sqlalchemy.exc import DBAPIError, DisconnectionError
 from sqlalchemy.exc import TimeoutError as SATimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ServiceUnavailableException
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -49,9 +52,14 @@ def is_statement_timeout(exc: Exception) -> bool:
         or "querycanceled" in message
     )
 
-TRANSIENT_DB_ERROR_CODES = {"EDBHANDLEREXITED", "ECHECKOUTTIMEOUT"}
+TRANSIENT_DB_ERROR_CODES = {
+    "ECHECKOUTTIMEOUT",
+    "EDBHANDLEREXITED",
+    "EMAXCONNSESSION",
+}
 _TRANSIENT_DB_MESSAGE_MARKERS = (
     "connection to database closed",
+    "max clients reached",
     "unable to check out connection from the pool",
 )
 
@@ -67,7 +75,16 @@ def extract_db_error_code(exc: Exception) -> str | None:
 
 def _is_pool_exhaustion_error(exc: Exception) -> bool:
     """Pool exhaustion is a capacity problem — retrying makes it worse."""
-    return "QueuePool limit" in str(exc) or "3o7r" in str(exc)
+    message = str(exc)
+    message_lower = message.lower()
+    return (
+        "QueuePool limit" in message
+        or "3o7r" in message
+        or "EMAXCONNSESSION" in message
+        or "max clients reached" in message_lower
+        or "remaining connection slots are reserved" in message_lower
+        or "too many connections" in message_lower
+    )
 
 
 def is_transient_db_error(exc: Exception) -> bool:
@@ -82,6 +99,48 @@ def is_transient_db_error(exc: Exception) -> bool:
     if any(code in str(exc) for code in TRANSIENT_DB_ERROR_CODES):
         return True
     return False
+
+
+def is_retryable_read_db_error(exc: Exception) -> bool:
+    """True when a read endpoint should fail fast with a retryable 503."""
+    return is_transient_db_error(exc) or is_statement_timeout(exc)
+
+
+def read_db_error_code(exc: Exception) -> str:
+    """Stable error code for retryable read failures."""
+    return extract_db_error_code(exc) or (
+        "STATEMENT_TIMEOUT" if is_statement_timeout(exc) else "TRANSIENT_DB_ERROR"
+    )
+
+
+def raise_read_service_unavailable(
+    exc: Exception,
+    *,
+    endpoint: str,
+    detail: str,
+    extra: dict[str, object] | None = None,
+) -> None:
+    """Raise a standardized retryable 503 for read-side DB pressure failures."""
+    if not is_retryable_read_db_error(exc):
+        return
+
+    error_code = read_db_error_code(exc)
+    log_extra: dict[str, object] = {
+        "endpoint": endpoint,
+        "error_code": error_code,
+    }
+    if extra:
+        log_extra.update(extra)
+
+    logger.error(
+        "Read endpoint transient DB failure",
+        extra=log_extra,
+        exc_info=True,
+    )
+    raise ServiceUnavailableException(
+        detail=detail,
+        details={"error_code": error_code, "endpoint": endpoint},
+    ) from exc
 
 
 async def _reset_session_for_retry(session: AsyncSession) -> None:

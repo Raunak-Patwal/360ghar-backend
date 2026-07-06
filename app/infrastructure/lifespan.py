@@ -34,18 +34,18 @@ def create_lifespan(testing: bool, user_mcp_app: Any, admin_mcp_app: Any) -> Lif
         # group), so both enter and exit happen in the same context — avoiding
         # the "ValueError: was created in a different Context" that lazy
         # request-time init would otherwise cause.
-        async with user_mcp_app.lifespan(app):
-            async with admin_mcp_app.lifespan(app):
-                try:
-                    if not testing:
-                        await _initialize_cache()
-                        await _verify_database_ready()
-                        await _apply_pending_migrations()
-                        await _prewarm_supabase_dns()
-                        _register_scheduler_jobs(app)
-                        start_scheduler()
-                except Exception as exc:
-                    logger.error("Application startup failed: %s", exc)
+        async with _mcp_app_lifespan(user_mcp_app, app, "user"):
+            async with _mcp_app_lifespan(admin_mcp_app, app, "admin"):
+                if not testing:
+                    # Fail-fast config check runs OUTSIDE the degraded-mode
+                    # try/except below: a placeholder Apple Team ID in
+                    # production must abort startup, not be logged-and-ignored.
+                    # It raises before the cache / DB initialize.
+                    _validate_deeplink_config()
+                _initialize_startup_state(app)
+                if not testing:
+                    await _run_required_startup(app)
+                    await _run_optional_startup(app)
 
                 logger.info(
                     "API started",
@@ -74,6 +74,84 @@ def create_lifespan(testing: bool, user_mcp_app: Any, admin_mcp_app: Any) -> Lif
                 logger.info("API shutdown", extra={"event": "shutdown"})
 
     return lifespan
+
+
+def _initialize_startup_state(app: FastAPI) -> None:
+    app.state.startup_degraded = False
+    app.state.startup_errors = []
+
+
+def _strict_required_startup() -> bool:
+    return settings.ENVIRONMENT.lower() == "production"
+
+
+async def _run_required_startup(app: FastAPI) -> None:
+    """Run startup phases required for serving production traffic."""
+    strict = _strict_required_startup()
+    for phase, startup_step in (
+        ("database_readiness", _verify_database_ready),
+        ("startup_migrations", _apply_pending_migrations),
+    ):
+        try:
+            await startup_step()
+        except Exception as exc:
+            if strict:
+                logger.error("Required startup phase failed (%s): %s", phase, exc)
+                raise
+            _record_startup_degradation(app, phase, exc)
+
+
+async def _run_optional_startup(app: FastAPI) -> None:
+    """Run best-effort startup phases that can degrade without aborting."""
+    startup_steps = (
+        ("cache", _initialize_cache),
+        ("supabase_dns_prewarm", _prewarm_supabase_dns),
+        ("scheduler", lambda: _start_scheduler_jobs(app)),
+    )
+    for phase, startup_step in startup_steps:
+        try:
+            await startup_step()
+        except Exception as exc:
+            _record_startup_degradation(app, phase, exc)
+
+
+def _record_startup_degradation(app: FastAPI, phase: str, exc: Exception) -> None:
+    app.state.startup_degraded = True
+    app.state.startup_errors.append({"phase": phase, "error": str(exc)})
+    logger.error(
+        "Application startup degraded during %s: %s",
+        phase,
+        exc,
+        extra={"event": "startup_degraded", "phase": phase},
+    )
+
+
+async def _start_scheduler_jobs(app: FastAPI) -> None:
+    _register_scheduler_jobs(app)
+    start_scheduler()
+
+
+@asynccontextmanager
+async def _mcp_app_lifespan(
+    mcp_app: Any,
+    parent_app: FastAPI,
+    server_name: str,
+) -> AsyncIterator[None]:
+    """Enter a mounted MCP app lifespan using FastMCP's public ASGI contract."""
+    lifespan_context = getattr(mcp_app, "lifespan", None)
+    if lifespan_context is None:
+        router = getattr(mcp_app, "router", None)
+        lifespan_context = getattr(router, "lifespan_context", None)
+
+    if lifespan_context is None:
+        app_type = f"{type(mcp_app).__module__}.{type(mcp_app).__qualname__}"
+        raise TypeError(
+            f"{server_name} MCP app must expose a lifespan context; got {app_type}. "
+            "Use app.infrastructure.mcp.build_mcp_http_apps() or a FastMCP http_app()."
+        )
+
+    async with lifespan_context(parent_app):
+        yield
 
 
 async def _apply_pending_migrations() -> None:
@@ -134,6 +212,7 @@ async def _apply_pending_migrations() -> None:
                 logger.info("Startup migration applied: %s", label)
             except Exception as exc:
                 logger.warning("Startup migration skipped (%s): %s", label, exc)
+                raise RuntimeError(f"Startup migration failed ({label})") from exc
 
 
 async def _initialize_cache() -> None:
@@ -143,12 +222,26 @@ async def _initialize_cache() -> None:
         logger.warning("Cache connection skipped/failed: %s", cache_e)
 
 
+def _validate_deeplink_config() -> None:
+    """Run the deep-link startup validator.
+
+    In production (``DEEPLINK_FAIL_ON_PLACEHOLDER=True``) this raises if
+    ``DEEPLINK_APPLE_TEAM_ID`` is the placeholder or otherwise malformed.
+    In dev/CI it just logs a warning. Imported lazily so the module is
+    only loaded when startup actually runs (avoids a top-level import of
+    ``app.services.deeplinks`` from the lifespan module).
+    """
+    from app.services.deeplinks.validation import validate_deeplink_config
+
+    validate_deeplink_config()
+
+
 async def _verify_database_ready() -> None:
     """Probe the database before accepting requests.
 
     Ensures the connection pool can check out a connection and execute a
-    simple query. Logs a warning (but does not block startup) if the probe
-    fails after retries, so the app can still start in degraded mode.
+    simple query. Raises after retries so the required-startup wrapper can
+    either abort production startup or record degraded non-production startup.
     """
     max_attempts = 3
     for attempt in range(1, max_attempts + 1):
@@ -170,10 +263,11 @@ async def _verify_database_ready() -> None:
             else:
                 logger.error(
                     "Database readiness check failed after %d attempts: %s. "
-                    "App will start but requests may fail.",
+                    "Startup cannot be marked ready.",
                     max_attempts,
                     exc,
                 )
+                raise RuntimeError("Database readiness check failed") from exc
 
 
 async def _prewarm_supabase_dns() -> None:

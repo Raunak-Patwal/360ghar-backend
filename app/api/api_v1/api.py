@@ -49,6 +49,7 @@ from app.api.api_v1.endpoints import (
     visits,
     webhooks,
 )
+from app.api.deeplinks import api_router as deeplinks_api_router
 
 api_router = APIRouter()
 
@@ -57,6 +58,12 @@ api_router = APIRouter()
 async def api_v1_health_redirect():
     """Redirect /api/v1/health to the root /health endpoint."""
     return RedirectResponse(url="/health", status_code=307)
+
+
+@api_router.get("/ready", include_in_schema=False)
+async def api_v1_ready_redirect():
+    """Redirect /api/v1/ready to the root /ready endpoint."""
+    return RedirectResponse(url="/ready", status_code=307)
 
 
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -97,6 +104,9 @@ api_router.include_router(design_studio.router, prefix="/design-studio", tags=["
 
 # Vastu Checker - public endpoint (no auth required)
 api_router.include_router(vastu.router, prefix="/vastu", tags=["vastu"])
+
+# Deep Links - public link generation API (no auth required)
+api_router.include_router(deeplinks_api_router, prefix="/deeplinks", tags=["deeplinks"])
 
 # 360 Virtual Tours
 api_router.include_router(tours.router, prefix="/tours", tags=["tours"])

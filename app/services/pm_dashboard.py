@@ -4,9 +4,11 @@ from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, exists, func, select
+from sqlalchemy import and_, case, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
+from app.core.db_resilience import apply_statement_timeout, execute_with_transient_retry
 from app.core.exceptions import InsufficientPermissionsError
 from app.models.enums import LeaseStatus, PropertyStatus, UserRole
 from app.models.pm_finance import Expense, RentCharge, RentPayment
@@ -27,11 +29,20 @@ async def _resolve_owner_scope(
         if actor.agent_id is None:
             return []
         if owner_id is not None:
-            owner = await db.get(User, owner_id)
+            owner = await execute_with_transient_retry(
+                db,
+                lambda: db.get(User, owner_id),
+                operation_name="pm_owner_scope_owner_lookup",
+            )
             if not owner or owner.agent_id != actor.agent_id:
                 raise InsufficientPermissionsError("Agent not authorized for this owner")
             return [owner_id]
-        res = await db.execute(select(User.id).where(User.agent_id == actor.agent_id))
+        owner_stmt = select(User.id).where(User.agent_id == actor.agent_id)
+        res = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(owner_stmt),
+            operation_name="pm_owner_scope_agent_owners",
+        )
         return [int(r[0]) for r in res.all()]
 
     # user role: treat as owner dashboard
@@ -54,31 +65,31 @@ async def get_dashboard_overview(
     actor: User,
     owner_id: int | None = None,
 ) -> dict[str, Any]:
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     owner_ids = await _resolve_owner_scope(db, actor=actor, owner_id=owner_id)
-
-    prop_stmt = select(func.count(Property.id)).where(Property.is_managed)
-    if owner_ids is not None:
-        prop_stmt = prop_stmt.where(Property.owner_id.in_(owner_ids))
-    total_properties = int((await db.execute(prop_stmt)).scalar_one() or 0)
 
     active_lease_exists = exists(
         select(1).where(and_(Lease.property_id == Property.id, Lease.status == LeaseStatus.active))
     )
 
-    occupied_stmt = select(func.count(Property.id)).where(
-        Property.is_managed, active_lease_exists
+    property_metrics_stmt = select(
+        func.count(Property.id),
+        func.count(Property.id).filter(active_lease_exists),
+        func.count(Property.id).filter(Property.status == PropertyStatus.maintenance),
+    ).where(
+        Property.is_managed,
     )
     if owner_ids is not None:
-        occupied_stmt = occupied_stmt.where(Property.owner_id.in_(owner_ids))
-    occupied_properties = int((await db.execute(occupied_stmt)).scalar_one() or 0)
+        property_metrics_stmt = property_metrics_stmt.where(Property.owner_id.in_(owner_ids))
+    property_metrics = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(property_metrics_stmt),
+        operation_name="pm_dashboard_property_metrics",
+    )
+    total_properties, occupied_properties, under_maintenance_properties = (
+        int(value or 0) for value in property_metrics.one()
+    )
     vacant_properties = max(total_properties - occupied_properties, 0)
-
-    maintenance_stmt = select(func.count(Property.id)).where(
-        Property.is_managed, Property.status == PropertyStatus.maintenance
-    )
-    if owner_ids is not None:
-        maintenance_stmt = maintenance_stmt.where(Property.owner_id.in_(owner_ids))
-    under_maintenance_properties = int((await db.execute(maintenance_stmt)).scalar_one() or 0)
 
     today = date.today()
     cur_start = _month_start(today)
@@ -89,19 +100,45 @@ async def get_dashboard_overview(
     prev_start = _month_start(prev_month)
     prev_end = _next_month_start(prev_month)
 
-    revenue_stmt = select(func.coalesce(func.sum(RentPayment.amount_paid), 0.0)).where(
-        RentPayment.paid_at >= cur_start, RentPayment.paid_at < cur_end
+    revenue_stmt = select(
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(RentPayment.paid_at >= cur_start, RentPayment.paid_at < cur_end),
+                        RentPayment.amount_paid,
+                    ),
+                    else_=0.0,
+                )
+            ),
+            0.0,
+        ),
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(RentPayment.paid_at >= prev_start, RentPayment.paid_at < prev_end),
+                        RentPayment.amount_paid,
+                    ),
+                    else_=0.0,
+                )
+            ),
+            0.0,
+        ),
+    ).where(
+        RentPayment.paid_at >= prev_start,
+        RentPayment.paid_at < cur_end,
     )
     if owner_ids is not None:
         revenue_stmt = revenue_stmt.where(RentPayment.owner_id.in_(owner_ids))
-    monthly_revenue_current = float((await db.execute(revenue_stmt)).scalar_one() or 0.0)
-
-    revenue_prev_stmt = select(func.coalesce(func.sum(RentPayment.amount_paid), 0.0)).where(
-        RentPayment.paid_at >= prev_start, RentPayment.paid_at < prev_end
+    revenue_result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(revenue_stmt),
+        operation_name="pm_dashboard_revenue_metrics",
     )
-    if owner_ids is not None:
-        revenue_prev_stmt = revenue_prev_stmt.where(RentPayment.owner_id.in_(owner_ids))
-    monthly_revenue_previous = float((await db.execute(revenue_prev_stmt)).scalar_one() or 0.0)
+    monthly_revenue_current, monthly_revenue_previous = (
+        float(value or 0.0) for value in revenue_result.one()
+    )
 
     # Outstanding rent: sum over charges (due+late - paid), computed in SQL to avoid
     # loading every charge row into process memory.
@@ -123,7 +160,12 @@ async def get_dashboard_overview(
             0.0,
         )
     )
-    outstanding_rent_total = float((await db.execute(outstanding_stmt)).scalar_one() or 0.0)
+    outstanding_result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(outstanding_stmt),
+        operation_name="pm_dashboard_outstanding_rent",
+    )
+    outstanding_rent_total = float(outstanding_result.scalar_one() or 0.0)
 
     # Upcoming expenses: next 30 days
     upcoming_to = today + timedelta(days=30)
@@ -132,7 +174,12 @@ async def get_dashboard_overview(
     )
     if owner_ids is not None:
         expenses_stmt = expenses_stmt.where(Expense.owner_id.in_(owner_ids))
-    upcoming_expenses_total = float((await db.execute(expenses_stmt)).scalar_one() or 0.0)
+    expenses_result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(expenses_stmt),
+        operation_name="pm_dashboard_upcoming_expenses",
+    )
+    upcoming_expenses_total = float(expenses_result.scalar_one() or 0.0)
 
     return {
         "total_properties": total_properties,
@@ -155,6 +202,7 @@ async def get_recent_activity(
     limit: int = 20,
     with_total: bool = False,
 ) -> tuple[list[dict[str, Any]], dict | None, int | None]:
+    await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
     owner_ids = await _resolve_owner_scope(db, actor=actor, owner_id=owner_id)
     offset = read_offset(cursor_payload)
 
@@ -167,7 +215,12 @@ async def get_recent_activity(
     pay_stmt = select(RentPayment).order_by(RentPayment.paid_at.desc()).limit(fetch_limit)
     if owner_ids is not None:
         pay_stmt = pay_stmt.where(RentPayment.owner_id.in_(owner_ids))
-    payments = list((await db.execute(pay_stmt)).scalars().all())
+    payments_result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(pay_stmt),
+        operation_name="pm_dashboard_recent_payments",
+    )
+    payments = list(payments_result.scalars().all())
     for p in payments:
         activities.append(
             {
@@ -183,7 +236,12 @@ async def get_recent_activity(
     maint_stmt = select(MaintenanceRequest).order_by(MaintenanceRequest.created_at.desc()).limit(fetch_limit)
     if owner_ids is not None:
         maint_stmt = maint_stmt.where(MaintenanceRequest.owner_id.in_(owner_ids))
-    requests = list((await db.execute(maint_stmt)).scalars().all())
+    requests_result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(maint_stmt),
+        operation_name="pm_dashboard_recent_maintenance",
+    )
+    requests = list(requests_result.scalars().all())
     for r in requests:
         activities.append(
             {
@@ -199,7 +257,12 @@ async def get_recent_activity(
     lease_stmt = select(Lease).order_by(Lease.created_at.desc()).limit(fetch_limit)
     if owner_ids is not None:
         lease_stmt = lease_stmt.where(Lease.owner_id.in_(owner_ids))
-    leases = list((await db.execute(lease_stmt)).scalars().all())
+    leases_result = await execute_with_transient_retry(
+        db,
+        lambda: db.execute(lease_stmt),
+        operation_name="pm_dashboard_recent_leases",
+    )
+    leases = list(leases_result.scalars().all())
     for lease in leases:
         activities.append(
             {
@@ -219,19 +282,26 @@ async def get_recent_activity(
         pay_count_stmt = select(func.count(RentPayment.id))
         if owner_ids is not None:
             pay_count_stmt = pay_count_stmt.where(RentPayment.owner_id.in_(owner_ids))
-        pay_count = int((await db.execute(pay_count_stmt)).scalar_one() or 0)
 
         maint_count_stmt = select(func.count(MaintenanceRequest.id))
         if owner_ids is not None:
             maint_count_stmt = maint_count_stmt.where(MaintenanceRequest.owner_id.in_(owner_ids))
-        maint_count = int((await db.execute(maint_count_stmt)).scalar_one() or 0)
 
         lease_count_stmt = select(func.count(Lease.id))
         if owner_ids is not None:
             lease_count_stmt = lease_count_stmt.where(Lease.owner_id.in_(owner_ids))
-        lease_count = int((await db.execute(lease_count_stmt)).scalar_one() or 0)
 
-        count_total: int | None = pay_count + maint_count + lease_count
+        total_stmt = select(
+            pay_count_stmt.scalar_subquery()
+            + maint_count_stmt.scalar_subquery()
+            + lease_count_stmt.scalar_subquery()
+        )
+        total_result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(total_stmt),
+            operation_name="pm_dashboard_recent_activity_total",
+        )
+        count_total: int | None = int(total_result.scalar_one() or 0)
     else:
         count_total = None
 

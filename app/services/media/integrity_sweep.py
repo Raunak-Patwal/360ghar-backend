@@ -34,6 +34,7 @@ from app.services.media.url_verifier import verify_image_url
 logger = get_logger(__name__)
 
 DEFAULT_SAMPLE_SIZE = 200
+SWEEP_VERIFY_CONCURRENCY = 8
 
 
 @dataclass
@@ -139,13 +140,20 @@ async def run_image_integrity_sweep(
         logger.info("Image integrity sweep: no sampled URLs to check.")
         return report
 
-    # Verify concurrently for speed; verify_image_url never raises.
+    # Verify concurrently for speed, but keep the sweep from saturating the
+    # shared HTTP pool; verify_image_url never raises.
     urls = [u for _, u in samples]
+    semaphore = asyncio.Semaphore(SWEEP_VERIFY_CONCURRENCY)
+
+    async def _verify_limited(url: str) -> bool:
+        async with semaphore:
+            return await verify_image_url(url)
+
     results = await asyncio.gather(
-        *(verify_image_url(u) for u in urls), return_exceptions=False
+        *(_verify_limited(u) for u in urls), return_exceptions=False
     )
 
-    for (source_tag, url), ok in zip(samples, results, strict=False):
+    for (source_tag, url), ok in zip(samples, results, strict=True):
         if not ok:
             report.broken.append(url)
             logger.warning(

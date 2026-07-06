@@ -21,6 +21,7 @@ from .helpers import (
 )
 
 logger = get_logger(__name__)
+PUSH_FANOUT_CONCURRENCY = 10
 
 
 async def register_device_token(
@@ -189,52 +190,55 @@ async def send_to_user(
     if not tokens:
         return {"ok": True, "sent": 0, "notification_id": notif["id"]}
 
+    semaphore = asyncio.Semaphore(PUSH_FANOUT_CONCURRENCY)
+
     async def _send_one(t: dict[str, Any]):
-        tk = t["token"]
-        tk_id = t["id"]
-        try:
-            msg = fcm.build_message(
-                token=tk,
-                title=title,
-                body=body,
-                data=payload_data,
-                deep_link=deep_link,
-                priority_high=priority_high,
-                ttl_seconds=ttl,
-            )
-            resp = await fcm.send_message(msg)
+        async with semaphore:
+            tk = t["token"]
+            tk_id = t["id"]
+            try:
+                msg = fcm.build_message(
+                    token=tk,
+                    title=title,
+                    body=body,
+                    data=payload_data,
+                    deep_link=deep_link,
+                    priority_high=priority_high,
+                    ttl_seconds=ttl,
+                )
+                resp = await fcm.send_message(msg)
 
-            def _sync_record_sent():
-                supa = _supa()
-                supa.table("notification_deliveries").insert(
-                    {
-                        "notification_id": notif["id"],
-                        "device_token_id": tk_id,
-                        "status": "sent",
-                        "fcm_message_id": resp.get("name"),
-                        "sent_at": utc_now_iso(),
-                    }
-                ).execute()
+                def _sync_record_sent():
+                    supa = _supa()
+                    supa.table("notification_deliveries").insert(
+                        {
+                            "notification_id": notif["id"],
+                            "device_token_id": tk_id,
+                            "status": "sent",
+                            "fcm_message_id": resp.get("name"),
+                            "sent_at": utc_now_iso(),
+                        }
+                    ).execute()
 
-            await _run_sync(_sync_record_sent)
-        except Exception as e:  # broad to capture HTTP errors
-            err = str(e)
-            logger.warning("FCM send failed for token in send_to_user: %s", err, exc_info=True)
+                await _run_sync(_sync_record_sent)
+            except Exception as e:  # broad to capture HTTP errors
+                err = str(e)
+                logger.warning("FCM send failed for token in send_to_user: %s", err, exc_info=True)
 
-            def _sync_record_failed():
-                supa = _supa()
-                if "UNREGISTERED" in err or "NotRegistered" in err:
-                    supa.table("device_tokens").update({"is_active": False}).eq("token", tk).execute()
-                supa.table("notification_deliveries").insert(
-                    {
-                        "notification_id": notif["id"],
-                        "device_token_id": tk_id,
-                        "status": "failed",
-                        "error_code": err,
-                    }
-                ).execute()
+                def _sync_record_failed():
+                    supa = _supa()
+                    if "UNREGISTERED" in err or "NotRegistered" in err:
+                        supa.table("device_tokens").update({"is_active": False}).eq("token", tk).execute()
+                    supa.table("notification_deliveries").insert(
+                        {
+                            "notification_id": notif["id"],
+                            "device_token_id": tk_id,
+                            "status": "failed",
+                            "error_code": err,
+                        }
+                    ).execute()
 
-            await _run_sync(_sync_record_failed)
+                await _run_sync(_sync_record_failed)
 
     await asyncio.gather(*[_send_one(t) for t in tokens])
     return {"ok": True, "sent": len(tokens)}
@@ -274,23 +278,39 @@ async def send_to_topic(
             ttl_seconds=ttl,
         )
         resp = await fcm.send_message(msg)
+
+        def _sync_record_delivery():
+            supa = _supa()
+            supa.table("notification_deliveries").insert(
+                {
+                    "notification_id": notif["id"],
+                    "status": "sent",
+                    "fcm_message_id": resp.get("name"),
+                    "sent_at": utc_now_iso(),
+                }
+            ).execute()
+
+        await _run_sync(_sync_record_delivery)
+        return {"ok": True, "fcm": resp}
     except RuntimeError as e:
         logger.error("FCM send skipped — credentials not available: %s", e)
         return {"ok": False, "error": "FCM not configured"}
+    except httpx.HTTPStatusError as e:
+        err_text = e.response.text
+        logger.error("FCM topic send failed", extra={"status": e.response.status_code, "error": err_text}, exc_info=True)
 
-    def _sync_record_delivery():
-        supa = _supa()
-        supa.table("notification_deliveries").insert(
-            {
-                "notification_id": notif["id"],
-                "status": "sent",
-                "fcm_message_id": resp.get("name"),
-                "sent_at": utc_now_iso(),
-            }
-        ).execute()
+        def _sync_record_failure():
+            supa = _supa()
+            supa.table("notification_deliveries").insert(
+                {
+                    "notification_id": notif["id"],
+                    "status": "failed",
+                    "error_code": err_text,
+                }
+            ).execute()
 
-    await _run_sync(_sync_record_delivery)
-    return {"ok": True, "fcm": resp}
+        await _run_sync(_sync_record_failure)
+        raise
 
 
 async def send_bulk(
@@ -316,50 +336,53 @@ async def send_bulk(
         audience_type="tokens",
     )
 
+    semaphore = asyncio.Semaphore(PUSH_FANOUT_CONCURRENCY)
+
     async def _send_one(tk: str):
-        try:
-            msg = fcm.build_message(
-                token=tk,
-                title=title,
-                body=body,
-                data=payload_data,
-                deep_link=deep_link,
-                priority_high=priority_high,
-                ttl_seconds=ttl,
-            )
-            resp = await fcm.send_message(msg)
+        async with semaphore:
+            try:
+                msg = fcm.build_message(
+                    token=tk,
+                    title=title,
+                    body=body,
+                    data=payload_data,
+                    deep_link=deep_link,
+                    priority_high=priority_high,
+                    ttl_seconds=ttl,
+                )
+                resp = await fcm.send_message(msg)
 
-            def _sync_record_sent():
-                supa = _supa()
-                dev = supa.table("device_tokens").select("id").eq("token", tk).execute()
-                supa.table("notification_deliveries").insert(
-                    {
-                        "notification_id": notif["id"],
-                        "device_token_id": (dev.data[0]["id"] if dev.data else None),
-                        "status": "sent",
-                        "fcm_message_id": resp.get("name"),
-                        "sent_at": utc_now_iso(),
-                    }
-                ).execute()
+                def _sync_record_sent():
+                    supa = _supa()
+                    dev = supa.table("device_tokens").select("id").eq("token", tk).execute()
+                    supa.table("notification_deliveries").insert(
+                        {
+                            "notification_id": notif["id"],
+                            "device_token_id": (dev.data[0]["id"] if dev.data else None),
+                            "status": "sent",
+                            "fcm_message_id": resp.get("name"),
+                            "sent_at": utc_now_iso(),
+                        }
+                    ).execute()
 
-            await _run_sync(_sync_record_sent)
-        except Exception as e:
-            err = str(e)
-            logger.warning("FCM send failed for token in send_bulk: %s", err, exc_info=True)
+                await _run_sync(_sync_record_sent)
+            except Exception as e:
+                err = str(e)
+                logger.warning("FCM send failed for token in send_bulk: %s", err, exc_info=True)
 
-            def _sync_record_failed():
-                supa = _supa()
-                if "UNREGISTERED" in err or "NotRegistered" in err:
-                    supa.table("device_tokens").update({"is_active": False}).eq("token", tk).execute()
-                supa.table("notification_deliveries").insert(
-                    {
-                        "notification_id": notif["id"],
-                        "status": "failed",
-                        "error_code": err,
-                    }
-                ).execute()
+                def _sync_record_failed():
+                    supa = _supa()
+                    if "UNREGISTERED" in err or "NotRegistered" in err:
+                        supa.table("device_tokens").update({"is_active": False}).eq("token", tk).execute()
+                    supa.table("notification_deliveries").insert(
+                        {
+                            "notification_id": notif["id"],
+                            "status": "failed",
+                            "error_code": err,
+                        }
+                    ).execute()
 
-            await _run_sync(_sync_record_failed)
+                await _run_sync(_sync_record_failed)
 
     await asyncio.gather(*[_send_one(tk) for tk in tokens])
     return {"ok": True, "requested": len(tokens)}

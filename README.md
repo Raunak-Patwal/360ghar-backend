@@ -1,7 +1,7 @@
 # 360 Ghar Backend
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Framework](https://img.shields.io/badge/framework-FastAPI-green.svg)](https://fastapi.tiangolo.com/)
 [![Database](https://img.shields.io/badge/database-PostgreSQL%20+%20PostGIS-blue.svg)](https://www.postgresql.org/)
 
@@ -183,7 +183,7 @@ All endpoints are prefixed with `/api/v1`.
 
 ### Prerequisites
 
-- [Python 3.10+](https://www.python.org/)
+- [Python 3.12+](https://www.python.org/)
 - [Docker](https://www.docker.com/get-started) and [Docker Compose](https://docs.docker.com/compose/install/)
 - A [Supabase](https://supabase.com/) project for authentication
 
@@ -354,6 +354,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 # Optional Services
 REDIS_URL=redis://localhost:6379
 SENTRY_DSN=your_sentry_dsn_here
+ENABLE_SENTRY_TEST_ENDPOINT=false
 
 # Environment
 ENVIRONMENT=development
@@ -366,8 +367,8 @@ NOTIF_SCHED_TZ=Asia/Kolkata
 
 # Vector Embeddings / Semantic Search
 GOOGLE_API_KEY=
-GEMINI_MODEL=gemini-3.1-flash-lite-preview
-GEMINI_EMBED_MODEL=text-embedding-004
+GEMINI_MODEL=gemini-3.5-flash
+GEMINI_EMBED_MODEL=gemini-embedding-2
 VECTOR_SYNC_ENABLED=true
 # Either provide CRON schedule or interval seconds (defaults to CRON below)
 VECTOR_SYNC_CRON=*/10 * * * *

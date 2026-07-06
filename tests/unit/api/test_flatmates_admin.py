@@ -360,9 +360,12 @@ class TestModerateListingApprove:
 
         payload = ListingModerationAction(action="approve", reason="Looks good")
 
-        with patch(
-            "app.services.push_notification.notify_listing_approved",
-            new=AsyncMock(),
+        with (
+            patch("app.services.push_notification.notify_listing_approved", new=AsyncMock()),
+            patch(
+                "app.services.flatmates.realtime.publish_flatmates_realtime_event",
+                new=AsyncMock(),
+            ),
         ):
             result = await moderate_listing(
                 listing_id=1,
@@ -377,8 +380,8 @@ class TestModerateListingApprove:
         db.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_approve_emits_sse_event(self):
-        """Approve action emits SSE property_update event to the listing owner."""
+    async def test_approve_publishes_realtime_event(self):
+        """Approve action publishes a listing status event to the listing owner."""
         db = _mock_db()
         admin = _make_admin_user_schema()
         prop = _make_property(prop_id=1, owner_id=10)
@@ -387,10 +390,13 @@ class TestModerateListingApprove:
 
         payload = ListingModerationAction(action="approve", reason="Looks good")
 
-        mock_sse_bus = AsyncMock()
+        mock_publish = AsyncMock()
         with (
             patch("app.services.push_notification.notify_listing_approved", new=AsyncMock()),
-            patch("app.core.sse.sse_bus", mock_sse_bus),
+            patch(
+                "app.services.flatmates.realtime.publish_flatmates_realtime_event",
+                new=mock_publish,
+            ),
         ):
             result = await moderate_listing(
                 listing_id=1,
@@ -399,13 +405,11 @@ class TestModerateListingApprove:
                 db=db,
             )
 
-        mock_sse_bus.emit.assert_awaited_once_with(
-            10,
-            {
-                "type": "property_update",
-                "data": {"property_id": 1, "change_type": "live"},
-            },
-        )
+        mock_publish.assert_awaited_once()
+        event = mock_publish.await_args.args[0]
+        assert event.user_id == 10
+        assert event.event_type == "listing_status_changed"
+        assert event.payload == {"property_id": 1, "change_type": "live"}
         assert result["status"] == "live"
 
 
@@ -422,9 +426,12 @@ class TestModerateListingReject:
 
         payload = ListingModerationAction(action="reject", reason="Incomplete info")
 
-        with patch(
-            "app.services.push_notification._dispatch",
-            new=AsyncMock(),
+        with (
+            patch("app.services.push_notification._dispatch", new=AsyncMock()),
+            patch(
+                "app.services.flatmates.realtime.publish_flatmates_realtime_event",
+                new=AsyncMock(),
+            ),
         ):
             result = await moderate_listing(
                 listing_id=2,
@@ -440,8 +447,8 @@ class TestModerateListingReject:
         db.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_reject_emits_sse_event(self):
-        """Reject action emits SSE property_update event to the listing owner."""
+    async def test_reject_publishes_realtime_event(self):
+        """Reject action publishes a listing status event to the listing owner."""
         db = _mock_db()
         admin = _make_admin_user_schema()
         prop = _make_property(prop_id=2, owner_id=10)
@@ -450,10 +457,13 @@ class TestModerateListingReject:
 
         payload = ListingModerationAction(action="reject", reason="Incomplete info")
 
-        mock_sse_bus = AsyncMock()
+        mock_publish = AsyncMock()
         with (
             patch("app.services.push_notification._dispatch", new=AsyncMock()),
-            patch("app.core.sse.sse_bus", mock_sse_bus),
+            patch(
+                "app.services.flatmates.realtime.publish_flatmates_realtime_event",
+                new=mock_publish,
+            ),
         ):
             result = await moderate_listing(
                 listing_id=2,
@@ -462,13 +472,11 @@ class TestModerateListingReject:
                 db=db,
             )
 
-        mock_sse_bus.emit.assert_awaited_once_with(
-            10,
-            {
-                "type": "property_update",
-                "data": {"property_id": 2, "change_type": "rejected"},
-            },
-        )
+        mock_publish.assert_awaited_once()
+        event = mock_publish.await_args.args[0]
+        assert event.user_id == 10
+        assert event.event_type == "listing_status_changed"
+        assert event.payload == {"property_id": 2, "change_type": "rejected"}
         assert result["status"] == "rejected"
 
 
@@ -485,12 +493,16 @@ class TestModerateListingRequestEdit:
 
         payload = ListingModerationAction(action="request_edit", reason="Need better photos")
 
-        result = await moderate_listing(
-            listing_id=3,
-            payload=payload,
-            current_user=admin,
-            db=db,
-        )
+        with patch(
+            "app.services.flatmates.realtime.publish_flatmates_realtime_event",
+            new=AsyncMock(),
+        ):
+            result = await moderate_listing(
+                listing_id=3,
+                payload=payload,
+                current_user=admin,
+                db=db,
+            )
 
         assert result["listing_id"] == 3
         assert result["action"] == "request_edit"
@@ -538,9 +550,12 @@ class TestModerateListingApprovalBoost:
 
         payload = ListingModerationAction(action="approve")
 
-        with patch(
-            "app.services.push_notification.notify_listing_approved",
-            new=AsyncMock(),
+        with (
+            patch("app.services.push_notification.notify_listing_approved", new=AsyncMock()),
+            patch(
+                "app.services.flatmates.realtime.publish_flatmates_realtime_event",
+                new=AsyncMock(),
+            ),
         ):
             result = await moderate_listing(
                 listing_id=10,

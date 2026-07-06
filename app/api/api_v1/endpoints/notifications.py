@@ -12,7 +12,13 @@ from app.api.api_v1.dependencies.auth import (
     get_current_admin,
     get_current_user_optional,
 )
+from app.config import settings
 from app.core.database import get_db
+from app.core.db_resilience import (
+    apply_statement_timeout,
+    execute_with_transient_retry,
+    raise_read_service_unavailable,
+)
 from app.schemas.pagination import CursorPage, CursorParams, build_cursor_page
 from app.schemas.user import User as UserSchema
 from app.services.notification_config import NOTIFICATION_TYPES, NotificationCategory
@@ -248,22 +254,40 @@ async def list_user_notifications(
     """Return notifications sent to the specified user (by DB id)."""
     from app.models.users import User as UserModel
 
-    user = await db.get(UserModel, user_id)
-    if not user or not getattr(user, "supabase_user_id", None):
-        raise HTTPException(status_code=404, detail="User not found or not linked to Supabase")
-    records, next_payload, total = await list_notifications_for_user(
-        user.supabase_user_id,
-        cursor_payload=page.decoded(),
-        limit=page.limit,
-        with_total=page.include_total,
-    )
-    # Supabase may return ints/other types for id; normalise to strings for the API
-    normalised: list[NotificationLogEntry] = []
-    for rec in records:
-        rec = dict(rec)
-        rec["id"] = str(rec.get("id"))
-        normalised.append(NotificationLogEntry(**rec))
-    return build_cursor_page(normalised, limit=page.limit, next_payload=next_payload, total=total)
+    try:
+        await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
+        user_stmt = select(UserModel.supabase_user_id).where(UserModel.id == user_id)
+        user_result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(user_stmt),
+            operation_name="notification_user_lookup",
+        )
+        supabase_user_id = user_result.scalar_one_or_none()
+        if not supabase_user_id:
+            raise HTTPException(status_code=404, detail="User not found or not linked to Supabase")
+        records, next_payload, total = await list_notifications_for_user(
+            supabase_user_id,
+            cursor_payload=page.decoded(),
+            limit=page.limit,
+            with_total=page.include_total,
+        )
+        # Supabase may return ints/other types for id; normalise to strings for the API
+        normalised: list[NotificationLogEntry] = []
+        for rec in records:
+            rec = dict(rec)
+            rec["id"] = str(rec.get("id"))
+            normalised.append(NotificationLogEntry(**rec))
+        return build_cursor_page(normalised, limit=page.limit, next_payload=next_payload, total=total)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise_read_service_unavailable(
+            exc,
+            endpoint="notifications_user_list",
+            detail="Notifications are temporarily unavailable. Please retry shortly.",
+            extra={"target_user": user_id},
+        )
+        raise
 
 
 class MarketingNotification(BaseModel):
@@ -303,32 +327,48 @@ async def send_marketing_broadcast(
     _ensure_marketing_type(req.type_key)
     from app.models.users import User as UserModel
 
-    total_result = await db.execute(
-        select(func.count(UserModel.id)).where(UserModel.is_active.is_(True))
-    )
-    total_users = int(total_result.scalar_one() or 0)
-    stmt = (
-        select(UserModel.id)
-        .where(UserModel.is_active.is_(True))
-        .order_by(UserModel.id)
-        .limit(MAX_MARKETING_RECIPIENTS)
-    )
-    res = await db.execute(stmt)
-    user_ids = [row[0] for row in res.all()]
-    summary = await dispatch_notification_to_users(
-        db,
-        user_db_ids=user_ids,
-        type_key=req.type_key,
-        title=req.title,
-        body=req.body,
-        data=req.data,
-        deep_link=req.deep_link,
-    )
-    return {
-        "requested": total_users,
-        "processed": len(user_ids),
-        "summary": summary,
-    }
+    try:
+        await apply_statement_timeout(db, settings.DB_READ_STATEMENT_TIMEOUT_MS)
+        total_stmt = select(func.count(UserModel.id)).where(UserModel.is_active.is_(True))
+        total_result = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(total_stmt),
+            operation_name="notification_marketing_broadcast_count",
+        )
+        total_users = int(total_result.scalar_one() or 0)
+        stmt = (
+            select(UserModel.id)
+            .where(UserModel.is_active.is_(True))
+            .order_by(UserModel.id)
+            .limit(MAX_MARKETING_RECIPIENTS)
+        )
+        res = await execute_with_transient_retry(
+            db,
+            lambda: db.execute(stmt),
+            operation_name="notification_marketing_broadcast_users",
+        )
+        user_ids = [row[0] for row in res.all()]
+        summary = await dispatch_notification_to_users(
+            db,
+            user_db_ids=user_ids,
+            type_key=req.type_key,
+            title=req.title,
+            body=req.body,
+            data=req.data,
+            deep_link=req.deep_link,
+        )
+        return {
+            "requested": total_users,
+            "processed": len(user_ids),
+            "summary": summary,
+        }
+    except Exception as exc:
+        raise_read_service_unavailable(
+            exc,
+            endpoint="notifications_marketing_broadcast",
+            detail="Marketing broadcast is temporarily unavailable. Please retry shortly.",
+        )
+        raise
 
 
 @router.post("/marketing/segment", summary="Send marketing segment")
@@ -339,32 +379,40 @@ async def send_marketing_segment(
 ):
     """Send a marketing notification to a segment of users based on simple filters."""
     _ensure_marketing_type(req.type_key)
-    requested = await count_users_for_segment(
-        db,
-        role=req.filter.role,
-        agent_id=req.filter.agent_id,
-        is_active=req.filter.is_active,
-    )
-    user_ids = await find_user_ids_for_segment(
-        db,
-        role=req.filter.role,
-        agent_id=req.filter.agent_id,
-        is_active=req.filter.is_active,
-        limit=MAX_MARKETING_RECIPIENTS,
-    )
-    if not user_ids:
-        return {"requested": 0, "processed": 0, "summary": {"requested": 0, "succeeded": 0, "details": []}}
-    summary = await dispatch_notification_to_users(
-        db,
-        user_db_ids=user_ids,
-        type_key=req.type_key,
-        title=req.title,
-        body=req.body,
-        data=req.data,
-        deep_link=req.deep_link,
-    )
-    return {
-        "requested": requested,
-        "processed": len(user_ids),
-        "summary": summary,
-    }
+    try:
+        requested = await count_users_for_segment(
+            db,
+            role=req.filter.role,
+            agent_id=req.filter.agent_id,
+            is_active=req.filter.is_active,
+        )
+        user_ids = await find_user_ids_for_segment(
+            db,
+            role=req.filter.role,
+            agent_id=req.filter.agent_id,
+            is_active=req.filter.is_active,
+            limit=MAX_MARKETING_RECIPIENTS,
+        )
+        if not user_ids:
+            return {"requested": 0, "processed": 0, "summary": {"requested": 0, "succeeded": 0, "details": []}}
+        summary = await dispatch_notification_to_users(
+            db,
+            user_db_ids=user_ids,
+            type_key=req.type_key,
+            title=req.title,
+            body=req.body,
+            data=req.data,
+            deep_link=req.deep_link,
+        )
+        return {
+            "requested": requested,
+            "processed": len(user_ids),
+            "summary": summary,
+        }
+    except Exception as exc:
+        raise_read_service_unavailable(
+            exc,
+            endpoint="notifications_marketing_segment",
+            detail="Marketing segment is temporarily unavailable. Please retry shortly.",
+        )
+        raise

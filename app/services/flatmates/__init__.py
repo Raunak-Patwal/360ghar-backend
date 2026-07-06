@@ -26,9 +26,9 @@ from app.services.flatmates.matching import (
     unmatch_user_pair,
 )
 from app.services.flatmates.moderation import (
-    apply_stale_listing_pause,
     apply_listing_prescreen_metadata,
     apply_report_auto_pause,
+    apply_stale_listing_pause,
     build_listing_prescreen_result,
     create_block,
     create_report,
@@ -47,6 +47,10 @@ from app.services.flatmates.profiles import (
     mark_all_flatmates_notifications_read,
     mark_flatmates_notification_read,
     update_flatmates_profile,
+)
+from app.services.flatmates.realtime import (
+    flatmates_realtime_config,
+    queue_flatmates_realtime_event,
 )
 from app.services.flatmates.visits import update_visit_status
 
@@ -93,6 +97,9 @@ __all__ = [
     "prescreen_flatmate_listing",
     # visits
     "update_visit_status",
+    # realtime
+    "flatmates_realtime_config",
+    "queue_flatmates_realtime_event",
     # helpers
     "geocode_listing",
 ]

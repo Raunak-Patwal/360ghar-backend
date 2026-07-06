@@ -88,6 +88,7 @@ async def get_floor_plan(
         db=db,
         floor_plan_id=floor_plan_id,
         user_id=current_user.id,
+        tour_id=tour_id,
     )
     return floor_plan
 
@@ -114,6 +115,7 @@ async def update_floor_plan(
         floor_plan_id=floor_plan_id,
         user_id=current_user.id,
         data=data,
+        tour_id=tour_id,
     )
     return floor_plan
 
@@ -143,6 +145,7 @@ async def update_floor_plan_markers(
         floor_plan_id=floor_plan_id,
         user_id=current_user.id,
         markers=markers_data,
+        tour_id=tour_id,
     )
     return floor_plan
 
@@ -165,6 +168,7 @@ async def delete_floor_plan(
         db=db,
         floor_plan_id=floor_plan_id,
         user_id=current_user.id,
+        tour_id=tour_id,
     )
     if not success:
         raise HTTPException(

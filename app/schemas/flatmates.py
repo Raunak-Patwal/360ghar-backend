@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Literal
 
@@ -111,12 +113,20 @@ class CatalogEntry(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class FlatmatesRealtimeConfig(BaseModel):
+    provider: Literal["supabase"] = "supabase"
+    channel: str
+    private: bool = True
+    events: list[str]
+
+
 class FlatmatesBootstrap(BaseModel):
     profile: FlatmatesProfile
     catalogs: list[CatalogEntry]
     active_listing_count: int
     conversation_count: int
     unread_message_count: int
+    realtime: FlatmatesRealtimeConfig
 
 
 class FlatmatesPeer(BaseModel):

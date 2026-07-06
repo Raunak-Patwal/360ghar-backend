@@ -7,10 +7,12 @@ participants table, but flatmates usage is always 1:1.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -41,6 +43,11 @@ from app.services.flatmates.helpers import (
     _build_property_context,
     _canonical_pair,
     _is_blocked,
+)
+from app.services.flatmates.realtime import (
+    EVENT_CONVERSATION_UPDATED,
+    EVENT_NEW_MESSAGE,
+    queue_flatmates_realtime_event,
 )
 from app.utils.validators import ValidationUtils
 
@@ -264,9 +271,17 @@ async def create_conversation_from_payload(
         conversation.last_message_preview = payload.initial_message.strip()
         await db.flush()
         await db.refresh(message)
+        _queue_message_realtime_events(
+            db,
+            conversation_id=conversation.id,
+            sender_id=user_id,
+            peer_id=payload.peer_user_id,
+            message_id=message.id,
+        )
     else:
         await db.flush()
 
+    await db.commit()
     return await get_conversation_summary(db, conversation.id, user_id)
 
 
@@ -526,20 +541,55 @@ async def list_messages(
     db: AsyncSession,
     conversation_id: int,
     user_id: int,
-) -> list[Message]:
+    *,
+    limit: int = 50,
+    before_id: int | None = None,
+    mark_read: bool = True,
+) -> tuple[list[Message], bool]:
+    """Return a chronologically-ordered page of messages.
+
+    The function is intentionally READ-ONLY: scroll-back via ``before_id`` would
+    otherwise silently mark every old message on the page as read, firing
+    spurious read-receipts and destroying unread state. The "I have seen the
+    bottom of the conversation" read marker is set by the explicit
+    ``mark_conversation_read`` endpoint / ``mark_read=True`` argument (which
+    only the first / most-recent page should pass).
+
+    ``limit`` is clamped to [1, 200] and ``before_id`` to >= 1 as
+    defense-in-depth: the FastAPI layer already constrains these via Query(),
+    but a direct service-level caller (or a future refactor) must not be
+    able to trigger the infinite-loop bug by passing limit=0.
+    """
+    limit = max(1, min(int(limit), 200))
+    if before_id is not None and before_id < 1:
+        before_id = None
     await get_conversation(db, conversation_id, user_id)
     stmt = (
         select(Message)
         .where(Message.conversation_id == conversation_id)
-        .order_by(Message.created_at.asc())
+        .order_by(Message.id.desc())
+        .limit(limit + 1)
     )
-    messages = list((await db.execute(stmt)).scalars().all())
-    now = datetime.now(timezone.utc)
-    for message in messages:
-        if message.sender_id != user_id and message.read_at is None:
-            message.read_at = now
-    await db.flush()
-    return messages
+    if before_id is not None:
+        stmt = stmt.where(Message.id < before_id)
+    rows = list((await db.execute(stmt)).scalars().all())
+    has_more = len(rows) > limit
+    if has_more:
+        rows = rows[:limit]
+    # Return in chronological order
+    messages = list(reversed(rows))
+
+    # Only mark unread messages as read when this is the newest page (no
+    # before_id) and the caller explicitly opts in. Backward pagination must
+    # never touch read state.
+    if mark_read and before_id is None and messages:
+        now = datetime.now(timezone.utc)
+        for message in messages:
+            if message.sender_id != user_id and message.read_at is None:
+                message.read_at = now
+        await db.flush()
+        await db.commit()
+    return messages, has_more
 
 
 async def send_message(
@@ -576,25 +626,91 @@ async def send_message(
     await db.flush()
     await db.refresh(message)
 
-    # --- Push notification to peer ---
+    # --- Push notification to peer (deferred to after_commit so it only fires if the
+    # message actually persists, and uses a background session to avoid holding the request
+    # session open during FCM dispatch). ---
     peer_id = await _find_participant_peer_id(db, conversation.id, user_id)
 
-    if peer_id is not None:
-        try:
-            from app.services.push_notification import notify_new_message
+    if peer_id is not None and not await _is_blocked(db, user_id, peer_id):
+        sender = await db.get(User, user_id)
+        sender_name = (sender.full_name if sender else None) or "Someone"
+        _queue_message_realtime_events(
+            db,
+            conversation_id=conversation.id,
+            sender_id=user_id,
+            peer_id=peer_id,
+            message_id=message.id,
+        )
+        _schedule_after_commit_notify(
+            db,
+            peer_id=peer_id,
+            sender_name=sender_name,
+            conversation_id=conversation.id,
+        )
 
-            sender = await db.get(User, user_id)
-            sender_name = (sender.full_name if sender else None) or "Someone"
-            await notify_new_message(
-                db,
-                recipient_db_id=peer_id,
-                sender_name=sender_name,
-                conversation_id=conversation.id,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Message notification failed (best-effort): %s", exc, exc_info=True)
-
+    await db.commit()
     return message
+
+
+def _queue_message_realtime_events(
+    db: AsyncSession,
+    *,
+    conversation_id: int,
+    sender_id: int,
+    peer_id: int,
+    message_id: int,
+) -> None:
+    payload = {
+        "conversation_id": conversation_id,
+        "message_id": message_id,
+        "sender_id": sender_id,
+    }
+    queue_flatmates_realtime_event(
+        db,
+        user_id=peer_id,
+        event_type=EVENT_NEW_MESSAGE,
+        payload=payload,
+    )
+    for uid in (sender_id, peer_id):
+        queue_flatmates_realtime_event(
+            db,
+            user_id=uid,
+            event_type=EVENT_CONVERSATION_UPDATED,
+            payload={"conversation_id": conversation_id},
+        )
+
+
+def _schedule_after_commit_notify(
+    db: AsyncSession,
+    *,
+    peer_id: int,
+    sender_name: str,
+    conversation_id: int,
+) -> None:
+    """Schedule the new-message push on a background task that runs after the transaction commits."""
+    from sqlalchemy import event
+
+    @event.listens_for(db.sync_session, "after_commit", once=True)
+    def _on_commit(_session: Any) -> None:  # noqa: ANN001
+        async def _bg_notify() -> None:
+            try:
+                from app.core.database import AsyncSessionLocalBG
+                from app.services.push_notification import notify_new_message
+
+                async with AsyncSessionLocalBG() as bg_db:
+                    await notify_new_message(
+                        bg_db,
+                        recipient_db_id=peer_id,
+                        sender_name=sender_name,
+                        conversation_id=conversation_id,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Message notification failed (best-effort): %s", exc, exc_info=True)
+
+        try:
+            asyncio.create_task(_bg_notify())
+        except RuntimeError as exc:
+            logger.warning("Could not schedule message notification task: %s", exc, exc_info=True)
 
 
 async def mark_conversation_read(
@@ -604,6 +720,7 @@ async def mark_conversation_read(
 ) -> dict[str, str]:
     """Mark all peer messages in a conversation as read."""
     await get_conversation(db, conversation_id, user_id)
+    peer_id = await _find_participant_peer_id(db, conversation_id, user_id)
 
     now = datetime.now(timezone.utc)
     await db.execute(
@@ -615,6 +732,13 @@ async def mark_conversation_read(
         )
         .values(read_at=now)
     )
+    for uid in (user_id, peer_id):
+        queue_flatmates_realtime_event(
+            db,
+            user_id=uid,
+            event_type=EVENT_CONVERSATION_UPDATED,
+            payload={"conversation_id": conversation_id},
+        )
     await db.commit()
 
     return {"status": "success"}
@@ -664,11 +788,27 @@ async def save_match_qna_answers(
     )
     qna_answer = existing.scalar_one_or_none()
     if qna_answer is None:
-        qna_answer = MatchQnAAnswer(
-            match_id=user_match.id,
-            user_id=user_id,
-        )
-        db.add(qna_answer)
+        # Use a savepoint so that a concurrent-insert IntegrityError does not
+        # roll back the UserMatch that was already flushed above.
+        try:
+            async with db.begin_nested():
+                qna_answer = MatchQnAAnswer(
+                    match_id=user_match.id,
+                    user_id=user_id,
+                )
+                db.add(qna_answer)
+                await db.flush()
+        except IntegrityError:
+            # Another request inserted the row concurrently; re-fetch it.
+            existing = await db.execute(
+                select(MatchQnAAnswer).where(
+                    MatchQnAAnswer.match_id == user_match.id,
+                    MatchQnAAnswer.user_id == user_id,
+                )
+            )
+            qna_answer = existing.scalar_one_or_none()
+            if qna_answer is None:
+                raise NotFoundException(detail="QnA answer could not be created") from None
 
     answer_fields = {
         0: "q1",

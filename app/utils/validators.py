@@ -1,4 +1,3 @@
-import html
 import re
 from datetime import date
 from typing import Any
@@ -32,15 +31,22 @@ class ValidationUtils:
 
     @staticmethod
     def sanitize_string(value: str, max_length: int = 255) -> str:
-        """Sanitize string input"""
+        """Sanitize string input by stripping HTML tags (not escaping entities).
+
+        Uses bleach to remove any HTML markup while preserving the plain-text
+        content (including characters like ``&``, ``'``).  ``html.escape()``
+        was previously used here but corrupted names containing ampersands or
+        apostrophes (e.g. "O'Brien" → "O&#x27;Brien").
+        """
         if not value:
             return value
 
         # Remove leading/trailing whitespace
         value = value.strip()
 
-        # Escape HTML entities
-        value = html.escape(value)
+        # Strip HTML tags rather than escaping entities, so names like
+        # "O'Brien" and "Rahul & Sons" are preserved correctly.
+        value = bleach.clean(value, tags=[], strip=True)
 
         # Limit length
         if len(value) > max_length:

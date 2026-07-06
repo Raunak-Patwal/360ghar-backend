@@ -9,6 +9,12 @@ from app.api.api_v1.dependencies.auth import get_current_active_user, get_curren
 from app.config import settings
 from app.core.cache import CacheKeyPatterns, cached, invalidate_cache
 from app.core.database import get_db
+from app.core.db_resilience import (
+    extract_db_error_code,
+    is_statement_timeout,
+    is_transient_db_error,
+)
+from app.core.exceptions import ServiceUnavailableException
 from app.models.enums import UserRole
 from app.models.users import User
 from app.schemas.common import MessageResponse
@@ -60,7 +66,11 @@ async def get_faqs_public_cached(
     )
 
 
-@cached("versions:check", ttl=3600)  # 1 hour TTL
+@cached(
+    "versions:check",
+    ttl=settings.CACHE_TTL_VERSIONS,
+    key_params=["app", "platform", "current_version"],
+)
 async def check_for_updates_cached(
     core_service: CoreService,
     app: str,
@@ -328,13 +338,33 @@ async def check_for_updates(
     check_data: AppVersionCheckRequest,
     core_service: CoreService = Depends(get_core_service)
 ):
-    """Check if there's an available update (public endpoint, cached 1hr)."""
-    return await check_for_updates_cached(
-        core_service,
-        check_data.app,
-        check_data.platform,
-        check_data.current_version
-    )
+    """Check if there's an available update (public endpoint, cached)."""
+    try:
+        return await check_for_updates_cached(
+            core_service,
+            app=check_data.app,
+            platform=check_data.platform,
+            current_version=check_data.current_version,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if is_transient_db_error(exc) or is_statement_timeout(exc):
+            error_code = extract_db_error_code(exc) or (
+                "STATEMENT_TIMEOUT" if is_statement_timeout(exc) else "TRANSIENT_DB_ERROR"
+            )
+            logger.error(
+                "Version check transient DB failure",
+                extra={"endpoint": "check_for_updates", "error_code": error_code},
+                exc_info=True,
+            )
+            raise ServiceUnavailableException(
+                detail="Version check is temporarily unavailable. Please retry shortly.",
+                headers={"Retry-After": "30"},
+                details={"error_code": error_code, "endpoint": "check_for_updates"},
+            ) from exc
+        logger.error("Error in check_for_updates: %s", exc, exc_info=True)
+        raise
 
 @router.get("/versions", response_model=CursorPage[AppVersionResponse], summary="List app versions")
 async def get_app_versions(

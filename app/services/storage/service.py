@@ -36,6 +36,7 @@ from .helpers import (
     infer_content_type_from_extension,
     is_valid_content_type,
     is_valid_upload,
+    read_upload_file_limited,
     validate_magic_bytes,
 )
 from .processing import process_existing_scene_image as _process_existing_scene_image
@@ -45,6 +46,8 @@ if TYPE_CHECKING:
     from app.services.cloudinary.service import CloudinaryService
 
 logger = get_logger(__name__)
+
+MAX_BATCH_UPLOAD_FILES = 20
 
 OPTIMIZE_SETTINGS: dict[StorageFolder, tuple[int, int]] = {
     StorageFolder.AVATAR: (512, 85),
@@ -110,7 +113,7 @@ class StorageService:
                 scene_id=scene_id,
             )
 
-            file_content = await file.read()
+            file_content = await self._read_upload_content(file)
 
             # Magic-byte validation: reject spoofed content_type headers for
             # non-image types (PIL already validates images downstream).
@@ -122,7 +125,7 @@ class StorageService:
                 )
 
             content_type = file.content_type
-            is_image = content_type and content_type.startswith("image/")
+            is_image = bool(content_type and content_type.startswith("image/"))
             if is_image:
                 try:
                     # Use folder-specific settings if available, otherwise defaults
@@ -223,7 +226,7 @@ class StorageService:
             if not is_valid_upload(file):
                 raise InvalidFileException(detail="Invalid file type")
 
-            file_content = await file.read()
+            file_content = await self._read_upload_content(file)
             content_type = file.content_type or "application/octet-stream"
 
             # Magic-byte validation: reject spoofed content_type headers for
@@ -333,6 +336,11 @@ class StorageService:
         tour_id: str | None = None,
         visibility: str = "private",
     ) -> list[dict[str, Any]]:
+        if len(files) > MAX_BATCH_UPLOAD_FILES:
+            raise BadRequestException(
+                detail=f"Batch upload supports at most {MAX_BATCH_UPLOAD_FILES} files"
+            )
+
         results = []
         for f in files:
             results.append(
@@ -396,7 +404,12 @@ class StorageService:
             else:
                 raise InvalidFileException(detail="Invalid file type")
 
-        public_id = generate_cloudinary_public_id(
+        # Use ONE public_id (rooted) end-to-end: sign it, store it on the
+        # media row, and return it to the client. Previously the code signed a
+        # rooted id but stored/returned the unrooted one, so confirm_upload's
+        # get_file_info() looked up a nonexistent id and marked every direct
+        # upload as failed.
+        file_name_part = generate_cloudinary_public_id(
             folder=folder,
             original_filename=filename,
             user_id=user_id,
@@ -404,14 +417,23 @@ class StorageService:
             tour_id=tour_id,
             scene_id=scene_id,
         )
+        # Join folder + filename into the rooted public_id; generate_signed_upload_params
+        # re-prefixes the cloudinary root internally, so we pass the UNROOTED id there.
+        resource_type = self.cloudinary._resource_type(normalized_content_type)
+        signed_params = self.cloudinary.generate_signed_upload_params(
+            public_id=file_name_part.split("/")[-1],
+            folder="/".join(file_name_part.split("/")[:-1]),
+            resource_type=resource_type,
+        )
+        full_public_id = signed_params["public_id"]
 
-        public_url = self.cloudinary.get_url(public_id)
+        public_url = self.cloudinary.get_url(full_public_id)
 
         media = await self._create_media_record(
             db=db,
             user_id=user_id,
             upload_result={
-                "file_path": public_id,
+                "file_path": full_public_id,
                 "public_url": public_url,
                 "file_type": folder.name.lower(),
                 "file_size": file_size or 0,
@@ -425,9 +447,12 @@ class StorageService:
 
         return {
             "upload_id": media.id,
-            "signed_url": None,
-            "token": None,
-            "path": public_id,
+            "signed_url": signed_params["upload_url"],
+            "token": signed_params["signature"],
+            "api_key": signed_params["api_key"],
+            "timestamp": signed_params["timestamp"],
+            "public_id": full_public_id,
+            "path": full_public_id,
             "public_url": public_url,
         }
 
@@ -451,7 +476,15 @@ class StorageService:
         if media.upload_status == "complete":
             return media
 
-        file_info = self.cloudinary.get_file_info(media.storage_path or media.file_url)
+        lookup_id = media.storage_path
+        if not lookup_id and media.file_url:
+            lookup_id = self.cloudinary.extract_public_id_from_url(media.file_url)
+        if not lookup_id:
+            logger.warning("Upload confirmation failed: no storage path or URL for media %s", upload_id)
+            media.upload_status = "failed"
+            await db.flush()
+            raise NotFoundException(detail="File not found in storage")
+        file_info = self.cloudinary.get_file_info(lookup_id)
         if not file_info:
             logger.warning("Upload confirmation failed: file not found at %s", media.storage_path)
             media.upload_status = "failed"
@@ -536,12 +569,12 @@ class StorageService:
     def extract_path_from_url(self, public_url: str, bucket_name: str | None = None) -> str | None:
         return self.cloudinary.extract_public_id_from_url(public_url)
 
-    def list_files(self, folder: str, bucket_name: str | None = None) -> list[dict[str, Any]]:
-        return []
-
     # ============================================================
     # Private Helper Methods
     # ============================================================
+
+    async def _read_upload_content(self, file: UploadFile) -> bytes:
+        return await read_upload_file_limited(file, self._max_upload_bytes)
 
     async def _upload_file(
         self,
@@ -556,7 +589,7 @@ class StorageService:
             if not is_valid_upload(file, allow_documents=allow_documents):
                 raise InvalidFileException(detail="Invalid file type")
 
-            file_content = await file.read()
+            file_content = await self._read_upload_content(file)
             content_type = file.content_type or "application/octet-stream"
 
             # Magic-byte validation: reject spoofed content_type headers for
@@ -676,9 +709,10 @@ class StorageService:
 
         deleted: list[str] = []
         failed: list[str] = []
+        storage_warnings: list[str] = []
 
         if not media_ids:
-            return BatchDeleteResponse(deleted=deleted, failed=failed).model_dump()
+            return BatchDeleteResponse(deleted=deleted, failed=failed, storage_warnings=storage_warnings).model_dump()
 
         # Deduplicate while preserving order.
         unique_ids: list[str] = []
@@ -713,11 +747,12 @@ class StorageService:
                     self.delete_file(file_path, bucket_name=bucket_name)
                 except Exception as e:  # noqa: BLE001
                     logger.error("Storage deletion failed for media %s: %s", mid, e)
+                    storage_warnings.append(mid)
             await db.delete(media)
             deleted.append(mid)
 
         await db.flush()
-        return BatchDeleteResponse(deleted=deleted, failed=failed).model_dump()
+        return BatchDeleteResponse(deleted=deleted, failed=failed, storage_warnings=storage_warnings).model_dump()
 
 
 storage_service = StorageService()

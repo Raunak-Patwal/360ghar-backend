@@ -211,7 +211,7 @@
 | DH-031 | DataHub/Scraper | Trigger scraper manually (admin) | admin | SKIP | - | external-scraper |
 | DH-032 | DataHub/Scraper | List scraper runs (admin) | admin | PASS | 200 |  |
 | DH-033 | DataHub/Scraper | Bulk import data (admin, placeholder) | admin | FAIL | 400 | POST /api/v1/data-hub/admin/import/{table_name} -> 400 |
-| FLAT-001 | Flatmates | Real-time Events Stream | user | SKIP | - | external-sse-streaming |
+| FLAT-001 | Flatmates | Real-time Events Stream | user | SKIP | - | external-supabase-realtime |
 | FLAT-002 | Flatmates | Bootstrap Data | user | PASS | 200 |  |
 | FLAT-003 | Flatmates | Catalog Metadata | public | PASS | 200 |  |
 | FLAT-004 | Flatmates | Profile CRUD | user | PASS | 200, 200, 200, 200 |  |

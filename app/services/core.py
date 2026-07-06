@@ -225,10 +225,10 @@ class CoreService:
         )
 
         if is_active is not None:
-            stmt = stmt.where(Page.is_active == is_active)
+            stmt = stmt.where(Page.is_active.is_(is_active))
 
         if is_draft is not None:
-            stmt = stmt.where(Page.is_draft == is_draft)
+            stmt = stmt.where(Page.is_draft.is_(is_draft))
 
         count_total: int | None = None
         if with_total:
@@ -374,7 +374,7 @@ class CoreService:
             query = query.where(AppVersion.platform == platform)
 
         if is_active is not None:
-            query = query.where(AppVersion.is_active == is_active)
+            query = query.where(AppVersion.is_active.is_(is_active))
 
         total: int | None = None
         if with_total:
@@ -452,7 +452,7 @@ class CoreService:
             stmt = stmt.where(FAQ.category == category)
 
         if is_active is not None:
-            stmt = stmt.where(FAQ.is_active == is_active)
+            stmt = stmt.where(FAQ.is_active.is_(is_active))
 
         count_total: int | None = None
         if with_total:

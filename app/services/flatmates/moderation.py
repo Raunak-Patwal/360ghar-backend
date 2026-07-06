@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -265,6 +266,7 @@ async def prescreen_flatmate_listing(
 
     result = apply_listing_prescreen_metadata(listing, admin_user_id=admin_user_id)
     await db.flush()
+    await db.commit()
     return {
         "listing_id": listing.id,
         **result,
@@ -329,6 +331,7 @@ async def delete_block(db: AsyncSession, user_id: int, blocked_user_id: int) -> 
         raise BadRequestException(detail="Blocked user not found")
     await db.delete(block)
     await db.flush()
+    await db.commit()
     return {"ok": True, "blocked_user_id": blocked_user_id}
 
 
@@ -364,24 +367,21 @@ async def create_block(db: AsyncSession, user_id: int, blocked_user_id: int) -> 
         match.status = UserMatchStatus.blocked
 
     await db.flush()
+    await db.commit()
     return block
 
 
 async def _active_reporter_count(db: AsyncSession, reported_user_id: int) -> int:
-    rows = (
-        await db.execute(
-            select(UserReport.reporter_user_id).where(
-                UserReport.reported_user_id == reported_user_id,
-                UserReport.status.in_(
-                    [
-                        UserReportStatus.open.value,
-                        UserReportStatus.reviewed.value,
-                    ]
-                ),
-            )
-        )
-    ).scalars()
-    return len({int(reporter_id) for reporter_id in rows.all()})
+    stmt = select(func.count(func.distinct(UserReport.reporter_user_id))).where(
+        UserReport.reported_user_id == reported_user_id,
+        UserReport.status.in_(
+            [
+                UserReportStatus.open.value,
+                UserReportStatus.reviewed.value,
+            ]
+        ),
+    )
+    return int((await db.execute(stmt)).scalar() or 0)
 
 
 def apply_report_auto_pause(
@@ -516,6 +516,8 @@ async def pause_stale_flatmate_listings(
             await db.flush()
         else:
             break
+    if paused_count:
+        await db.commit()
     return paused_count
 
 
@@ -525,6 +527,22 @@ async def create_report(db: AsyncSession, user_id: int, payload: ReportCreate) -
     reported_user = await db.get(User, payload.reported_user_id)
     if reported_user is None:
         raise BadRequestException(detail="Reported user not found")
+
+    # At most one OPEN report per (reporter, reported) pair — backed by a
+    # partial unique index. Return the existing one instead of raising on the constraint.
+    existing_stmt = (
+        select(UserReport)
+        .where(
+            UserReport.reporter_user_id == user_id,
+            UserReport.reported_user_id == payload.reported_user_id,
+            UserReport.status == UserReportStatus.open,
+        )
+        .limit(1)
+    )
+    existing = (await db.execute(existing_stmt)).scalars().first()
+    if existing:
+        return existing
+
     report = UserReport(
         reporter_user_id=user_id,
         reported_user_id=payload.reported_user_id,
@@ -533,8 +551,16 @@ async def create_report(db: AsyncSession, user_id: int, payload: ReportCreate) -
         reason=payload.reason.value,
         notes=payload.notes,
     )
-    db.add(report)
-    await db.flush()
+    try:
+        async with db.begin_nested():
+            db.add(report)
+            await db.flush()
+    except IntegrityError:
+        # Concurrent insert won the race for the unique-open index; return it.
+        existing = (await db.execute(existing_stmt)).scalars().first()
+        if existing:
+            return existing
+        raise BadRequestException(detail="You have already reported this user") from None
 
     report_count = await _active_reporter_count(db, payload.reported_user_id)
     if apply_report_auto_pause(reported_user, report_count=report_count):
@@ -551,4 +577,5 @@ async def create_report(db: AsyncSession, user_id: int, payload: ReportCreate) -
         )
 
     await db.refresh(report)
+    await db.commit()
     return report

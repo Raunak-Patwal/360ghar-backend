@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import time
 from collections.abc import AsyncGenerator
 
 import sentry_sdk
 from fastapi import HTTPException
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy import event
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
@@ -13,9 +17,109 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+_SUPABASE_POOLER_HOST_SUFFIX = ".pooler.supabase.com"
+_SUPABASE_SESSION_POOLER_PORT = 5432
+_SUPABASE_TRANSACTION_POOLER_PORT = 6543
+_SESSION_POOLER_SAFE_CLIENT_BUDGET = 12
+
 # Base class for all models
 class Base(DeclarativeBase):
     pass
+
+
+def _database_url_host_port(database_url: str) -> tuple[str | None, int | None]:
+    try:
+        url = make_url(database_url)
+    except Exception:
+        logger.warning("Could not parse DATABASE_URL for pooler validation")
+        return None, None
+    return url.host, url.port
+
+
+def _database_pool_budget(
+    db_pool_size: int,
+    db_max_overflow: int,
+    db_bg_pool_size: int,
+    db_bg_max_overflow: int,
+) -> int:
+    return db_pool_size + db_max_overflow + db_bg_pool_size + db_bg_max_overflow
+
+
+def _validate_database_pooler_config(
+    *,
+    database_url: str,
+    serverless_enabled: bool,
+    environment: str,
+    db_pool_size: int,
+    db_max_overflow: int,
+    db_bg_pool_size: int,
+    db_bg_max_overflow: int,
+) -> None:
+    """Guard against Supabase pooler modes that can exhaust client slots."""
+    host, port = _database_url_host_port(database_url)
+    is_supabase_pooler = bool(host and host.endswith(_SUPABASE_POOLER_HOST_SUFFIX))
+    is_session_pooler = is_supabase_pooler and port == _SUPABASE_SESSION_POOLER_PORT
+    is_transaction_pooler = is_supabase_pooler and port == _SUPABASE_TRANSACTION_POOLER_PORT
+    is_production = environment.lower() == "production"
+    budget = _database_pool_budget(
+        db_pool_size,
+        db_max_overflow,
+        db_bg_pool_size,
+        db_bg_max_overflow,
+    )
+
+    if is_production and is_supabase_pooler and not is_transaction_pooler:
+        raise RuntimeError(
+            "Production Supabase pooler URLs must use the transaction pooler "
+            f"on port 6543; got port {port or 'unknown'}"
+        )
+
+    if serverless_enabled and is_session_pooler:
+        message = (
+            "SERVERLESS_ENABLED=true must use the Supabase transaction pooler "
+            "on port 6543, not the session pooler on port 5432"
+        )
+        logger.warning(message)
+
+    if not serverless_enabled and is_session_pooler and budget > _SESSION_POOLER_SAFE_CLIENT_BUDGET:
+        message = (
+            "Supabase session-pooler client budget is too high: "
+            f"{budget} > {_SESSION_POOLER_SAFE_CLIENT_BUDGET}. Reduce DB_POOL_SIZE/"
+            "DB_MAX_OVERFLOW/DB_BG_POOL_SIZE/DB_BG_MAX_OVERFLOW or use port 6543."
+        )
+        logger.warning(message)
+
+    pooler_mode = "none"
+    if is_session_pooler:
+        pooler_mode = "supabase_session"
+    elif is_transaction_pooler:
+        pooler_mode = "supabase_transaction"
+    elif is_supabase_pooler:
+        pooler_mode = "supabase_unknown"
+
+    logger.info(
+        "Database pool configuration",
+        extra={
+            "event": "database_pool_config",
+            "host": host,
+            "port": port,
+            "pooler_mode": pooler_mode,
+            "serverless": serverless_enabled,
+            "client_budget": 0 if serverless_enabled else budget,
+        },
+    )
+
+
+_validate_database_pooler_config(
+    database_url=settings.DATABASE_URL,
+    serverless_enabled=settings.SERVERLESS_ENABLED,
+    environment=settings.ENVIRONMENT,
+    db_pool_size=settings.DB_POOL_SIZE,
+    db_max_overflow=settings.DB_MAX_OVERFLOW,
+    db_bg_pool_size=settings.DB_BG_POOL_SIZE,
+    db_bg_max_overflow=settings.DB_BG_MAX_OVERFLOW,
+)
+
 
 # Log database connection info
 logger.info("Connecting to database with psycopg for PgBouncer compatibility")
@@ -60,6 +164,16 @@ else:
     )
 
 engine = create_async_engine(settings.ASYNC_DATABASE_URL, **_main_engine_kwargs)
+logger.info(
+    "Main database engine initialized",
+    extra={
+        "event": "database_engine_initialized",
+        "pool_label": "main",
+        "pool_class": "NullPool" if _use_null_pool else "AsyncAdaptedQueuePool",
+        "pool_size": 0 if _use_null_pool else settings.DB_POOL_SIZE,
+        "max_overflow": 0 if _use_null_pool else settings.DB_MAX_OVERFLOW,
+    },
+)
 
 # ── Background engine: schedulers, scrapers, long-running tasks ───────────────
 # Isolated from the main pool so background work can't starve API traffic.
@@ -82,6 +196,16 @@ else:
     )
 
 bg_engine = create_async_engine(settings.ASYNC_DATABASE_URL, **_bg_engine_kwargs)
+logger.info(
+    "Background database engine initialized",
+    extra={
+        "event": "database_engine_initialized",
+        "pool_label": "background",
+        "pool_class": "NullPool" if _use_null_pool else "AsyncAdaptedQueuePool",
+        "pool_size": 0 if _use_null_pool else settings.DB_BG_POOL_SIZE,
+        "max_overflow": 0 if _use_null_pool else settings.DB_BG_MAX_OVERFLOW,
+    },
+)
 
 # ── Slow-checkout logging ──────────────────────────────────────────────────────
 _SLOW_CHECKOUT_THRESHOLD_S = 5.0
@@ -144,6 +268,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
         except HTTPException:
             # Propagate HTTP errors without logging as DB errors
+            await session.rollback()
+            raise
+        except RequestValidationError:
+            # FastAPI request validation failures are user input errors, not
+            # database session failures. Roll back any implicit transaction
+            # and let the validation handler produce the 422 response.
             await session.rollback()
             raise
         except Exception as e:

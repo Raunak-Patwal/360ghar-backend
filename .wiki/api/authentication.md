@@ -45,7 +45,7 @@ All auth flows are exposed as FastAPI dependencies in `app/api/api_v1/dependenci
 - `get_current_user_optional(request, authorization, db) -> User | None` - returns `None` instead of raising when no token is present or verification fails. Used by public endpoints that personalize for logged-in users (property feeds, share previews). On `PROVIDER_UNREACHABLE` it returns `None` rather than 503, so a Supabase outage degrades gracefully to anonymous mode.
 - `get_current_agent(current_user)` - ensures `role == UserRole.agent`, else 403 (`AGENT_REQUIRED`).
 - `get_current_admin(current_user)` - ensures `role == UserRole.admin`, else 403 (`ADMIN_REQUIRED`).
-- `get_current_user_sse(request, authorization, token)` - SSE-specific. Browser `EventSource` cannot set custom headers, so this dependency accepts the token as a `?token=` query parameter and falls back to the `Authorization` header. It uses a short-lived background-pool session instead of `Depends(get_db)` so long-running SSE streams do not exhaust the main connection pool.
+- `get_current_cached_active_user(request, authorization, db)` - high-burst flatmates dependency. It verifies the Supabase JWT, then uses a short-lived local user snapshot cache when only id/status/role are needed.
 
 ## What is not here
 

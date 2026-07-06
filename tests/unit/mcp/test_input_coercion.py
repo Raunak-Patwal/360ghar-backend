@@ -16,7 +16,24 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.mcp.tool_ops import bookings as bookings_tool_ops
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _patch_stale_listing_pause() -> None:
+    """Best-effort stale-listing cleanup uses a real DB session; skip it in unit tests."""
+    with patch(
+        "app.services.property.search_orchestration.pause_stale_flatmate_listings",
+        new=AsyncMock(return_value=0),
+    ):
+        yield
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,9 +73,9 @@ def _make_user(user_id: int = 10) -> SimpleNamespace:
 
 
 def _capture_unified_call(mock: AsyncMock) -> Any:
-    """Return the ``filters`` kwarg from the most recent get_unified_properties_optimized call."""
+    """Return the ``filters`` positional arg from the most recent get_unified_properties_optimized call."""
     assert mock.await_count >= 1, "expected get_unified_properties_optimized to be awaited"
-    return mock.await_args.kwargs["filters"]
+    return mock.await_args.args[1]
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +92,7 @@ class TestAmenitiesStringCoercion:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search
 
@@ -92,7 +109,7 @@ class TestAmenitiesStringCoercion:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search
 
@@ -109,7 +126,7 @@ class TestAmenitiesStringCoercion:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search
 
@@ -126,7 +143,7 @@ class TestAmenitiesStringCoercion:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search
 
@@ -143,7 +160,7 @@ class TestAmenitiesStringCoercion:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search
 
@@ -160,7 +177,7 @@ class TestAmenitiesStringCoercion:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search
 
@@ -241,13 +258,13 @@ class TestLimitClamping:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search
 
             await discovery_search(limit=0)
 
-        assert unified_mock.await_args.kwargs["limit"] == 1
+        assert unified_mock.await_args.args[4] == 1
 
     async def test_limit_negative_becomes_one_in_discovery_search(self) -> None:
         """discovery_search: limit=-5 → 1."""
@@ -257,13 +274,13 @@ class TestLimitClamping:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search
 
             await discovery_search(limit=-5)
 
-        assert unified_mock.await_args.kwargs["limit"] == 1
+        assert unified_mock.await_args.args[4] == 1
 
     async def test_limit_above_max_clamped_in_discovery_search(self) -> None:
         """discovery_search: limit=9999 → 50."""
@@ -273,13 +290,13 @@ class TestLimitClamping:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search
 
             await discovery_search(limit=9999)
 
-        assert unified_mock.await_args.kwargs["limit"] == 50
+        assert unified_mock.await_args.args[4] == 50
 
     async def test_limit_above_max_clamped_in_discovery_feed(self) -> None:
         """discovery_feed: limit=9999 → 20."""
@@ -289,13 +306,13 @@ class TestLimitClamping:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_feed
 
             await discovery_feed(limit=9999)
 
-        assert unified_mock.await_args.kwargs["limit"] == 20
+        assert unified_mock.await_args.args[4] == 20
 
     async def test_limit_above_max_clamped_in_owner_properties_list(self) -> None:
         """owner_properties_list: limit=9999 → 100."""
@@ -398,7 +415,7 @@ class TestEnumCoercion:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search
 
@@ -424,7 +441,7 @@ class TestEnumCoercion:
         with (
             patch("app.mcp.chatgpt.discovery_tools.AsyncSessionLocal", return_value=_SessionContext(db)),
             patch("app.mcp.chatgpt.discovery_tools._get_optional_user", new=AsyncMock(return_value=None)),
-            patch("app.services.property.get_unified_properties_optimized", new=unified_mock),
+            patch("app.services.property.search_orchestration.get_unified_properties_optimized", new=unified_mock),
             patch("app.mcp.chatgpt.discovery_tools.logger", new=MagicMock()),
         ):
             from app.mcp.chatgpt.discovery_tools import discovery_search

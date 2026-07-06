@@ -12,7 +12,7 @@ from app.models.enums import LeaseStatus, UserRole
 from app.models.pm_leases import Lease
 from app.models.properties import Property
 from app.models.users import User
-from app.schemas.pagination import keyset_filter, keyset_payload, keyset_sort_value
+from app.schemas.pagination import keyset_filter, trim_keyset_lookahead
 from app.services.pm_authz import (
     assert_can_access_lease,
     assert_can_access_property,
@@ -147,12 +147,12 @@ async def list_leases(
 
     stmt = stmt.order_by(Lease.created_at.desc(), Lease.id.desc()).limit(limit + 1)
     rows = list((await db.execute(stmt)).scalars().all())
-
-    next_payload = None
-    if len(rows) > limit:
-        rows = rows[:limit]
-        last = rows[-1]
-        next_payload = keyset_payload(keyset_sort_value(last.created_at), last.id)
+    rows, next_payload = trim_keyset_lookahead(
+        rows,
+        limit=limit,
+        sort_value=lambda lease: lease.created_at,
+        item_id=lambda lease: lease.id,
+    )
     return rows, next_payload, count_total
 
 
@@ -241,6 +241,18 @@ async def renew_lease(
 
     new_status = LeaseStatus.active if make_active else LeaseStatus.draft
 
+    # Prevent creating a second active lease for the same property when renewing
+    if new_status == LeaseStatus.active:
+        existing_active = await db.execute(
+            select(Lease.id).where(
+                Lease.property_id == old.property_id,
+                Lease.status == LeaseStatus.active,
+                Lease.id != old.id,
+            )
+        )
+        if existing_active.scalar_one_or_none() is not None:
+            raise BadRequestException(detail="Property already has another active lease")
+
     new = Lease(
         property_id=old.property_id,
         owner_id=old.owner_id,
@@ -276,4 +288,3 @@ async def renew_lease(
             await db.flush()
 
     return new
-
