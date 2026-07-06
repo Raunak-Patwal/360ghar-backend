@@ -264,6 +264,57 @@ class TestCheckAvailabilityOverlap:
 
         assert result["available"] is True
 
+    @pytest.mark.asyncio
+    async def test_check_availability_compares_strings(self):
+        """Verify that check_availability passes raw strings to the database query filters."""
+        from app.services.booking import check_availability
+        from sqlalchemy.sql.selectable import Select
+
+        db = _make_mock_db()
+        mock_property = MagicMock()
+        mock_property.max_occupancy = None
+        db.execute.side_effect = [
+            _make_mock_result(mock_property),
+            _make_mock_result(None),
+        ]
+
+        check_in_str = "2026-07-10T14:00:00+00:00"
+        check_out_str = "2026-07-13T11:00:00+00:00"
+
+        await check_availability(
+            db,
+            property_id=1,
+            check_in_date=check_in_str,
+            check_out_date=check_out_str,
+            guests=2,
+        )
+
+        assert db.execute.call_count == 2
+        second_call_arg = db.execute.call_args_list[1][0][0]
+        assert isinstance(second_call_arg, Select)
+
+        compiled = second_call_arg.compile()
+        params = compiled.params
+
+        from datetime import datetime
+
+        check_in_dt = datetime.fromisoformat(check_in_str)
+        check_out_dt = datetime.fromisoformat(check_out_str)
+
+        bound_check_in = None
+        bound_check_out = None
+        for key, value in params.items():
+            if value == check_in_dt:
+                bound_check_in = value
+            elif value == check_out_dt:
+                bound_check_out = value
+
+        # Assert that the bound values were found and are indeed datetime objects, confirming the fix!
+        assert isinstance(bound_check_in, datetime), f"Expected check_in parameter to be a datetime, got {type(bound_check_in)}"
+        assert isinstance(bound_check_out, datetime), f"Expected check_out parameter to be a datetime, got {type(bound_check_out)}"
+
+
+
 
 # ---------------------------------------------------------------------------
 # BUG 4 – add_review: guest-only, completed status guard
@@ -559,6 +610,9 @@ class TestUpdateBookingService:
             assert mock_booking.booking_status == BookingStatus.pending
             assert mock_booking.payment_status == PaymentStatus.pending
 
+            mock_avail.assert_awaited_once()
+            mock_pricing.assert_awaited_once()
+
     @pytest.mark.asyncio
     async def test_update_booking_recalculates_price_no_status_reset_if_same_price(self):
         """Changing dates recalculates price but does NOT reset status if total amount is identical."""
@@ -602,6 +656,9 @@ class TestUpdateBookingService:
             # Status should NOT be reset
             assert mock_booking.booking_status == BookingStatus.confirmed
             assert mock_booking.payment_status == PaymentStatus.paid
+
+            mock_avail.assert_awaited_once()
+            mock_pricing.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_update_booking_internal_notes_prevented_for_non_staff(self):
@@ -827,3 +884,6 @@ class TestBookingReferenceGeneration:
             assert result is not None
             assert result.booking_reference.startswith("BK")
             assert len(result.booking_reference) == 10
+
+            mock_avail.assert_awaited_once()
+            mock_pricing.assert_awaited_once()

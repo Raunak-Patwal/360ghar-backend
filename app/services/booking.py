@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -302,7 +303,9 @@ async def update_booking(
                 raise BadRequestException(detail=pricing["error"])
 
             # If the price changes, revoke their paid/confirmed status so they have to pay the difference
-            if round(float(pricing["total_amount"]), 2) != round(float(booking.total_amount), 2):
+            new_total = Decimal(str(pricing["total_amount"])).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            old_total = Decimal(str(booking.total_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if new_total != old_total:
                 booking.payment_status = PaymentStatus.pending
                 booking.booking_status = BookingStatus.pending
 
@@ -371,7 +374,9 @@ async def process_payment(db: AsyncSession, payment_data: BookingPayment):
 
     if booking:
         # --- FIX: Prevent payment amount bypass ---
-        if round(float(payment_data.amount), 2) < round(float(booking.total_amount), 2):
+        payment_amount_dec = Decimal(str(payment_data.amount))
+        booking_amount_dec = Decimal(str(booking.total_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if payment_amount_dec < booking_amount_dec:
             logger.warning(
                 "Payment amount mismatch",
                 extra={
@@ -484,11 +489,15 @@ async def check_availability(
 
     # 3. Date-overlap check — prevents double-booking
     # Two date ranges [A, B) and [C, D) overlap when A < D and C < B.
+    # Parse string inputs to datetime objects to ensure correct database execution
+    check_in_dt = datetime.fromisoformat(check_in_date.replace("Z", "+00:00")) if isinstance(check_in_date, str) else check_in_date
+    check_out_dt = datetime.fromisoformat(check_out_date.replace("Z", "+00:00")) if isinstance(check_out_date, str) else check_out_date
+
     overlap_filters = [
         Booking.property_id == property_id,
         Booking.booking_status.in_([BookingStatus.confirmed, BookingStatus.pending]),
-        Booking.check_in_date < check_out_date,
-        Booking.check_out_date > check_in_date,
+        Booking.check_in_date < check_out_dt,
+        Booking.check_out_date > check_in_dt,
     ]
     if exclude_booking_id is not None:
         overlap_filters.append(Booking.id != exclude_booking_id)
