@@ -344,9 +344,35 @@ async def check_availability(
 
     # 3. Date-overlap check — prevents double-booking
     # Two date ranges [A, B) and [C, D) overlap when A < D and C < B.
-    # Parse string inputs to datetime objects to ensure correct database execution
-    check_in_dt = datetime.fromisoformat(check_in_date.replace("Z", "+00:00")) if isinstance(check_in_date, str) else check_in_date
-    check_out_dt = datetime.fromisoformat(check_out_date.replace("Z", "+00:00")) if isinstance(check_out_date, str) else check_out_date
+
+    # --- P1 Fix: Parse & normalize dates robustly ---
+    # (a) Wrap in try/except so malformed strings return a structured error instead of a 500.
+    # (b) Always attach UTC tzinfo so comparisons against DateTime(timezone=True) columns are
+    #     unambiguous — fromisoformat on offset-less strings (e.g. "2026-01-10T12:00:00" or
+    #     bare date strings) returns a naive datetime which PostgreSQL implicit-casts using the
+    #     session timezone, causing incorrect overlap results.
+    def _parse_and_normalize(date_val: str | datetime) -> datetime | None:
+        if isinstance(date_val, datetime):
+            dt = date_val
+        else:
+            try:
+                dt = datetime.fromisoformat(date_val.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        # Ensure timezone-aware; assume UTC when no tzinfo is present.
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+
+    check_in_dt = _parse_and_normalize(check_in_date)
+    check_out_dt = _parse_and_normalize(check_out_date)
+
+    if check_in_dt is None or check_out_dt is None:
+        return {"available": False, "reason": "Invalid date format"}
+
+    # (c) Reject inverted or equal date ranges immediately — no DB round-trip needed.
+    if check_in_dt >= check_out_dt:
+        return {"available": False, "reason": "Invalid date range: check-out must be after check-in"}
 
     overlap_filters = [
         Booking.property_id == property_id,
